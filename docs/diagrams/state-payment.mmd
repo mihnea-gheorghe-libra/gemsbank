@@ -1,0 +1,40 @@
+---
+title: Payment state machine - v0 states solid, future states dashed
+---
+stateDiagram-v2
+    direction LR
+    [*] --> draft
+
+    draft --> validated : schema and business validation
+    draft --> rejected : invalid input
+
+    validated --> awaiting_approval : policy require_approval
+    validated --> pending : policy allow
+    validated --> rejected : policy deny, limit exceeded,<br/>insufficient funds, VoP no_match refused
+
+    awaiting_approval --> pending : step-up verified or human confirms
+    awaiting_approval --> rejected : declined or challenge expired
+
+    pending --> settled : ledger posting committed
+    pending --> failed : posting error, rollback, no partial write
+
+    settled --> reversed : correcting reversal entry posted
+
+    rejected --> [*]
+    failed --> [*]
+    settled --> [*]
+    reversed --> [*]
+
+    note right of pending
+        v0 stops here for internal transfers.
+        External rails will insert
+        submitted and accepted_by_scheme
+        between pending and settled
+        without changing earlier states.
+    end note
+
+    note right of awaiting_approval
+        This is where an agent-proposed
+        payment waits for human confirmation
+        when it falls outside its mandate.
+    end note

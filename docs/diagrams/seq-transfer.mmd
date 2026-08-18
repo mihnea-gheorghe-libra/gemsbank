@@ -1,0 +1,67 @@
+---
+title: Internal transfer - the single write path
+---
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant W as web - Next.js
+    participant H as api - HTTP handler
+    participant B as Command bus
+    participant I as Idempotency store
+    participant P as Policy engine
+    participant C as Compliance - VoP port
+    participant S as Step-up port - SCA
+    participant PM as payments module
+    participant L as ledger - posting engine
+    participant DB as PostgreSQL
+    participant A as Audit + Outbox
+
+    U->>W: submits transfer form
+    W->>H: POST /payments/transfers<br/>Idempotency-Key, correlation-id
+    H->>H: authenticate, build Actor kind=user
+    H->>B: execute TransferCommand, actor, key
+
+    B->>I: lookup key
+    alt key already seen
+        I-->>B: stored response
+        B-->>H: same body, same status
+        H-->>W: 200 replay - nothing re-executed
+    else new key
+        I-->>B: miss, key reserved
+
+        B->>P: evaluate actor, amount, currency, beneficiary
+        alt deny
+            P-->>B: deny with reason
+            B-->>H: 403 policy violation
+        else require approval
+            P-->>B: require_approval
+            B->>S: challenge
+            S-->>B: verified - stub in v0
+        else allow
+            P-->>B: allow
+        end
+
+        B->>C: verify payee name vs IBAN
+        C-->>B: match, close_match or no_match - stub in v0
+        Note over B,C: on no_match the user is warned<br/>before execution - Instant Payments Regulation
+
+        B->>PM: create payment, state=pending
+        PM->>DB: insert payments row
+
+        rect rgb(232, 245, 240)
+        Note over B,DB: one DB transaction, SERIALIZABLE with retry
+        B->>L: post_transaction debit source, credit destination
+        L->>DB: insert journal_transactions
+        L->>DB: insert journal_entries - 2 lines, sum = 0
+        DB-->>L: deferred constraint checks balance at commit
+        L-->>B: transaction id
+        B->>PM: mark payment settled
+        B->>A: audit row + outbox PaymentSettled
+        A->>DB: insert audit_log, outbox
+        end
+
+        B->>I: store response against key
+        B-->>H: TransferResult
+        H-->>W: 201 Created
+        W-->>U: real state rendered, never optimistic
+    end

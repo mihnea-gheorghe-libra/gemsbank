@@ -1,0 +1,163 @@
+---
+title: Core data model - gems-bank v0
+---
+erDiagram
+    USERS ||--o{ SESSIONS : has
+    USERS ||--o{ ACCOUNTS : owns
+    USERS ||--o{ BENEFICIARIES : saves
+    USERS ||--o{ USER_PREFERENCES : configures
+    USERS ||--o{ MANDATES : grants
+
+    ACCOUNTS ||--|| LEDGER_ACCOUNTS : "backed by"
+    LEDGER_ACCOUNTS ||--o{ JOURNAL_ENTRIES : "is posted to"
+    JOURNAL_TRANSACTIONS ||--|{ JOURNAL_ENTRIES : "consists of"
+    PAYMENTS ||--o| JOURNAL_TRANSACTIONS : "settles as"
+    PAYMENTS }o--o| BENEFICIARIES : "pays"
+    MANDATES ||--o{ AGENT_RUNS : authorises
+    AGENT_RUNS ||--o{ AUDIT_LOG : "traced by"
+
+    USERS {
+        uuid id PK
+        citext email UK
+        text password_hash "argon2id"
+        text status "active, locked, closed"
+        timestamptz created_at
+    }
+
+    SESSIONS {
+        uuid id PK
+        uuid user_id FK
+        text refresh_token_hash
+        timestamptz expires_at
+        timestamptz revoked_at "nullable"
+    }
+
+    USER_PREFERENCES {
+        uuid user_id PK
+        bool hide_balances "reversible UI control"
+        text locale "ro, en"
+        jsonb extra
+    }
+
+    ACCOUNTS {
+        uuid id PK
+        uuid user_id FK
+        text iban UK "synthetic, demo only"
+        char3 currency "ISO 4217"
+        text product "current, savings"
+        text status "active, frozen, closed"
+        timestamptz opened_at
+    }
+
+    LEDGER_ACCOUNTS {
+        uuid id PK
+        text code UK "chart of accounts code"
+        text type "asset, liability, equity, revenue, expense"
+        char3 currency
+        uuid customer_account_id FK "nullable"
+    }
+
+    JOURNAL_TRANSACTIONS {
+        uuid id PK "uuidv7"
+        text idempotency_key UK
+        text reference
+        text actor_kind "user, system, agent"
+        uuid actor_id
+        uuid mandate_id FK "nullable, agent actors only"
+        uuid correlation_id
+        timestamptz posted_at
+    }
+
+    JOURNAL_ENTRIES {
+        uuid id PK
+        uuid transaction_id FK
+        uuid ledger_account_id FK
+        text direction "debit, credit"
+        bigint amount_minor "always positive"
+        char3 currency
+        text narrative
+    }
+
+    PAYMENTS {
+        uuid id PK
+        uuid initiator_user_id FK
+        uuid source_account_id FK
+        uuid destination_account_id FK "nullable for external"
+        uuid beneficiary_id FK "nullable"
+        bigint amount_minor
+        char3 currency
+        text state "draft, validated, awaiting_approval, pending, settled, rejected, failed, reversed"
+        text vop_result "match, close_match, no_match, not_checked"
+        text rail "internal, sepa_inst - v0 internal only"
+        timestamptz created_at
+    }
+
+    BENEFICIARIES {
+        uuid id PK
+        uuid user_id FK
+        text display_name
+        text iban
+        char3 currency
+        timestamptz created_at
+    }
+
+    IDEMPOTENCY_KEYS {
+        text key PK
+        uuid user_id FK
+        text endpoint
+        int response_status
+        jsonb response_body
+        timestamptz created_at
+    }
+
+    AUDIT_LOG {
+        uuid id PK
+        text actor_kind
+        uuid actor_id
+        uuid on_behalf_of "nullable"
+        text action
+        text entity_type
+        uuid entity_id
+        jsonb before
+        jsonb after
+        uuid correlation_id
+        uuid agent_run_id FK "nullable"
+        timestamptz occurred_at
+    }
+
+    OUTBOX {
+        uuid id PK
+        text event_type
+        jsonb payload
+        uuid correlation_id
+        timestamptz created_at
+        timestamptz processed_at "nullable"
+    }
+
+    MANDATES {
+        uuid id PK "EMPTY IN v0 - shape only"
+        uuid user_id FK
+        text agent_id
+        text scope "capability names allowed"
+        bigint max_amount_minor_per_tx
+        bigint max_amount_minor_per_period
+        text period "day, week, month"
+        jsonb allowed_beneficiaries
+        timestamptz valid_from
+        timestamptz valid_until
+        timestamptz revoked_at "nullable"
+    }
+
+    AGENT_RUNS {
+        uuid id PK "EMPTY IN v0 - shape only"
+        uuid user_id FK
+        uuid mandate_id FK "nullable"
+        text orchestrator_version
+        uuid correlation_id
+        jsonb plan
+        int input_tokens
+        int output_tokens
+        text outcome "answered, proposed, executed, escalated, failed"
+        timestamptz started_at
+        timestamptz ended_at
+    }

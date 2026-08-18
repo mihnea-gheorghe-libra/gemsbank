@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics=""><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="industry.css"><link rel="stylesheet" href="gems-theme.css"><style>body{margin:0;overflow:hidden}*::-webkit-scrollbar{width:8px;height:8px}*::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--color-text) 22%,transparent)}*::-webkit-scrollbar-track{background:transparent}a{color:var(--color-accent-700);text-decoration:none}a:hover{color:var(--color-accent)}@keyframes gemsIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}@keyframes gemsPulse{0%,100%{opacity:.35}50%{opacity:1}}</style></helmet>
+
+<div style="height:100vh;min-height:640px;display:flex;flex-direction:column;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);overflow:hidden">
+
+<sc-if value="{{ showAuth }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;display:grid;grid-template-columns:1fr 1.05fr;min-height:0">
+  <div style="background:var(--color-accent-900);color:#F5FBDA;padding:48px 44px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden">
+    <div style="display:flex;align-items:baseline;gap:12px">
+      <span style="font-family:var(--font-heading);font-size:26px;letter-spacing:.22em">GEMS</span>
+      <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.18em;opacity:.6">AI-FIRST BANKING</span>
+    </div>
+    <div style="max-width:420px">
+      <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.2em;opacity:.55;margin-bottom:14px">FIG. 01 — AGENT ORCHESTRATION</div>
+      <h2 style="font-size:44px;line-height:1.02;margin:0 0 14px;color:#fff">Your money, explained by an agent that does the work.</h2>
+      <p style="font-size:14px;line-height:1.6;opacity:.72;margin:0">Ask in plain language. GEMS drafts the payment, checks the limits, and hands you a card to confirm.</p>
+    </div>
+    <div style="display:flex;gap:28px;font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.14em;opacity:.5">
+      <span>PSD2 / SCA</span><span>ISO 27001</span><span>FGDB INSURED</span>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:center;padding:40px">
+    <div class="blueprint" style="width:400px;padding:34px 32px;background:var(--color-surface)">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.2em;color:var(--color-accent-700);margin-bottom:6px">SCREEN 02 — AUTHENTICATION</div>
+      <h3 style="font-size:28px;margin:0 0 20px">Sign in</h3>
+
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="field"><label>Email or username</label><input class="input" value="andrei.pop@mail.ro" readonly=""></div>
+        <div class="field">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+            <label style="margin:0">PIN</label>
+            <span style="font-size:11px;font-family:ui-monospace,Menlo,monospace;color:var(--color-accent-700)">{{ attemptLabel }}</span>
+          </div>
+          <div style="display:flex;gap:8px">
+            <sc-for list="{{ pinCells }}" as="c" hint-placeholder-count="4">
+              <div class="input" style="flex:1;display:flex;align-items:center;justify-content:center;font-size:20px;min-height:48px">{{ c.ch }}</div>
+            </sc-for>
+          </div>
+        </div>
+
+        <sc-if value="{{ captcha }}" hint-placeholder-val="{{ false }}">
+          <div class="blueprint" style="padding:12px;display:flex;align-items:center;gap:12px">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="width:96px;height:36px;background:repeating-linear-gradient(115deg,var(--color-accent-300) 0 3px,var(--color-surface) 3px 7px);display:flex;align-items:center;justify-content:center;font-family:ui-monospace,Menlo,monospace;font-size:15px;letter-spacing:.16em;color:var(--color-accent-900);font-style:italic">7QF2K</div>
+            <input class="input" placeholder="Type the code" style="flex:1">
+          </div>
+          <div style="font-size:12px;color:var(--color-accent-700)">3 failed attempts — captcha required before the next try.</div>
+        </sc-if>
+
+        <div style="display:flex;gap:8px;margin-top:2px">
+          <button class="btn btn-secondary" onClick="{{ failPin }}" style="flex:1">Wrong PIN (demo)</button>
+          <button class="btn btn-primary blueprint" onClick="{{ signIn }}" style="flex:1.4">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Continue
+          </button>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;margin:4px 0">
+          <div style="flex:1;height:1px;background:var(--color-divider)"></div>
+          <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;opacity:.5">OR</span>
+          <div style="flex:1;height:1px;background:var(--color-divider)"></div>
+        </div>
+
+        <button class="btn btn-secondary btn-block" onClick="{{ signIn }}" style="min-height:40px;margin:0">Use passkey — Windows Hello / Touch ID</button>
+        <div style="display:flex;justify-content:space-between;font-size:12px">
+          <span class="text-muted">Password login adds 2FA (SMS or authenticator).</span>
+          <a href="#" onClick="{{ startKyc }}">Create account</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ showKyc }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;display:flex;flex-direction:column;min-height:0">
+  <div style="display:flex;align-items:center;gap:16px;padding:16px 32px;border-bottom:1px solid var(--color-divider)">
+    <span style="font-family:var(--font-heading);font-size:20px;letter-spacing:.2em">GEMS</span>
+    <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.2em;color:var(--color-accent-700)">SCREEN 01 — ONBOARDING &amp; KYC</span>
+    <a href="#" onClick="{{ toLogin }}" style="margin-left:auto;font-size:13px">Back to sign in</a>
+  </div>
+
+  <div style="flex:1;display:grid;grid-template-columns:216px 1fr 320px;min-height:0">
+    <div style="border-right:1px solid var(--color-divider);padding:26px 22px">
+      <sc-for list="{{ kycSteps }}" as="s" hint-placeholder-count="5">
+        <div style="display:flex;gap:12px;padding:9px 0;align-items:flex-start">
+          <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;width:20px;padding-top:3px;color:var(--color-accent-700)">{{ s.num }}</span>
+          <div>
+            <div style="font-family:var(--font-heading);font-size:16px">{{ s.title }}</div>
+            <div style="font-size:11px;font-family:ui-monospace,Menlo,monospace;letter-spacing:.1em;opacity:.5">{{ s.state }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="padding:34px 40px;overflow:auto">
+      <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.2em;color:var(--color-accent-700);margin-bottom:8px">STEP {{ kycStep }} OF 5</div>
+      <h2 style="margin:0 0 6px">{{ kycTitle }}</h2>
+      <p class="text-muted" style="max-width:520px;font-size:14px">{{ kycSub }}</p>
+
+      <sc-if value="{{ kycIs1 }}" hint-placeholder-val="{{ true }}">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;max-width:660px;margin-top:22px">
+          <div class="blueprint duotone" style="aspect-ratio:4/3;background:repeating-linear-gradient(135deg,var(--color-neutral-300) 0 2px,var(--color-surface) 2px 9px);display:grid;place-items:center">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.14em;background:var(--color-bg);padding:4px 8px">WEBCAM FEED</span>
+          </div>
+          <div>
+            <div style="font-family:var(--font-heading);font-size:18px;margin-bottom:8px">Liveness capture</div>
+            <p style="font-size:13px" class="text-muted">Look straight into the camera, remove glasses and hats. The agent will tell you when the frame is good.</p>
+            <div style="display:flex;flex-direction:column;gap:7px;font-size:12px;font-family:ui-monospace,Menlo,monospace">
+              <span style="color:var(--color-accent-700)">✓ FACE CENTERED</span>
+              <span style="color:var(--color-accent-700)">✓ LIGHTING OK</span>
+              <span style="opacity:.45">· HOLD STILL 2S</span>
+            </div>
+            <button class="btn btn-primary blueprint" onClick="{{ kycNext }}" style="margin-top:18px">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Take snapshot
+            </button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ kycIs2 }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;max-width:660px;margin-top:22px">
+          <div class="blueprint" style="aspect-ratio:1.58;background:repeating-linear-gradient(135deg,var(--color-neutral-300) 0 2px,var(--color-surface) 2px 9px);display:grid;place-items:center">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.14em;background:var(--color-bg);padding:4px 8px">ID — FRONT</span>
+          </div>
+          <div class="blueprint" style="aspect-ratio:1.58;background:var(--color-surface);display:grid;place-items:center">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.14em;opacity:.5">DROP ID — BACK</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:20px;margin-top:20px;max-width:660px">
+          <div class="blueprint" style="flex:1;padding:14px">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.14em;color:var(--color-accent-700);margin-bottom:8px">EXTRACTED BY AGENT</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px">
+              <span class="text-muted">Name</span><span>POP ANDREI-MIHAI</span>
+              <span class="text-muted">CNP</span><span>1920••••••••</span>
+              <span class="text-muted">Expiry</span><span>14.03.2031</span>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-primary blueprint" onClick="{{ kycNext }}" style="margin-top:18px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Confirm details
+        </button>
+      </sc-if>
+
+      <sc-if value="{{ kycIs3 }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:560px;margin-top:22px">
+          <div class="field"><label>Phone number</label><input class="input" value="+40 7•• ••• 214"></div>
+          <div class="field"><label>Email</label><input class="input" value="andrei.pop@mail.ro"></div>
+        </div>
+        <button class="btn btn-primary blueprint" onClick="{{ kycNext }}" style="margin-top:18px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Send SMS code
+        </button>
+      </sc-if>
+
+      <sc-if value="{{ kycIs4 }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:24px;display:flex;gap:10px">
+          <sc-for list="{{ otpCells }}" as="c" hint-placeholder-count="6">
+            <div class="input" style="width:54px;height:64px;display:flex;align-items:center;justify-content:center;font-size:24px;font-family:var(--font-heading)">{{ c.ch }}</div>
+          </sc-for>
+        </div>
+        <div style="font-size:12px;margin-top:12px" class="text-muted">Code sent to +40 7•• ••• 214 · resend in 0:24</div>
+        <button class="btn btn-primary blueprint" onClick="{{ kycNext }}" style="margin-top:18px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Verify signature
+        </button>
+      </sc-if>
+
+      <sc-if value="{{ kycIs5 }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:560px;margin-top:22px">
+          <div class="field"><label>Username</label><input class="input" value="andrei.pop"></div>
+          <div class="field"><label>Password</label><input class="input" type="password" value="••••••••••"></div>
+          <div class="field"><label>6-digit PIN</label><input class="input" value="••••••"></div>
+          <div class="field"><label>Confirm PIN</label><input class="input" value="••••••"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:16px;font-size:13px">
+          <span class="tag tag-accent">Passkey ready</span>
+          <span class="text-muted">Register Windows Hello / Touch ID after your first sign-in.</span>
+        </div>
+        <button class="btn btn-primary blueprint" onClick="{{ finishKyc }}" style="margin-top:20px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Open my account
+        </button>
+      </sc-if>
+    </div>
+
+    <div style="border-left:1px solid var(--color-divider);padding:24px 22px;background:var(--color-surface);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+        <span style="width:9px;height:9px;border-radius:50%;background:var(--color-accent-2-600);display:block;animation:gemsPulse 1.8s infinite"></span>
+        <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.18em">ONBOARDING AGENT</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:1.55">
+        <div class="blueprint" style="padding:12px;background:var(--color-bg)">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          {{ kycAgent }}
+        </div>
+        <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.12em;opacity:.5">SUGGESTED</div>
+        <button class="btn btn-secondary" style="justify-content:flex-start">Why do you need my ID?</button>
+        <button class="btn btn-secondary" style="justify-content:flex-start">Read this step aloud</button>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ showApp }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;display:flex;min-height:0">
+
+  <div style="width:228px;flex:none;border-right:1px solid var(--color-divider);display:flex;flex-direction:column;padding:20px 0">
+    <div style="padding:0 22px 22px;display:flex;align-items:baseline;gap:10px">
+      <span style="font-family:var(--font-heading);font-size:22px;letter-spacing:.2em">GEMS</span>
+    </div>
+    <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="7">
+      <button onClick="{{ n.go }}" class="gemsnav {{ n.cls }}" style="appearance:none;border:0;font:inherit;text-align:left;cursor:pointer;display:flex;align-items:center;gap:12px;padding:10px 18px;font-family:var(--font-heading);font-size:16px;background:{{ n.bg }};color:{{ n.fg }}">
+        <span class="gemsnav-num" style="font-family:ui-monospace,Menlo,monospace;font-size:10px;opacity:.45;letter-spacing:.08em">{{ n.num }}</span>
+        <span>{{ n.label }}</span>
+        <sc-if value="{{ n.active }}" hint-placeholder-val="{{ false }}">
+          <span style="margin-left:auto;width:7px;height:7px;border-radius:50%;background:var(--color-accent-2-500);display:block"></span>
+        </sc-if>
+      </button>
+    </sc-for>
+    <div style="margin-top:auto;padding:0 22px">
+      <div style="height:1px;background:var(--color-divider);margin-bottom:14px"></div>
+      <div class="blueprint" style="padding:11px;margin-bottom:14px">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.14em;color:var(--color-accent-700);margin-bottom:4px">AGENTS ONLINE</div>
+        <div style="font-size:12px" class="text-muted">Payments · Insights · Support</div>
+      </div>
+      <button class="btn btn-ghost" onClick="{{ toLogin }}" style="padding:0;font-size:13px">Log out</button>
+    </div>
+  </div>
+
+  <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+    <div style="display:flex;align-items:center;gap:14px;padding:14px 26px;border-bottom:1px solid var(--color-divider)">
+      <div>
+        <div style="font-family:var(--font-heading);font-size:19px;line-height:1.1">{{ greeting }}</div>
+        <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.12em;opacity:.5">{{ screenTag }}</div>
+      </div>
+      <input class="input" placeholder="Search transactions, IBANs, or ask the agent…" style="margin-left:auto;max-width:340px">
+      <button class="btn btn-secondary" onClick="{{ toggleTts }}" style="font-size:13px">{{ ttsLabel }}</button>
+      <button class="btn btn-icon btn-secondary" style="position:relative">
+        <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">03</span>
+        <span style="position:absolute;top:-3px;right:-3px;width:8px;height:8px;border-radius:50%;background:var(--color-accent-2-600);display:block"></span>
+      </button>
+      <div style="width:34px;height:34px;border-radius:50%;background:var(--color-accent-900);color:#F5FBDA;display:grid;place-items:center;font-family:var(--font-heading);font-size:13px">AP</div>
+    </div>
+
+    <div style="flex:1;overflow:auto;padding:26px">
+
+      <sc-if value="{{ isDash }}" hint-placeholder-val="{{ true }}">
+        <div style="display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:20px">
+          <div class="blueprint" style="padding:20px;grid-row:span 2">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700)">TOTAL BALANCE — 4 ACCOUNTS</div>
+              <button class="btn btn-ghost" onClick="{{ toggleBal }}" style="font-size:12px">{{ balBtn }}</button>
+            </div>
+            <div onClick="{{ speakBalance }}" style="cursor:pointer;font-family:var(--font-heading);font-size:52px;line-height:1.05;margin:8px 0 2px">{{ balText }}</div>
+            <div style="font-size:12px" class="text-muted">{{ balSub }}</div>
+            <div style="height:1px;background:var(--color-divider);margin:18px 0"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <sc-for list="{{ quickActions }}" as="q" hint-placeholder-count="4">
+                <button onClick="{{ q.go }}" class="btn btn-secondary" style="justify-content:flex-start;gap:10px;min-height:46px;font-size:14px">
+                  <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--color-accent-700)">{{ q.num }}</span>{{ q.label }}
+                </button>
+              </sc-for>
+            </div>
+          </div>
+
+          <div class="blueprint" style="padding:18px;grid-column:span 2">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700)">ACCOUNTS</div>
+              <a href="#" onClick="{{ goAccounts }}" style="font-size:12px">Open new account →</a>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+              <sc-for list="{{ accounts }}" as="a" hint-placeholder-count="3">
+                <div class="blueprint" style="padding:12px;background:var(--color-surface)">
+                  <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+                  <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.12em;opacity:.55">{{ a.cur }} · {{ a.type }}</div>
+                  <div style="font-family:var(--font-heading);font-size:24px;margin:4px 0 2px">{{ a.amt }}</div>
+                  <div style="font-size:11px" class="text-muted">{{ a.iban }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div><div class="blueprint" style="padding:18px">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700);margin-bottom:10px">AGENT INSIGHTS</div>
+            <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:1.5">
+              <div>Netflix rose 12 RON — new price from 04.08.</div>
+              <div style="height:1px;background:var(--color-divider)"></div>
+              <div>You can move 1.200 RON to your EUR account at a better rate today.</div>
+              <button class="btn btn-ghost" onClick="{{ goChat }}" style="align-self:flex-start;padding:0">Ask the agent →</button>
+            </div>
+          </div>
+
+          
+
+          
+        </div>
+
+        <div class="blueprint" style="padding:18px;margin-top:20px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700)">RECENT ACTIVITY</div>
+            <a href="#" onClick="{{ goPayments }}" style="font-size:12px">All transactions →</a>
+          </div>
+          <table class="table">
+            <thead><tr><th>Date</th><th>Counterparty</th><th>Category</th><th>Status</th><th style="text-align:right">Amount</th></tr></thead>
+            <tbody>
+              <sc-for list="{{ txShort }}" as="t" hint-placeholder-count="4">
+                <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:12px">{{ t.date }}</td><td>{{ t.who }}</td><td class="text-muted">{{ t.cat }}</td><td><span class="tag tag-accent">{{ t.status }}</span></td><td style="text-align:right;font-family:var(--font-heading);font-size:16px">{{ t.amt }}</td></tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isChat }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:1fr 268px;gap:20px;height:100%;min-height:0">
+          <div style="display:flex;flex-direction:column;min-height:0">
+            <div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:16px;padding-right:6px">
+              <sc-for list="{{ msgs }}" as="m" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;gap:8px;animation:gemsIn .25s ease">
+                  <sc-if value="{{ m.isUser }}" hint-placeholder-val="{{ false }}">
+                    <div style="align-self:flex-end;max-width:60%;background:var(--color-accent-900);color:#F5FBDA;padding:12px 16px;border-radius:20px 20px 6px 20px;font-size:14px;line-height:1.5">{{ m.text }}</div>
+                  </sc-if>
+                  <sc-if value="{{ m.isAi }}" hint-placeholder-val="{{ true }}">
+                    <div style="display:flex;gap:12px;max-width:82%">
+                      <span style="width:9px;height:9px;border-radius:50%;background:var(--color-accent-2-600);display:block;margin-top:7px;flex:none"></span>
+                      <div style="flex:1">
+                        <sc-if value="{{ m.hasText }}" hint-placeholder-val="{{ true }}">
+                          <div style="font-size:14px;line-height:1.6">{{ m.text }}</div>
+                        </sc-if>
+
+                        <sc-if value="{{ m.isTx }}" hint-placeholder-val="{{ false }}">
+                          <div class="blueprint" style="margin-top:12px;padding:16px;max-width:420px;background:var(--color-surface)">
+                            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+                            <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700)">DRAFT PAYMENT — AWAITING CONFIRMATION</div>
+                            <div style="font-family:var(--font-heading);font-size:34px;margin:8px 0 4px">500,00 RON</div>
+                            <div style="display:grid;grid-template-columns:auto 1fr;gap:5px 16px;font-size:13px;margin:10px 0 14px">
+                              <span class="text-muted">To</span><span>Ionescu John</span>
+                              <span class="text-muted">IBAN</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">RO49 AAAA 1B31 0075 9384 0000</span>
+                              <span class="text-muted">From</span><span>Current RON · ••4127</span>
+                              <span class="text-muted">Fee</span><span>0,00 RON · instant</span>
+                            </div>
+                            <div style="display:flex;gap:8px">
+                              <button class="btn btn-primary blueprint" onClick="{{ confirmTx }}" style="flex:1"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Confirm &amp; sign</button>
+                              <button class="btn btn-secondary" style="flex:none">Edit</button>
+                            </div>
+                          </div>
+                        </sc-if>
+
+                        <sc-if value="{{ m.isTable }}" hint-placeholder-val="{{ false }}">
+                          <div class="blueprint" style="margin-top:12px;padding:14px;max-width:560px">
+                            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+                            <table class="table">
+                              <thead><tr><th>Subscription</th><th>Cycle</th><th>Next</th><th style="text-align:right">Amount</th></tr></thead>
+                              <tbody>
+                                <sc-for list="{{ recurring }}" as="r" hint-placeholder-count="4">
+                                  <tr><td>{{ r.name }}</td><td class="text-muted">{{ r.cycle }}</td><td style="font-family:ui-monospace,Menlo,monospace;font-size:12px">{{ r.next }}</td><td style="text-align:right">{{ r.amt }}</td></tr>
+                                </sc-for>
+                              </tbody>
+                            </table>
+                            <div style="display:flex;gap:8px;margin-top:12px">
+                              <button class="btn btn-secondary" style="font-size:13px">Cancel one…</button>
+                              <button class="btn btn-secondary" style="font-size:13px">Export CSV</button>
+                            </div>
+                          </div>
+                        </sc-if>
+
+                        <sc-if value="{{ m.isChart }}" hint-placeholder-val="{{ false }}">
+                          <div class="blueprint" style="margin-top:12px;padding:16px;max-width:460px">
+                            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+                            <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700);margin-bottom:12px">GROCERIES — LAST 6 MONTHS</div>
+                            <div style="display:flex;align-items:flex-end;gap:10px;height:110px">
+                              <sc-for list="{{ chartBars }}" as="b" hint-placeholder-count="6">
+                                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;gap:6px">
+                                  <div style="background:var(--color-accent-2-500);width:100%;height:{{ b.h }};border-radius:10px 10px 0 0"></div>
+                                  <span style="font-family:ui-monospace,Menlo,monospace;font-size:9px;opacity:.5;text-align:center">{{ b.label }}</span>
+                                </div>
+                              </sc-for>
+                            </div>
+                          </div>
+                        </sc-if>
+                      </div>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="padding-top:16px">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+                <sc-for list="{{ prompts }}" as="p" hint-placeholder-count="3">
+                  <button class="btn btn-secondary" onClick="{{ p.go }}" style="font-size:12px">{{ p.label }}</button>
+                </sc-for>
+              </div>
+              <div class="blueprint" style="display:flex;gap:10px;align-items:center;padding:10px 12px;background:var(--color-surface)">
+                <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+                <input class="input" value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onKey }}" placeholder="Ask GEMS to move money, explain a charge, or plan a saving…" style="border:0;background:transparent;flex:1;min-height:32px">
+                <button class="btn btn-secondary btn-icon" onClick="{{ toggleMic }}">{{ micLabel }}</button>
+                <button class="btn btn-primary blueprint" onClick="{{ sendMsg }}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Send</button>
+              </div>
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:9px;letter-spacing:.12em;opacity:.45;margin-top:8px">AGENT ORCHESTRATOR · PAYMENTS + INSIGHTS + KYC · ACTIONS ALWAYS NEED YOUR SIGNATURE</div>
+            </div>
+          </div>
+
+          <div style="border-left:1px solid var(--color-divider);padding-left:18px;display:flex;flex-direction:column;gap:16px">
+            <div>
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700);margin-bottom:8px">CONTEXT</div>
+              <div style="font-size:13px;line-height:1.6" class="text-muted">Current RON ••4127<br>EUR Savings ••8802<br>Visa Virtual ••3319</div>
+            </div>
+            <div style="height:1px;background:var(--color-divider)"></div>
+            <div>
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700);margin-bottom:8px">AGENT LOG</div>
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;line-height:1.9;opacity:.6">
+                <div>· resolved payee "John"</div>
+                <div>· checked daily limit 5.000</div>
+                <div>· fx quote 4,9712 EUR/RON</div>
+                <div>· drafted transfer, unsigned</div>
+              </div>
+            </div>
+            <div style="height:1px;background:var(--color-divider)"></div>
+            <div style="font-size:12px" class="text-muted">Voice input and read-aloud follow your accessibility settings.</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isPay }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:18px">
+          <div>
+            <h3 style="margin:0">Payments &amp; transfers</h3>
+            <div style="font-size:13px" class="text-muted">1.284 movements · 2 pending signatures</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-secondary">Split bill</button>
+            <button class="btn btn-secondary">Scan QR</button>
+            <button class="btn btn-primary blueprint" onClick="{{ openPay }}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>New payment</button>
+          </div>
+        </div>
+
+        <div class="blueprint" style="padding:16px;margin-bottom:18px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700);margin-bottom:10px">PENDING</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <sc-for list="{{ pending }}" as="p" hint-placeholder-count="2">
+              <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:var(--radius-lg);background:var(--color-surface)">
+                <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--color-accent-700)">{{ p.num }}</span>
+                <div style="flex:1">
+                  <div style="font-family:var(--font-heading);font-size:16px">{{ p.who }}</div>
+                  <div style="font-size:11px" class="text-muted">{{ p.note }}</div>
+                </div>
+                <div style="font-family:var(--font-heading);font-size:18px">{{ p.amt }}</div>
+                <button class="btn btn-secondary" style="font-size:12px">Sign</button>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div class="blueprint" style="padding:16px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+            <sc-for list="{{ filters }}" as="f" hint-placeholder-count="4">
+              <button class="btn btn-secondary" onClick="{{ f.go }}" style="font-size:12px">{{ f.label }}</button>
+            </sc-for>
+            <input class="input" placeholder="Filter by counterparty or IBAN…" style="margin-left:auto;max-width:260px">
+          </div>
+          <table class="table">
+            <thead><tr><th>Date ↓</th><th>Counterparty</th><th>Reference</th><th>Category</th><th>Status</th><th style="text-align:right">Amount</th></tr></thead>
+            <tbody>
+              <sc-for list="{{ txAll }}" as="t" hint-placeholder-count="8">
+                <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:12px">{{ t.date }}</td><td>{{ t.who }}</td><td class="text-muted" style="font-size:12px">{{ t.ref }}</td><td class="text-muted">{{ t.cat }}</td><td><span class="tag tag-accent">{{ t.status }}</span></td><td style="text-align:right;font-family:var(--font-heading);font-size:16px">{{ t.amt }}</td></tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isPort }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:18px">
+          <h3 style="margin:0">Accounts &amp; portfolio</h3>
+          <button class="btn btn-primary blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Open new account</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
+          <sc-for list="{{ accountsFull }}" as="a" hint-placeholder-count="4">
+            <div class="blueprint" style="padding:14px">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.12em;opacity:.55">{{ a.cur }} · {{ a.type }}</div>
+              <div style="font-family:var(--font-heading);font-size:26px;margin:6px 0 2px">{{ a.amt }}</div>
+              <div style="font-size:11px" class="text-muted">{{ a.iban }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+          <div class="blueprint" style="padding:16px">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700)">DEPOSITS &amp; SAVINGS</div>
+              <button class="btn btn-ghost" style="font-size:12px">New deposit</button>
+            </div>
+            <table class="table">
+              <thead><tr><th>Product</th><th>Rate</th><th>Matures</th><th style="text-align:right">Value</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ deposits }}" as="d" hint-placeholder-count="3">
+                  <tr><td>{{ d.name }}</td><td class="text-muted">{{ d.rate }}</td><td style="font-family:ui-monospace,Menlo,monospace;font-size:12px">{{ d.due }}</td><td style="text-align:right">{{ d.val }}</td></tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+          <div class="blueprint" style="padding:16px">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700)">CREDITS</div>
+              <button class="btn btn-ghost" style="font-size:12px">Apply for credit</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <sc-for list="{{ credits }}" as="c" hint-placeholder-count="2">
+                <div>
+                  <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
+                    <span>{{ c.name }}</span><span class="text-muted">{{ c.left }}</span>
+                  </div>
+                  <div style="height:9px;border-radius:999px;overflow:hidden;background:var(--color-surface);border:1px solid var(--color-divider)">
+                    <div style="height:100%;background:var(--color-accent-2-600);width:{{ c.pct }}"></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <div class="blueprint" style="padding:16px;margin-top:20px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700);margin-bottom:12px">INVESTMENTS — 18.940,20 RON · +4,2% YTD</div>
+          <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:20px;align-items:center">
+            <div class="blueprint" style="height:180px;padding:10px;background:linear-gradient(to top,color-mix(in srgb,var(--color-accent) 8%,transparent),transparent)">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <svg viewBox="0 0 400 140" preserveAspectRatio="none" style="width:100%;height:100%">
+                <polyline points="0,110 40,96 80,102 120,74 160,82 200,58 240,64 280,40 320,48 360,26 400,18" fill="none" stroke="var(--color-accent)" stroke-width="1.5"></polyline>
+              </svg>
+            </div>
+            <table class="table">
+              <tbody>
+                <sc-for list="{{ holdings }}" as="h" hint-placeholder-count="4">
+                  <tr><td>{{ h.name }}</td><td class="text-muted" style="font-size:12px">{{ h.qty }}</td><td style="text-align:right">{{ h.val }}</td></tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isCards }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:18px">
+          <h3 style="margin:0">My cards</h3>
+          <button class="btn btn-secondary">Issue virtual card</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 300px;gap:22px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+            <sc-for list="{{ cards }}" as="c" hint-placeholder-count="4">
+              <button onClick="{{ c.go }}" style="all:unset;cursor:pointer;display:block">
+                <div class="blueprint" style="aspect-ratio:1.6;padding:16px;display:flex;flex-direction:column;justify-content:space-between;background:var(--color-surface)" style-hover="background:color-mix(in srgb,var(--color-accent) 10%,transparent)">
+                  <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                    <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em">{{ c.kind }}</span>
+                    <span class="tag tag-outline">{{ c.state }}</span>
+                  </div>
+                  <div>
+                    <div style="font-family:ui-monospace,Menlo,monospace;font-size:15px;letter-spacing:.18em">{{ c.num }}</div>
+                    <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:8px" class="text-muted"><span>{{ c.owner }}</span><span>{{ c.exp }}</span></div>
+                  </div>
+                </div>
+              </button>
+            </sc-for>
+          </div>
+          <div class="blueprint" style="padding:16px;align-self:start;background:var(--color-surface)">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700)">QUICK SETTINGS</div>
+            <div style="font-family:var(--font-heading);font-size:20px;margin:6px 0 12px">{{ cardName }}</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <button class="btn btn-secondary" onClick="{{ toggleFreeze }}" style="justify-content:space-between">{{ freezeLabel }}<span style="font-family:ui-monospace,Menlo,monospace;font-size:10px">01</span></button>
+              <button class="btn btn-secondary" onClick="{{ showPin }}" style="justify-content:space-between">{{ pinLabel }}<span style="font-family:ui-monospace,Menlo,monospace;font-size:10px">02</span></button>
+              <button class="btn btn-secondary" style="justify-content:space-between">Set ATM limit<span style="font-family:ui-monospace,Menlo,monospace;font-size:10px">03</span></button>
+              <button class="btn btn-secondary" style="justify-content:space-between">Set online limit<span style="font-family:ui-monospace,Menlo,monospace;font-size:10px">04</span></button>
+              <button class="btn btn-secondary" style="justify-content:space-between;color:var(--color-accent-800)">Block permanently<span style="font-family:ui-monospace,Menlo,monospace;font-size:10px">05</span></button>
+            </div>
+            <div style="height:1px;background:var(--color-divider);margin:14px 0"></div>
+            <div style="font-size:12px" class="text-muted">Monthly online spend 1.840 / 4.000 RON</div>
+            <div style="height:9px;border-radius:999px;overflow:hidden;background:var(--color-bg);border:1px solid var(--color-divider);margin-top:6px"><div style="height:100%;width:46%;background:var(--color-accent-2-600)"></div></div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isStats }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:18px">
+          <h3 style="margin:0">Analytics &amp; statistics</h3>
+          <div class="seg">
+            <sc-for list="{{ ranges }}" as="o" hint-placeholder-count="3">
+              <label class="seg-opt" onClick="{{ o.pick }}" style="background:{{ o.bg }};color:{{ o.fg }}"><span>{{ o.label }}</span></label>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:20px">
+          <div class="blueprint" style="padding:18px">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700);margin-bottom:14px">SPEND BY CATEGORY</div>
+            <div style="display:flex;gap:20px;align-items:center">
+              <div style="width:150px;height:150px;flex:none;border-radius:50%;background:conic-gradient(var(--color-accent-900) 0 32%,var(--color-accent-600) 32% 55%,var(--color-accent-2-700) 55% 74%,var(--color-accent-2-500) 74% 88%,var(--color-neutral-300) 88% 100%)"></div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:8px;font-size:13px">
+                <sc-for list="{{ cats }}" as="c" hint-placeholder-count="5">
+                  <div style="display:flex;justify-content:space-between;gap:10px"><span>{{ c.name }}</span><span class="text-muted">{{ c.val }}</span></div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+          <div class="blueprint" style="padding:18px">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700);margin-bottom:14px">INCOME VS SPEND — 12 MONTHS</div>
+            <div style="display:flex;align-items:flex-end;gap:8px;height:190px">
+              <sc-for list="{{ bigBars }}" as="b" hint-placeholder-count="12">
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;gap:6px">
+                  <div style="display:flex;gap:3px;align-items:flex-end;height:100%">
+                    <div style="flex:1;background:var(--color-accent-900);height:{{ b.inc }};border-radius:6px 6px 0 0"></div>
+                    <div style="flex:1;background:var(--color-accent-2-500);height:{{ b.out }};border-radius:6px 6px 0 0"></div>
+                  </div>
+                  <span style="font-family:ui-monospace,Menlo,monospace;font-size:9px;opacity:.45;text-align:center">{{ b.label }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <div class="blueprint" style="padding:18px;margin-top:20px;display:flex;gap:14px;align-items:flex-start">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <span style="width:9px;height:9px;border-radius:50%;background:var(--color-accent-2-600);display:block;margin-top:6px;flex:none"></span>
+          <div style="font-size:14px;line-height:1.6;flex:1">Entertainment is up 28% this quarter, driven by three new subscriptions. Capping it at 400 RON/month would put you back on the 2026 savings plan.
+            <div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-secondary" style="font-size:13px">Set a 400 RON cap</button><button class="btn btn-ghost" onClick="{{ goChat }}" style="font-size:13px">Discuss with agent</button></div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isSet }}" hint-placeholder-val="{{ false }}">
+        <h3 style="margin:0 0 18px">Settings</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1000px">
+          <div class="blueprint" style="padding:18px">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700);margin-bottom:14px">PERSONAL DETAILS</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+              <div class="field"><label>Full name</label><input class="input" value="Andrei-Mihai Pop"></div>
+              <div class="field"><label>Phone</label><input class="input" value="+40 7•• ••• 214"></div>
+              <div class="field" style="grid-column:span 2"><label>Email</label><input class="input" value="andrei.pop@mail.ro"></div>
+            </div>
+            <button class="btn btn-primary blueprint" style="margin-top:14px"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Save changes</button>
+          </div>
+          <div class="blueprint" style="padding:18px">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700);margin-bottom:14px">SECURITY</div>
+            <div style="display:flex;flex-direction:column;gap:10px;font-size:14px">
+              <div style="display:flex;justify-content:space-between;align-items:center"><span>Change PIN</span><button class="btn btn-secondary" style="font-size:12px">Update</button></div>
+              <div style="display:flex;justify-content:space-between;align-items:center"><span>Two-factor authentication</span><span class="tag tag-accent">Authenticator</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center"><span>Passkeys</span><span class="tag tag-accent">2 devices</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center"><span>Active sessions</span><button class="btn btn-secondary" style="font-size:12px">Review</button></div>
+            </div>
+          </div>
+          <div class="blueprint" style="padding:18px">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700);margin-bottom:14px">PREFERENCES</div>
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div>
+                <div style="font-size:13px;margin-bottom:6px">Language</div>
+                <div class="seg">
+                  <sc-for list="{{ langs }}" as="o" hint-placeholder-count="2">
+                    <label class="seg-opt" onClick="{{ o.pick }}" style="background:{{ o.bg }};color:{{ o.fg }}"><span>{{ o.label }}</span></label>
+                  </sc-for>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:13px;margin-bottom:6px">Theme</div>
+                <div style="display:flex;gap:8px"><button class="btn btn-secondary" onClick="{{ setLight }}" style="font-size:13px">Light</button><button class="btn btn-secondary" onClick="{{ setDark }}" style="font-size:13px">Dark</button></div>
+              </div>
+              <div>
+                <div style="font-size:13px;margin-bottom:6px">Text-to-speech</div>
+                <button class="btn btn-secondary" onClick="{{ toggleTts }}" style="font-size:13px">{{ ttsLabel }}</button>
+                <div style="font-size:12px;margin-top:8px" class="text-muted">Reads balances, transaction rows and agent replies. Voice and speed follow your OS voices.</div>
+              </div>
+            </div>
+          </div>
+          <div class="blueprint" style="padding:18px">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;color:var(--color-accent-700);margin-bottom:14px">SUPPORT &amp; ACCOUNT</div>
+            <div style="display:flex;flex-direction:column;gap:10px;font-size:14px">
+              <button class="btn btn-secondary" onClick="{{ goChat }}" style="justify-content:flex-start">Chat with customer service</button>
+              <button class="btn btn-secondary" style="justify-content:flex-start">FAQ &amp; user guide</button>
+              <button class="btn btn-secondary" style="justify-content:flex-start">AI agent instructions</button>
+              <div style="height:1px;background:var(--color-divider);margin:4px 0"></div>
+              <button class="btn btn-secondary" onClick="{{ toLogin }}" style="justify-content:flex-start">Log out</button>
+              <button class="btn btn-secondary" style="justify-content:flex-start;color:var(--color-accent-800)">Close account</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <sc-if value="{{ dockOpen }}" hint-placeholder-val="{{ true }}">
+    <div class="blueprint" style="position:fixed;right:26px;bottom:26px;width:330px;background:var(--color-bg);box-shadow:var(--shadow-lg);z-index:30">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div style="display:flex;align-items:center;gap:9px;padding:12px 14px;border-bottom:1px solid var(--color-divider)">
+        <span style="width:9px;height:9px;border-radius:50%;background:var(--color-accent-2-600);display:block;animation:gemsPulse 1.8s infinite"></span>
+        <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em">GEMS AGENT</span>
+        <button class="btn btn-ghost" onClick="{{ goChat }}" style="margin-left:auto;font-size:12px">Expand</button>
+        <button class="btn btn-ghost" onClick="{{ closeDock }}" style="font-size:12px">×</button>
+      </div>
+      <div style="padding:14px">
+        <div style="font-size:13px;line-height:1.6">{{ dockGreeting }}</div>
+        <div style="display:flex;flex-direction:column;gap:7px;margin-top:12px">
+          <button class="btn btn-secondary" onClick="{{ askPay }}" style="justify-content:flex-start;font-size:13px">Pay John 500 RON</button>
+          <button class="btn btn-secondary" onClick="{{ askRec }}" style="justify-content:flex-start;font-size:13px">What are my recurring payments?</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ dockClosed }}" hint-placeholder-val="{{ false }}">
+    <button class="btn btn-primary blueprint" onClick="{{ openDock }}" style="position:fixed;right:26px;bottom:26px;z-index:30;box-shadow:var(--shadow-md)">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Ask GEMS
+    </button>
+  </sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ payOpen }}" hint-placeholder-val="{{ false }}">
+  <div class="dialog-backdrop" style="z-index:60">
+    <div class="dialog blueprint" style="background:var(--color-bg);width:min(520px,100%)">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="dialog-title">New payment</div>
+      <div class="seg" style="align-self:flex-start">
+        <sc-for list="{{ payTypes }}" as="o" hint-placeholder-count="3">
+          <label class="seg-opt" onClick="{{ o.pick }}" style="background:{{ o.bg }};color:{{ o.fg }}"><span>{{ o.label }}</span></label>
+        </sc-for>
+      </div>
+      <div class="dialog-body" style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="field" style="grid-column:span 2"><label>Beneficiary</label><input class="input" placeholder="Name or saved payee"></div>
+        <div class="field" style="grid-column:span 2"><label>IBAN</label><input class="input" placeholder="RO49 AAAA 1B31 …"></div>
+        <div class="field"><label>Amount</label><input class="input" placeholder="0,00"></div>
+        <div class="field"><label>Currency</label><input class="input" value="RON"></div>
+        <div class="field" style="grid-column:span 2"><label>Reference</label><input class="input" placeholder="Rent August"></div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;font-size:12px" class="text-muted">
+        <span style="width:8px;height:8px;border-radius:50%;background:var(--color-accent-2-600);display:block"></span>Agent check: payee is new — GEMS will ask for 2FA on confirm.
+      </div>
+      <div class="dialog-actions">
+        <button class="btn btn-secondary" onClick="{{ closePay }}">Cancel</button>
+        <button class="btn btn-primary blueprint" onClick="{{ closePay }}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Continue to signature</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;startScreen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dash&quot;,&quot;chat&quot;,&quot;pay&quot;,&quot;port&quot;,&quot;cards&quot;,&quot;stats&quot;,&quot;set&quot;,&quot;login&quot;,&quot;kyc&quot;],&quot;default&quot;:&quot;dash&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;agentDock&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Floating widget&quot;,&quot;Hidden until asked&quot;],&quot;default&quot;:&quot;Floating widget&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Light&quot;,&quot;Dark&quot;],&quot;default&quot;:&quot;Light&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;}}">
+const TX = [
+  {date:'16.08.2026', who:'Kaufland Băneasa', ref:'POS 4127', cat:'Groceries', status:'Booked', amt:'−214,80'},
+  {date:'15.08.2026', who:'Enel Energie', ref:'Direct debit', cat:'Utilities', status:'Booked', amt:'−187,40'},
+  {date:'15.08.2026', who:'Salary — Nexo SRL', ref:'AUG 2026', cat:'Income', status:'Booked', amt:'+9.400,00'},
+  {date:'14.08.2026', who:'Ionescu Maria', ref:'Split — dinner', cat:'Transfer', status:'Booked', amt:'−120,00'},
+  {date:'13.08.2026', who:'Netflix', ref:'Subscription', cat:'Entertainment', status:'Booked', amt:'−67,99'},
+  {date:'12.08.2026', who:'Revolut top-up', ref:'SEPA out', cat:'Transfer', status:'Pending', amt:'−500,00'},
+  {date:'11.08.2026', who:'OMV Petrom', ref:'POS 4127', cat:'Transport', status:'Booked', amt:'−320,15'},
+  {date:'10.08.2026', who:'Digi Communications', ref:'Direct debit', cat:'Utilities', status:'Booked', amt:'−59,00'}
+];
+const CARDS = [
+  {kind:'PHYSICAL · VISA DEBIT', num:'•••• •••• •••• 4127', owner:'A. POP', exp:'09/29', state:'Active', name:'Visa Debit ••4127'},
+  {kind:'VIRTUAL · MASTERCARD', num:'•••• •••• •••• 3319', owner:'A. POP', exp:'04/28', state:'Active', name:'Mastercard Virtual ••3319'},
+  {kind:'VIRTUAL · SINGLE USE', num:'•••• •••• •••• 7740', owner:'A. POP', exp:'08/26', state:'Frozen', name:'Single-use ••7740'},
+  {kind:'PHYSICAL · METAL', num:'•••• •••• •••• 1002', owner:'A. POP', exp:'12/30', state:'Active', name:'Metal ••1002'}
+];
+const NAV = [
+  ['dash','01','Dashboard'],['pay','02','Payments'],['chat','03','AI Assistant'],
+  ['port','04','Portfolio'],['cards','05','Cards'],['stats','06','Analytics'],['set','07','Settings']
+];
+const TAGS = {dash:'DASHBOARD · SCREEN 03', pay:'PAYMENTS & TRANSFERS · SCREEN 05', chat:'AI AGENT · SCREEN 08',
+  port:'ACCOUNTS & PORTFOLIO · SCREEN 04', cards:'CARD MANAGEMENT · SCREEN 06', stats:'ANALYTICS · SCREEN 07', set:'SETTINGS · SCREEN 09'};
+
+class Component extends DCLogic {
+  state = {
+    screen: null, bal: false, tts: false, dock: null, dark: null,
+    attempts: 0, kyc: 1, card: 0, pinShown: false, frozen: false,
+    draft: '', mic: false, payOpen: false, filter: 'All',
+    range: 'Quarter', lang: 'Română', payType: 'IBAN transfer',
+    msgs: [{who:'ai', kind:'text', text:'Bună, Andrei. Across 4 active accounts you hold 128.470,55 RON. Nothing needs your signature right now — two direct debits land on Thursday.'}]
+  };
+
+  componentDidMount(){ this.applyTheme(); }
+  componentDidUpdate(){ this.applyTheme(); }
+  applyTheme(){
+    const r = document.documentElement.style;
+    const dark = this.state.dark === null ? this.props.theme === 'Dark' : this.state.dark;
+    if (dark) {
+      r.setProperty('--color-bg','#450C3F'); r.setProperty('--color-surface','#852275');
+      r.setProperty('--color-text','#F5FBDA'); r.setProperty('--color-heading','#B9D175');
+      r.setProperty('--color-accent','#B9D175'); r.setProperty('--color-accent-900','#280725');
+      r.setProperty('--color-on-accent','#280725');
+      r.setProperty('--color-accent-700','#D9EFBD'); r.setProperty('--color-divider','color-mix(in srgb, #F5FBDA 22%, transparent)');
+    } else {
+      ['--color-bg','--color-surface','--color-text','--color-heading','--color-accent','--color-accent-900','--color-accent-700','--color-on-accent','--color-divider'].forEach(v=>r.removeProperty(v));
+    }
+  }
+  speak(t){
+    if (!this.state.tts || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(t));
+  }
+  go(s){ return () => this.setState({screen:s}); }
+  push(user, reply){
+    this.setState(s => ({screen:'chat', draft:'', msgs: s.msgs.concat([{who:'user', kind:'text', text:user}], [reply])}));
+    if (reply.text) this.speak(reply.text);
+  }
+  answer(q){
+    const t = q.toLowerCase();
+    if (/pay|trimite|transfer|send/.test(t)) return {who:'ai', kind:'tx', text:'I drafted the transfer to Ionescu John. Check it and sign — nothing moves until you confirm.'};
+    if (/recurring|subscription|abonament/.test(t)) return {who:'ai', kind:'table', text:'You have 5 recurring payments totalling 412,97 RON a month.'};
+    if (/groceri|spend|spent|cost/.test(t)) return {who:'ai', kind:'chart', text:'Groceries averaged 1.180 RON a month over the last six — August is tracking 9% below that.'};
+    return {who:'ai', kind:'text', text:'I can move money, explain a charge, open a deposit, or set a spending cap. Ask in plain Romanian or English.'};
+  }
+
+  seg(options, current, key){
+    return options.map(label=>({
+      label,
+      bg: label===current ? 'var(--color-accent)' : 'transparent',
+      fg: label===current ? 'var(--color-on-accent)' : 'var(--color-text)',
+      pick: ()=> this.setState({[key]: label})
+    }));
+  }
+  renderVals(){
+    const s = {...this.state};
+    if (s.screen === null) s.screen = this.props.startScreen ?? 'dash';
+    if (s.dark === null) s.dark = this.props.theme === 'Dark';
+    if (s.dock === null) s.dock = (this.props.agentDock ?? 'Floating widget') === 'Floating widget';
+    const pin = ['•','•','•',''].map((ch,i)=>({ch, i}));
+    return {
+      showAuth: s.screen==='login', showKyc: s.screen==='kyc', showApp: !['login','kyc'].includes(s.screen),
+      isDash: s.screen==='dash', isChat: s.screen==='chat', isPay: s.screen==='pay',
+      isPort: s.screen==='port', isCards: s.screen==='cards', isStats: s.screen==='stats', isSet: s.screen==='set',
+      greeting: 'Good afternoon, Andrei',
+      screenTag: TAGS[s.screen] || '',
+      navItems: NAV.map(([k,num,label])=>({key:k, num, label, active: s.screen===k, cls: s.screen===k ? 'is-active' : '', bg: s.screen===k ? 'var(--color-accent-900)' : 'transparent', fg: s.screen===k ? '#F5FBDA' : 'var(--color-text)', go: this.go(k)})),
+      goChat: this.go('chat'), goPayments: this.go('pay'), goAccounts: this.go('port'), toLogin: this.go('login'),
+      startKyc: (e)=>{ if(e&&e.preventDefault) e.preventDefault(); this.setState({screen:'kyc', kyc:1}); },
+      signIn: ()=> this.setState({screen:'dash', attempts:0}),
+      failPin: ()=> this.setState(st=>({attempts: st.attempts+1})),
+      attemptLabel: s.attempts===0 ? '3 attempts left' : (s.attempts>=3 ? 'locked — solve captcha' : (3-s.attempts)+' attempts left'),
+      captcha: s.attempts>=3,
+      pinCells: pin,
+      otpCells: ['4','9','2','7','','' ].map((ch,i)=>({ch,i})),
+
+      kycStep: s.kyc,
+      kycIs1: s.kyc===1, kycIs2: s.kyc===2, kycIs3: s.kyc===3, kycIs4: s.kyc===4, kycIs5: s.kyc===5,
+      kycTitle: ['Take a selfie','Upload your ID','How can we reach you?','Confirm the SMS code','Secure your account'][s.kyc-1],
+      kycSub: [
+        'A live snapshot proves you are the person on the document. It never leaves the EU.',
+        'Front and back of your CI or passport. The agent reads the fields for you.',
+        'We use these for signatures and alerts — nothing else.',
+        'Six digits, valid for 5 minutes. This is your electronic signature.',
+        'A username, a password, and a 6-digit PIN for day-to-day access.'
+      ][s.kyc-1],
+      kycAgent: [
+        'Step 1 of 5. Sit facing a window if you can — backlight is the usual reason a capture fails. I will tell you the moment the frame is good.',
+        'I read the MRZ and fill the form for you. If a field looks wrong, correct it — your edit wins over my reading.',
+        'Romanian numbers only for SMS signatures at the moment. Email can be any provider.',
+        'Nothing arrived? I can resend once, then we switch to a voice call.',
+        'Pick a PIN you have never used at an ATM. After this I will offer to register your device passkey.'
+      ][s.kyc-1],
+      kycSteps: ['Selfie','ID document','Contact','SMS signature','Credentials'].map((title,i)=>({
+        num: '0'+(i+1), title, state: i+1 < s.kyc ? 'DONE' : (i+1===s.kyc ? 'IN PROGRESS' : 'PENDING')
+      })),
+      kycNext: ()=> this.setState(st=>({kyc: Math.min(5, st.kyc+1)})),
+      finishKyc: ()=> this.setState({screen:'dash'}),
+
+      bal: s.bal, balBtn: s.bal ? 'Hide' : 'Reveal',
+      balText: s.bal ? '128.470,55 RON' : '•••••••• RON',
+      balSub: s.bal ? '+2.140,20 this month · click the figure to hear it' : 'Hidden by default — reveal to show all four accounts',
+      toggleBal: ()=> this.setState(st=>{ if(!st.bal) this.speak('Your total balance is 128.470,55 lei'); return {bal:!st.bal}; }),
+      speakBalance: ()=> this.speak('Your total balance is 128.470,55 lei across four accounts'),
+      toggleTts: ()=> this.setState(st=>({tts: !st.tts})),
+      ttsLabel: s.tts ? 'Read aloud: on' : 'Read aloud: off',
+      setLight: ()=> this.setState({dark:false}), setDark: ()=> this.setState({dark:true}),
+      ranges: this.seg(['Month','Quarter','Year'], s.range, 'range'),
+      langs: this.seg(['Română','English'], s.lang, 'lang'),
+      payTypes: this.seg(['IBAN transfer','Internal','Split bill'], s.payType, 'payType'),
+
+      quickActions: [
+        ['01','Transact','pay'],['02','Add funds','port'],['03','Exchange','port'],['04','Scan QR','pay']
+      ].map(([num,label,scr])=>({num,label,go:this.go(scr)})),
+      accounts: [
+        {cur:'RON', type:'CURRENT', amt: s.bal?'42.180,55':'••••••', iban:'RO49 •••• 4127'},
+        {cur:'EUR', type:'SAVINGS', amt: s.bal?'11.940,00':'••••••', iban:'RO12 •••• 8802'},
+        {cur:'RON', type:'DEPOSIT', amt: s.bal?'55.410,00':'••••••', iban:'RO88 •••• 6610'}
+      ],
+      accountsFull: [
+        {cur:'RON', type:'CURRENT', amt:'42.180,55', iban:'RO49 AAAA 1B31 0075 9384 4127'},
+        {cur:'EUR', type:'SAVINGS', amt:'11.940,00', iban:'RO12 BBBB 2C44 0011 2288 8802'},
+        {cur:'RON', type:'TERM DEPOSIT', amt:'55.410,00', iban:'RO88 CCCC 3D55 0099 4410 6610'},
+        {cur:'USD', type:'INVEST', amt:'4.020,10', iban:'RO31 DDDD 4E66 0044 7712 2210'}
+      ],
+      bars: [42,66,54,78,38,84,60,72].map((h,i)=>({label:'W'+(i+1), h: h+'%'})),
+      bigBars: ['S','O','N','D','J','F','M','A','M','J','J','A'].map((label,i)=>({
+        label, inc: [72,68,80,92,64,70,76,74,82,78,88,84][i]+'%', out: [48,55,62,74,40,52,58,50,66,60,71,57][i]+'%'
+      })),
+      txShort: TX.slice(0,4), txAll: TX,
+      pending: [
+        {num:'01', who:'Revolut top-up', note:'SEPA out · needs 2FA', amt:'−500,00'},
+        {num:'02', who:'Chirie august', note:'Scheduled 20.08 · editable', amt:'−2.400,00'}
+      ],
+      filters: ['All','Income','Spending','Pending','Cards'].map(label=>({label, go:()=>this.setState({filter:label})})),
+      deposits: [
+        {name:'Term deposit 12M', rate:'6,10%', due:'14.02.2027', val:'55.410,00'},
+        {name:'EUR savings', rate:'2,25%', due:'flexible', val:'11.940,00'},
+        {name:'Goal — apartment', rate:'3,00%', due:'01.06.2028', val:'8.200,00'}
+      ],
+      credits: [
+        {name:'Personal loan · 24 of 60 months', left:'34.100 RON left', pct:'40%'},
+        {name:'Card credit line', left:'1.200 of 6.000 used', pct:'20%'}
+      ],
+      holdings: [
+        {name:'MSCI World ETF', qty:'12 units', val:'9.140,00'},
+        {name:'TLV — Banca Transilvania', qty:'320 shares', val:'6.720,20'},
+        {name:'BTC', qty:'0,014', val:'2.080,00'},
+        {name:'Cash to invest', qty:'—', val:'1.000,00'}
+      ],
+      cards: CARDS.map((c,i)=>({...c, go: ()=> this.setState({card:i, pinShown:false})})),
+      cardName: CARDS[s.card].name,
+      freezeLabel: s.frozen ? 'Unfreeze card' : 'Freeze card',
+      toggleFreeze: ()=> this.setState(st=>({frozen: !st.frozen})),
+      pinLabel: s.pinShown ? 'PIN · 4 1 9 2' : 'Show PIN',
+      showPin: ()=> this.setState(st=>({pinShown: !st.pinShown})),
+      cats: [
+        {name:'Groceries', val:'1.180 RON · 32%'},
+        {name:'Utilities', val:'840 RON · 23%'},
+        {name:'Transport', val:'690 RON · 19%'},
+        {name:'Entertainment', val:'510 RON · 14%'},
+        {name:'Other', val:'430 RON · 12%'}
+      ],
+      msgs: s.msgs.map(m=>({
+        isUser: m.who==='user', isAi: m.who==='ai', text: m.text, hasText: !!m.text,
+        isTx: m.kind==='tx', isTable: m.kind==='table', isChart: m.kind==='chart'
+      })),
+      recurring: [
+        {name:'Netflix', cycle:'Monthly', next:'13.09.2026', amt:'67,99'},
+        {name:'Digi internet', cycle:'Monthly', next:'10.09.2026', amt:'59,00'},
+        {name:'Spotify Family', cycle:'Monthly', next:'02.09.2026', amt:'44,99'},
+        {name:'Gym — World Class', cycle:'Monthly', next:'01.09.2026', amt:'199,00'},
+        {name:'iCloud 200GB', cycle:'Monthly', next:'21.08.2026', amt:'41,99'}
+      ],
+      chartBars: [['MAR',68],['APR',82],['MAY',74],['JUN',90],['JUL',80],['AUG',62]].map(([label,h])=>({label, h: h+'%'})),
+      prompts: [
+        {label:'Pay John 500 RON', go:()=> this.push('Pay John 500 RON', this.answer('pay'))},
+        {label:'What are my recurring payments?', go:()=> this.push('What are my recurring payments?', this.answer('recurring'))},
+        {label:'How much do I spend on groceries?', go:()=> this.push('How much do I spend on groceries?', this.answer('groceries'))}
+      ],
+      draft: s.draft,
+      onDraft: (e)=> this.setState({draft: e.target.value}),
+      onKey: (e)=>{ if(e.key==='Enter' && this.state.draft.trim()) this.push(this.state.draft, this.answer(this.state.draft)); },
+      sendMsg: ()=>{ const d=this.state.draft.trim(); if(d) this.push(d, this.answer(d)); },
+      micLabel: s.mic ? '■' : '◉',
+      toggleMic: ()=> this.setState(st=>({mic:!st.mic})),
+      confirmTx: ()=> this.setState(st=>({msgs: st.msgs.concat([{who:'ai', kind:'text', text:'Signed and sent. 500,00 RON reached Ionescu John in 4 seconds — reference GEMS-99417.'}])})),
+
+      dockOpen: s.dock && s.screen!=='chat', dockClosed: !s.dock && s.screen!=='chat',
+      dockGreeting: 'Hi Andrei — you hold 128.470,55 RON across 4 active accounts. Want me to draft something?',
+      openDock: ()=> this.setState({dock:true}), closeDock: ()=> this.setState({dock:false}),
+      payOpen: s.payOpen, openPay: ()=> this.setState({payOpen:true}), closePay: ()=> this.setState({payOpen:false})
+    };
+  }
+}
+
+</script>
+</body>
+</html>

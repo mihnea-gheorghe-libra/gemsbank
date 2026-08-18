@@ -1,0 +1,72 @@
+{
+  "$meta": {
+    "source": "design/export/ — Claude Design canvas 'GEMS Banking.dc.html' + industry.css (base DS) + gems-theme.css (GEMS theme layer)",
+    "extractedOn": "2026-08-18",
+    "canvas": { "width": 1440, "height": 900 },
+    "note": "gems-theme.css overrides industry.css tokens only, never structure. Values below are the resolved GEMS values. Entries marked \"derived\": true are NOT in the archive — see docs/DESIGN_NOTES.md §4."
+  },
+
+  "color": {
+    "light": {
+      "bg":            { "value": "#FDFDF9", "role": "page ground" },
+      "surface":       { "value": "#F5FBDA", "role": "raised surface, cards, panels (pale lime)" },
+      "surfaceMuted":  { "value": "#F3F1E9", "role": "secondary surface", "from": "--color-neutral-200" },
+      "text":          { "value": "#280725", "role": "on-surface body text", "contrastOnBg": 17.95 },
+      "heading":       { "value": "#450C3F", "role": "headings", "contrastOnBg": 14.95 },
+      "primary":       { "value": "#450C3F", "role": "primary action, active nav (deep plum)" },
+      "onPrimary":     { "value": "#FDFDF9", "role": "text on primary" },
+      "accent":        { "value": "#8BA646", "role": "secondary accent (lime/olive)" },
+      "border":        { "value": "color-mix(in srgb, #450C3F 18%, transparent)", "role": "divider" },
+      "muted":         { "value": "color-mix(in srgb, #280725 55%, transparent)", "role": "de-emphasised text" },
+      "positive":      { "value": "#2F6B3F", "role": "credit / money in", "derived": true, "contrastOnBg": 6.25, "contrastOnSurface": 5.98 },
+      "negative":      { "value": "#A3232B", "role": "debit / money out / error", "derived": true, "contrastOnBg": 7.27, "contrastOnSurface": 6.95 },
+      "warning":       { "value": "#8A5A00", "role": "warning, VoP close_match, pending", "derived": true, "contrastOnBg": 5.81, "contrastOnSurface": 5.56 }
+    },
+    "dark": {
+      "$note": "Dark values come from the canvas's applyTheme() JS override block, which sets 9 vars at runtime. Semantic trio is derived.",
+      "bg":       { "value": "#450C3F" },
+      "surface":  { "value": "#852275" },
+      "text":     { "value": "#F5FBDA" },
+      "heading":  { "value": "#B9D175" },
+      "primary":  { "value": "#B9D175" },
+      "onPrimary":{ "value": "#280725" },
+      "border":   { "value": "color-mix(in srgb, #F5FBDA 22%, transparent)" },
+      "positive": { "value": "#9ED9A8", "derived": true, "contrastOnBg": 9.40, "contrastOnSurface": 5.21 },
+      "negative": { "value": "#FFB3B8", "derived": true, "contrastOnBg": 9.00, "contrastOnSurface": 4.99 },
+      "warning":  { "value": "#F0C26B", "derived": true, "contrastOnBg": 9.17, "contrastOnSurface": 5.09 }
+    },
+    "ramps": {
+      "neutral": { "100": "#FDFDF9", "200": "#F3F1E9", "300": "#E3DFD6", "400": "#C9C3BB", "500": "#A79FA4", "600": "#857C83", "700": "#635A61", "800": "#453B44", "900": "#2B212A" },
+      "plum":    { "100": "#FAEFF8", "200": "#F0DAEC", "300": "#DFB6D8", "400": "#C68CBC", "500": "#A75C9A", "600": "#852275", "700": "#6C1A5F", "800": "#58124D", "900": "#450C3F" },
+      "lime":    { "100": "#F5FBDA", "200": "#E9F5C1", "300": "#D9EFBD", "400": "#C6E092", "500": "#B9D175", "600": "#A3BE5C", "700": "#8BA646", "800": "#6E8437", "900": "#52632A",
+                   "$warning": "lime 600/700/800 fail WCAG AA for normal text on both light grounds (3.9–4.1:1). Use 900 for text; 600–800 are decorative/large-text only." }
+    }
+  },
+
+  "typography": {
+    "fontHeading": { "family": "\"Barlow Condensed\", system-ui, sans-serif", "weight": 600, "weightsLoaded": [400, 600] },
+    "fontBody":    { "family": "\"Barlow\", system-ui, sans-serif", "weightsLoaded": [400, 500, 700] },
+    "fontMono":    { "family": "ui-monospace, Menlo, monospace", "usage": "kickers, screen tags, IBANs, card numbers — used inline in the canvas, not tokenised there" },
+    "source": "Google Fonts @import in industry.css",
+    "baseSize": "15px",
+    "baseLineHeight": 1.55,
+    "scale": { "h1": "42px", "h2": "32px", "h3": "25px", "h4": "20px", "h5": "16px", "h6": "13px", "body": "15px", "small": "13px", "caption": "11px", "kicker": "10px" },
+    "headingLineHeight": 1.12,
+    "headingLetterSpacing": { "industry": "-0.015em", "gemsOverride": "0" }
+  },
+
+  "space": { "1": "3.4px", "2": "6.8px", "3": "10.2px", "4": "13.6px", "6": "20.4px", "8": "27.2px",
+             "$note": "Non-integer 3.4px base scale inherited from industry.css. See DESIGN_NOTES §4.3 — rounded to a 4px grid in tokens.css." },
+
+  "radius": { "sm": "8px", "md": "12px", "lg": "20px", "pill": "999px",
+              "$note": "GEMS softens industry's 2/4/7px geometry. Buttons, inputs, segmented controls and tags are fully pill (999px)." },
+
+  "shadow": {
+    "sm": "0 1px 3px color-mix(in srgb, #450C3F 12%, transparent)",
+    "md": "0 6px 18px color-mix(in srgb, #450C3F 14%, transparent)",
+    "lg": "0 18px 44px color-mix(in srgb, #450C3F 22%, transparent)"
+  },
+
+  "breakpoints": { "$missing": true, "$note": "The archive contains ZERO @media queries — it is a fixed 1440×900 desktop canvas. Breakpoints below are ours, not the designer's. See DESIGN_NOTES §4.1.",
+                   "sm": "640px", "md": "768px", "lg": "1024px", "xl": "1280px", "2xl": "1440px" }
+}

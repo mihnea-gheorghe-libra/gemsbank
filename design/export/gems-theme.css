@@ -1,0 +1,86 @@
+/* GEMS theme layer over Industry: plum + lime palette, softened geometry.
+   Loaded after industry.css — overrides tokens only, never structure. */
+:root {
+  --color-bg: #FDFDF9;
+  --color-surface: #F5FBDA;
+  --color-text: #280725;
+  --color-heading: #450C3F;
+  --color-accent: #450C3F;
+  --color-accent-2: #8BA646;
+  --color-on-accent: #FDFDF9;
+  --color-divider: color-mix(in srgb, #450C3F 18%, transparent);
+
+  --color-neutral-100: #FDFDF9;
+  --color-neutral-200: #F3F1E9;
+  --color-neutral-300: #E3DFD6;
+  --color-neutral-400: #C9C3BB;
+  --color-neutral-500: #A79FA4;
+  --color-neutral-600: #857C83;
+  --color-neutral-700: #635A61;
+  --color-neutral-800: #453B44;
+  --color-neutral-900: #2B212A;
+
+  --color-accent-100: #FAEFF8;
+  --color-accent-200: #F0DAEC;
+  --color-accent-300: #DFB6D8;
+  --color-accent-400: #C68CBC;
+  --color-accent-500: #A75C9A;
+  --color-accent-600: #852275;
+  --color-accent-700: #6C1A5F;
+  --color-accent-800: #58124D;
+  --color-accent-900: #450C3F;
+
+  --color-accent-2-100: #F5FBDA;
+  --color-accent-2-200: #E9F5C1;
+  --color-accent-2-300: #D9EFBD;
+  --color-accent-2-400: #C6E092;
+  --color-accent-2-500: #B9D175;
+  --color-accent-2-600: #A3BE5C;
+  --color-accent-2-700: #8BA646;
+  --color-accent-2-800: #6E8437;
+  --color-accent-2-900: #52632A;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  --shadow-sm: 0 1px 3px color-mix(in srgb, #450C3F 12%, transparent);
+  --shadow-md: 0 6px 18px color-mix(in srgb, #450C3F 14%, transparent);
+  --shadow-lg: 0 18px 44px color-mix(in srgb, #450C3F 22%, transparent);
+}
+
+h1, h2, h3, h4, h5, h6 { color: var(--color-heading); letter-spacing: 0; }
+
+/* Registration marks are dropped in this theme; frames become soft plates. */
+.blueprint > .corner { display: none; }
+.blueprint {
+  border-radius: var(--radius-lg);
+  border-color: var(--color-divider);
+}
+.card, .dialog { border-radius: var(--radius-lg); }
+.btn, .input, .seg { border-radius: 999px; }
+.tag { border-radius: 999px; padding: 3px 12px; }
+.seg { overflow: hidden; }
+.seg-opt:first-child { padding-left: 16px; }
+.seg-opt:last-child { padding-right: 16px; }
+.table td, .table th { padding: 9px var(--space-2); }
+.input { background: var(--color-bg); }
+.btn-primary { color: var(--color-on-accent); }
+.btn-primary:hover { background: var(--color-accent-700); }
+.btn-primary:active { background: var(--color-accent-800); }
+.btn-secondary:hover { background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.tag-accent { background: var(--color-accent-2-200); color: var(--color-accent-2-900); }
+
+/* Sidebar tabs */
+.gemsnav {
+  border-radius: 999px;
+  margin: 2px 12px;
+  transition: background .15s ease, color .15s ease;
+}
+.gemsnav:hover { background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.gemsnav.is-active {
+  background: var(--color-accent-900);
+  color: #F5FBDA;
+}
+.seg-opt:has(input:checked) { color: var(--color-on-accent); }
+.gemsnav.is-active .gemsnav-num { color: var(--color-accent-2-500); opacity: 1; }
