@@ -1,0 +1,50 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: gems-mongo
+    restart: unless-stopped
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: >
+        mongosh --quiet --eval
+        "try { rs.status().ok } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}).ok }"
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 5s
+
+  mongo-express:
+    image: mongo-express:1
+    container_name: gems-mongo-ui
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:27017/?replicaSet=rs0
+      ME_CONFIG_BASICAUTH: "false"
+
+  api:
+    build: ./apps/api
+    container_name: gems-api
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/gems?replicaSet=rs0
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps/api:/app
+
+volumes:
+  mongo_data:
