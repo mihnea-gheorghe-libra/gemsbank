@@ -8,42 +8,41 @@ Web banking app, EU/RO market. **Demo system**: no licence, no real funds, no re
 PII, no real card data. The point of the codebase is a correct money core plus explicit seams for
 a future multi-agent AI layer.
 
-Read in this order: `PROMPT.md` → `docs/ARCHITECTURE.md` → `docs/diagrams/*.mmd` → `docs/ADR/`.
+Read in this order: `README.md` → `PROMPT.md`.
 
 ## Commands
 
 ```bash
-make up        # docker compose: postgres + api + web
-make migrate   # alembic upgrade head
-make seed      # demo users, accounts, transactions
-make test      # pytest + playwright smoke
-make lint      # ruff + eslint
-make types     # mypy --strict on platform/ and modules/*/domain + tsc --noEmit
-make openapi   # regenerate packages/contracts from the live spec
+docker compose up --build     # mongo + api; the api also serves frontend/ at /app/
+docker compose logs -f api
+ruff check backend
+mypy backend
 ```
+
+Schema migrations in `ops/` are applied by hand — see `README.md`.
 
 ## Rules that must never be broken
 
 1. **Money is `bigint` minor units + ISO 4217 code.** No floats, no `Decimal` on the wire.
 2. **Double-entry only.** Every money movement = ≥2 journal lines summing to zero per currency,
    enforced by a DB constraint, not just Python.
-3. **The journal is append-only.** Corrections are reversals. Never `UPDATE`/`DELETE` an entry.
+3. **The journal is append-only.** Corrections are reversals. Never update or delete an entry.
 4. **Balances are derived** from journal lines. Snapshots are read models that must be rebuildable.
-5. **One money door**: `ledger.application.post_transaction`. Only `payments` calls it.
-6. **One write path**: `CommandBus.execute(command, actor, idempotency_key)`. HTTP handlers are
-   thin callers. So will agents be.
+5. **One money door**: the ledger's `post_transaction`. Only payments calls it.
+6. **One write path**: `bus.execute(command, actor, idempotency_key)` in `backend/command_bus.py`.
+   HTTP handlers are thin callers. So will agents be.
 7. **Every write is idempotent** (DB-unique key, stored response replayed) and **audited** (actor,
    before/after, correlation_id) and **emits an outbox event** in the same transaction.
-8. **No cross-module imports** except through a module's published `application/` port. No
-   cross-module SQL joins. The architecture test enforces this — do not weaken it.
+8. **No cross-feature imports** except through a feature's `service.py`. No cross-feature queries
+   against another feature's collection.
 9. **Secrets from env only.** `.env` is never committed.
-10. **No hardcoded colours in the web app.** Tokens from `design/export/` only.
+10. **No hardcoded colours in the web app.** Tokens from `design/export/` only, via
+    `frontend/styles/tokens.css`.
 
 ## Scope discipline
 
-If it is not in `PROMPT.md` §4, do not build it. Create the folder, write a `README.md` describing
-what will live there and what its public port will be, and move on. Empty folders with good
-READMEs are a deliverable, not a placeholder for guilt.
+If it is not in `PROMPT.md` §4, do not build it. Do not create a folder for it either — a feature
+folder appears the day its first line of code does.
 
 Never add a dependency without saying why. Budget: ≤15 direct backend, ≤20 direct frontend.
 
@@ -51,27 +50,35 @@ Never add a dependency without saying why. Budget: ≤15 direct backend, ≤20 d
 
 `actors` · `commandbus` · `policy` · `audit` · `outbox` · `capabilities` · `observability`.
 
-They exist in v0 and are exercised by the human-driven flows. When you add a feature, ask: does it
-route through all seven? If a write path skips one, that path is wrong. The agent layer must be a
-new *caller*, never a new *pathway*.
+They live in `backend/helpers/context.py`, `backend/command_bus.py` and
+`backend/database/records.py`, and are exercised by the human-driven flows. When you add a
+feature, ask: does it route through all seven? If a write path skips one, that path is wrong. The
+agent layer must be a new *caller*, never a new *pathway*.
 
 ## Style
 
-- Python: `ruff` defaults, type hints everywhere, `mypy --strict` on `platform/` and every
-  `modules/*/domain`. Pydantic v2 for all boundary types. No `Any` in domain code.
-- SQL: explicit migrations only. No autogenerate without reading the diff line by line.
-- TypeScript: `strict`, no `any`, generated API types only. Server Components by default.
+- **Do not write comments or docstrings.** The code says what it does; naming carries the rest.
+- Python: `ruff` defaults, type hints everywhere, `mypy --strict` on `helpers/` and every feature
+  aggregate. Pydantic v2 for all boundary types. No `Any` in domain code.
+- Mongo: explicit migration scripts in `ops/`, applied in order. Indexes at startup, not in
+  migrations.
+- Frontend: no build step. `index.html` script order is the module graph. Every user-facing string
+  goes through `t()`; nothing is hardcoded in a component.
 - Tests: name them after the invariant they defend, not after the function they call.
-- Comments explain *why*. The code already says *what*.
+
+## Structure
+
+One folder per concern, no deeper than two levels. `README.md` has the full map. A new backend
+feature is a folder next to `backend/onboarding/` with the same shape: aggregate, `service.py`,
+`validation.py`, `adapters.py`.
 
 ## When you are unsure
 
-Ask before: changing the data model, adding a dependency, expanding scope, or deviating from
-`docs/ARCHITECTURE.md`. Proceed without asking on: naming, file layout inside a module, test
-structure, refactors that preserve the public port.
+Ask before: changing the data model, adding a dependency, expanding scope, or moving a boundary.
+Proceed without asking on: naming, file layout inside a feature, test structure, refactors that
+preserve the public surface.
 
-If you deviate from the architecture doc, update the doc and add an ADR in the same commit.
-A diagram that lies is worse than no diagram.
+If you change the structure, update `README.md` in the same commit.
 
 ## End-of-task report
 

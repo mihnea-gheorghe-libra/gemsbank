@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GEMS — Create your account</title>
+
+  <link rel="stylesheet" href="./styles/tokens.css">
+  <link rel="stylesheet" href="./styles/app.css">
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js" crossorigin></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <noscript>
+    <p style="padding:24px">This page needs JavaScript to open a GEMS account.</p>
+  </noscript>
+
+  <script src="./helpers/messages.js"></script>
+  <script src="./helpers/i18n.js"></script>
+  <script src="./helpers/api.js"></script>
+
+  <script type="text/babel" data-presets="react" src="./components/ui.jsx"></script>
+  <script type="text/babel" data-presets="react" src="./components/rails.jsx"></script>
+  <script type="text/babel" data-presets="react" src="./components/steps.jsx"></script>
+  <script type="text/babel" data-presets="react" src="./main/register.jsx"></script>
+</body>
+</html>

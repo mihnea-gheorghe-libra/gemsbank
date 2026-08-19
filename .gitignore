@@ -22,9 +22,6 @@ dist/
 build/
 .turbo/
 
-# --- generated / contracts ---
-packages/contracts/generated/
-
 # --- Docker / infra ---
 *.pid
 

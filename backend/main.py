@@ -1,0 +1,103 @@
+import logging
+from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+
+from backend.config import settings
+from backend.database.mongo import close_client, ensure_indexes
+from backend.helpers.context import (
+    CORRELATION_HEADER,
+    configure_logging,
+    get_correlation_id,
+    set_correlation_id,
+)
+from backend.helpers.errors import DomainError
+from backend.onboarding.service import get_onboarding_service
+from backend.server.routes import api_router
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    configure_logging()
+    get_onboarding_service()
+    await ensure_indexes()
+    yield
+    await close_client()
+
+
+app = FastAPI(
+    title="gems-bank API",
+    version="0.1.0",
+    description="Demo system. No licence, no real funds, no real card data.",
+    lifespan=lifespan,
+)
+
+
+@app.middleware("http")
+async def correlation_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    correlation_id = set_correlation_id(request.headers.get(CORRELATION_HEADER))
+    response = await call_next(request)
+    response.headers[CORRELATION_HEADER] = correlation_id
+    return response
+
+
+@app.exception_handler(DomainError)
+async def handle_domain_error(request: Request, exc: DomainError) -> JSONResponse:
+    payload = exc.to_payload()
+    payload["error"]["correlationId"] = get_correlation_id()
+    return JSONResponse(status_code=exc.http_status, content=payload)
+
+
+@app.exception_handler(RequestValidationError)
+async def handle_request_validation(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": {
+                "code": "validation_error",
+                "message": "The request body is not valid.",
+                "details": {"fields": exc.errors()},
+                "correlationId": get_correlation_id(),
+            }
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def handle_unexpected(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("unhandled_error", extra={"context": {"path": request.url.path}})
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "code": "internal_error",
+                "message": "Something went wrong on our side.",
+                "details": {},
+                "correlationId": get_correlation_id(),
+            }
+        },
+    )
+
+
+app.include_router(api_router)
+
+
+@app.get("/", include_in_schema=False)
+async def root() -> RedirectResponse:
+    return RedirectResponse(url="/app/")
+
+
+_web_dir = Path(settings.web_dir)
+if _web_dir.is_dir():
+    app.mount("/app", StaticFiles(directory=_web_dir, html=True), name="web")

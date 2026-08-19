@@ -31,7 +31,9 @@ services:
       ME_CONFIG_BASICAUTH: "false"
 
   api:
-    build: ./apps/api
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: gems-api
     restart: unless-stopped
     depends_on:
@@ -46,8 +48,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./apps/api:/app
-      - ./apps/web:/web
+      - ./backend:/app/backend
+      - ./frontend:/web
 
 volumes:
   mongo_data:

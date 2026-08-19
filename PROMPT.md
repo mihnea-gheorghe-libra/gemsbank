@@ -1,9 +1,8 @@
 # Claude Code — Build Prompt: `gems-bank` (web banking app, agent-ready skeleton)
 
-> **How to use this file.** Put it in the empty repo root as `PROMPT.md`, together with
-> `CLAUDE.md`, `docs/ARCHITECTURE.md` and `docs/diagrams/*.mmd`. In VS Code, open Claude Code
-> and send: *"Read PROMPT.md, CLAUDE.md, docs/ARCHITECTURE.md and every file in docs/diagrams/.
-> Then execute Phase 0."* Do one phase per session, commit between phases.
+> **How to use this file.** It is the product brief: scope, rules, and the seven agent seams.
+> `README.md` describes the repository as it actually stands; `CLAUDE.md` is the working
+> agreement. Read all three before changing anything.
 
 ---
 
@@ -23,7 +22,7 @@ Optimise, in this order:
 2. **Seams for the agent layer.** Every seam listed in §7 must exist in v0, even if empty.
 3. **Small surface area.** Fewer files, fewer features, fewer dependencies. Empty folders with a
    `README.md` beat speculative code.
-4. **Legibility.** Someone reading `docs/ARCHITECTURE.md` and the folder tree should be able to
+4. **Legibility.** Someone reading `README.md` and the folder tree should be able to
    predict where any future feature goes.
 
 **This is a demo/educational system.** It is not a licensed credit institution, holds no real
@@ -72,8 +71,8 @@ Break any of these and the work is wrong, no matter how good it looks.
 **Scope discipline**
 - If a task is not in §4 (v0 scope), **do not build it**. Create the folder, write a `README.md`
   describing what will live there, move on.
-- If you believe the architecture doc is wrong, **stop and say so** before coding. Then record
-  the change as a new file in `docs/ADR/`.
+- If you believe the architecture is wrong, **stop and say so** before coding. Then record the
+  change in `README.md` in the same commit.
 
 ---
 
@@ -88,14 +87,14 @@ layer trivial to add in the same language.
 | Database | **PostgreSQL 16** |
 | Frontend | **Next.js 15** App Router, TypeScript strict, Tailwind CSS v4 |
 | UI kit | shadcn/ui primitives (Radix) — only the components actually used |
-| Contracts | FastAPI-generated **OpenAPI 3.1** → TS types via `openapi-typescript` into `packages/contracts` |
+| Contracts | FastAPI-generated **OpenAPI 3.1** at `/openapi.json` |
 | Tests | `pytest` + `httpx` (backend), Playwright smoke (web) |
 | Tooling | `uv` or Poetry, `ruff`, `mypy --strict` on `platform/` and `modules/*/domain`, `pnpm`, ESLint |
-| Local run | Docker Compose (postgres + api + web) and a `Makefile` |
+| Local run | Docker Compose (mongo + api serving the static web client) |
 
-**Swap point:** if a TypeScript-only stack is preferred later, only `apps/api` changes. The
-hexagonal split (`domain` / `application` / `adapters` / `api`) and the DB schema port over
-directly. Record the swap as an ADR; do not do it unprompted.
+**Swap point:** if a TypeScript-only stack is preferred later, only `backend/` changes. The
+split between aggregate, service, adapters and routes and the DB schema port over directly.
+Record the swap in `README.md`; do not do it unprompted.
 
 Dependency budget for v0: **≤ 15 direct backend deps, ≤ 20 direct frontend deps.** If you want to
 exceed it, justify each one first.
@@ -116,11 +115,10 @@ Do this **before** writing a single component:
    - type scale, font families, font weights actually used,
    - spacing scale, border radii, shadow definitions,
    - breakpoints.
-3. Write those tokens as **CSS custom properties** in `apps/web/src/styles/tokens.css` and wire
-   them into the Tailwind v4 `@theme` block. **Components must never hardcode a hex value** —
-   only `var(--…)` / Tailwind tokens.
-4. Write `docs/DESIGN_NOTES.md` containing:
-   - a table mapping **each screen in the archive → the Next.js route** it becomes,
+3. Write those tokens as **CSS custom properties** in `frontend/styles/tokens.css`.
+   **Components must never hardcode a hex value** — only `var(--…)`.
+4. Record, in `README.md`:
+   - a table mapping **each screen in the archive → the route** it becomes,
    - a table mapping **each repeated visual block → the component** you will create,
    - a list of screens in the archive that are **out of v0 scope** (they stay unbuilt; note the
      route as a stub),
@@ -132,9 +130,8 @@ Do this **before** writing a single component:
 with a `README.md` explaining what to drop there, build the UI with unstyled semantic HTML plus
 neutral tokens, and tell me the archive is missing. Do not guess brand colours.
 
-**Fidelity rule:** the archive dictates *look*. This prompt and `docs/ARCHITECTURE.md` dictate
-*structure, routes, and data*. Where they disagree, structure wins and you log it in
-`DESIGN_NOTES.md`.
+**Fidelity rule:** the archive dictates *look*. This prompt and `README.md` dictate *structure,
+routes, and data*. Where they disagree, structure wins and you log it in `README.md`.
 
 ---
 
@@ -166,7 +163,7 @@ neutral tokens, and tell me the archive is missing. Do not guess brand colours.
   `post_transaction` → outbox event.
 - Beneficiaries: create and list. Nothing more.
 - External rails (SEPA/SCT Inst), FX, standing orders: **not in v0**, but the payment state
-  machine in `docs/diagrams/state-payment.mmd` already accommodates them.
+  machine already accommodates them.
 
 **Transactions view**
 - Paginated, filterable (account, date range, direction) list built from a `transactions_view`
@@ -186,9 +183,8 @@ neutral tokens, and tell me the archive is missing. Do not guess brand colours.
   visibly marked "coming soon", never a 404.
 
 **Ops**
-- `docker-compose.yml`, `Makefile` (`make up`, `make migrate`, `make seed`, `make test`,
-  `make lint`), seed script creating 2 demo users with accounts in RON + EUR and ~30 realistic
-  transactions, `.env.example`, one CI workflow running lint + types + tests + boundary checks.
+- `docker-compose.yml`, `.env.example`, Mongo schema migrations in `ops/`, and a seed script
+  creating 2 demo users with accounts in RON + EUR and ~30 realistic transactions.
 
 ### Explicitly NOT in v0
 
@@ -196,12 +192,11 @@ Cards, card controls, KYC/onboarding video, FX and multi-currency conversion, op
 account aggregation, savings and investments, notifications and push, joint accounts, business
 accounts, admin back-office, chatbot, **and the entire agent layer**.
 
-For each of these: create the module or service folder with a `README.md` stating purpose,
-future public port, and dependencies. **Empty folder + README. No code.**
+For each of these: build nothing. A feature folder appears the day its first line of code does.
 
 ### Definition of done for v0
 
-- [ ] `make up && make migrate && make seed` gives a working app at `localhost:3000` from a clean clone.
+- [ ] `docker compose up --build` gives a working app at `localhost:8000/app/` from a clean clone.
 - [ ] A user can log in, see two accounts, open one, transfer money to the other, and see both
       balances and both transaction lists update correctly.
 - [ ] Test: posting an unbalanced transaction is rejected **by the database**.
@@ -211,99 +206,53 @@ future public port, and dependencies. **Empty folder + README. No code.**
 - [ ] Test: the sum of all journal entries in the system is zero per currency, after seeding.
 - [ ] Test: module boundary violations fail CI.
 - [ ] Every seam in §7 exists and is exercised by at least one real call path.
-- [ ] `docs/ARCHITECTURE.md` and every `.mmd` match the code that was actually written.
+- [ ] `README.md` matches the code that was actually written.
 
 ---
 
-## 5. Folder skeleton to create
-
-Create this exactly. Every folder that contains no code in v0 gets a `README.md` explaining what
-belongs there, what its public port will be, and what it may depend on.
+## 5. Folder structure
 
 ```
 gems-bank/
 ├─ README.md
 ├─ CLAUDE.md
 ├─ PROMPT.md
-├─ Makefile
 ├─ docker-compose.yml
 ├─ .env.example
-├─ docs/
-│  ├─ ARCHITECTURE.md
-│  ├─ DESIGN_NOTES.md
-│  ├─ ROADMAP.md
-│  ├─ REFERENCES.md
-│  ├─ ADR/
-│  │  ├─ TEMPLATE.md
-│  │  ├─ 0001-modular-monolith-hexagonal.md
-│  │  ├─ 0002-double-entry-ledger.md
-│  │  ├─ 0003-actor-model-agent-ready.md
-│  │  └─ 0004-python-backend-next-frontend.md
-│  └─ diagrams/
-│     ├─ c1-context.mmd
-│     ├─ c2-containers.mmd
-│     ├─ c3-backend-modules.mmd
-│     ├─ erd-core.mmd
-│     ├─ seq-transfer.mmd
-│     ├─ state-payment.mmd
-│     ├─ agents-orchestration.mmd
-│     └─ seq-agent-payment.mmd
 ├─ design/
-│  ├─ export/                     # Claude Design HTML archive lands here
+│  ├─ export/                  Claude Design HTML archive
 │  └─ tokens.extracted.json
-├─ apps/
-│  ├─ api/
-│  │  ├─ pyproject.toml
-│  │  ├─ alembic/
-│  │  ├─ src/gems/
-│  │  │  ├─ main.py
-│  │  │  ├─ config.py
-│  │  │  ├─ platform/             # shared kernel — depends on nothing above it
-│  │  │  │  ├─ db/                # engine, session, base, uow
-│  │  │  │  ├─ money.py           # Money value object, minor units
-│  │  │  │  ├─ ids.py             # UUIDv7 generation
-│  │  │  │  ├─ errors.py          # domain error taxonomy → HTTP mapping
-│  │  │  │  ├─ actors.py          # SEAM 1: Actor(user|system|agent)
-│  │  │  │  ├─ commandbus/        # SEAM 2: single write entry point
-│  │  │  │  ├─ policy/            # SEAM 3: limits, mandates, approvals
-│  │  │  │  ├─ idempotency/
-│  │  │  │  ├─ audit/             # SEAM 4
-│  │  │  │  ├─ outbox/            # SEAM 5
-│  │  │  │  └─ observability/     # SEAM 7: correlation ids, structured logs
-│  │  │  ├─ capabilities/         # SEAM 6: typed capability registry
-│  │  │  ├─ modules/
-│  │  │  │  ├─ identity/    {domain,application,adapters,api}
-│  │  │  │  ├─ accounts/    {domain,application,adapters,api}
-│  │  │  │  ├─ ledger/      {domain,application,adapters}
-│  │  │  │  ├─ payments/    {domain,application,adapters,api}
-│  │  │  │  ├─ compliance/  # README only — VoP, limits, AML screening
-│  │  │  │  ├─ cards/       # README only
-│  │  │  │  ├─ insights/    # README only — spend categorisation
-│  │  │  │  └─ notifications/ # README only
-│  │  │  └─ api/                  # router assembly, deps, exception handlers
-│  │  └─ tests/
-│  │     ├─ unit/
-│  │     ├─ integration/
-│  │     └─ architecture/         # boundary + invariant tests
-│  └─ web/
-│     ├─ src/app/(auth)/{login,register}/
-│     ├─ src/app/(app)/{dashboard,accounts/[id],transfer,settings}/
-│     ├─ src/components/{ui,money,layout,status}/
-│     ├─ src/lib/{api,auth,format,hooks}/
-│     ├─ src/styles/tokens.css
-│     └─ tests/
-├─ services/                      # future out-of-process workloads — README only
-│  ├─ agent-orchestrator/
-│  │  ├─ README.md
-│  │  └─ src/{orchestrator,agents,tools,mandates,memory,traces,evals}/
-│  └─ mcp-gateway/
-│     └─ README.md
-├─ packages/
-│  └─ contracts/                  # OpenAPI spec + generated TS types
-└─ ops/
-   ├─ seed/
-   └─ ci/
+├─ backend/
+│  ├─ Dockerfile
+│  ├─ requirements.txt
+│  ├─ main.py                  FastAPI app, middleware, error handlers, static mount
+│  ├─ config.py                settings from env
+│  ├─ command_bus.py           SEAMS 2/4/5: the one write path
+│  ├─ server/
+│  │  └─ routes.py             HTTP endpoints + request schemas
+│  ├─ database/
+│  │  ├─ mongo.py              client, collections, indexes
+│  │  ├─ repositories.py       aggregate <-> BSON
+│  │  └─ records.py            audit, outbox, idempotency
+│  ├─ onboarding/
+│  │  ├─ service.py            commands, ports, handlers
+│  │  ├─ kyc.py                KycCase aggregate
+│  │  ├─ validation.py         username/password/PIN/contact rules
+│  │  └─ adapters.py           clock, hasher, document extractor, OTP email
+│  └─ helpers/
+│     ├─ context.py            SEAMS 1/7: ids, Actor, correlation id, logging
+│     └─ errors.py             error taxonomy -> HTTP mapping
+├─ frontend/
+│  ├─ index.html               script order = the module graph
+│  ├─ main/register.jsx        RegisterPage + mount
+│  ├─ components/{ui,rails,steps}.jsx
+│  ├─ helpers/{api,i18n,messages}.js
+│  └─ styles/{tokens,app}.css
+└─ ops/                        Mongo schema migrations, applied by hand
 ```
+
+A new backend feature is a new folder next to `onboarding/`, with the same four-file shape.
+It reaches the outside world only through `command_bus.py` and `server/routes.py`.
 
 ---
 
@@ -367,7 +316,7 @@ agent-initiated transfer is fully reconstructable end to end.
 
 ### The future agent layer (design it in docs, build none of it)
 
-`services/agent-orchestrator/README.md` must describe, per `docs/diagrams/agents-orchestration.mmd`:
+When it is built, the agent orchestrator must be:
 
 - **Orchestrator** (lead agent): classifies intent, plans, fans out to workers, aggregates,
   decides whether to answer or to propose an action. Never calls the DB.
@@ -375,7 +324,7 @@ agent-initiated transfer is fully reconstructable end to end.
   `SupportAgent` (RAG over product docs), `InsightsAgent` (spend analysis, read-only),
   `PaymentsAgent` (proposes payment commands), `RiskAgent` (screens proposed commands),
   `OnboardingAgent` (guides non-standard onboarding — the weakest-covered area in the market).
-- **Hard rules for the agent layer**, to be written into that README now:
+- **Hard rules for the agent layer**:
   1. Agents call **capabilities only** (7.6), never SQL, never other modules directly.
   2. Any `money-moving` capability requires a valid mandate (7.3) **and** returns a *proposal*.
      Execution requires either an in-mandate auto-approval or an explicit human confirmation.
@@ -390,24 +339,7 @@ agent-initiated transfer is fully reconstructable end to end.
 
 ---
 
-## 8. Order of work
-
-Do one phase per session. End each phase with a commit, a short summary, and a list of anything
-you deviated on.
-
-| Phase | Deliverable | Gate |
-|---|---|---|
-| **0** | Read design archive → `tokens.extracted.json`, `DESIGN_NOTES.md`, route/component map | I confirm the mapping |
-| **1** | Full folder skeleton, all READMEs, ADRs, Makefile, compose, `.env.example`, CI | `make up` starts postgres |
-| **2** | `platform/` shared kernel: money, ids, errors, actors, command bus, policy, idempotency, audit, outbox | Unit tests green |
-| **3** | Alembic migration: full schema per `docs/diagrams/erd-core.mmd`, incl. empty `mandates` + `agent_runs`. DB-level balance constraint. Seed script | Invariant tests green |
-| **4** | Vertical slice: identity → accounts → ledger → payments. OpenAPI generated. Capability registry populated | All §4 acceptance tests green |
-| **5** | Next.js app: the six routes, tokens wired, status banner, `<Money>`, a11y smoke test | Full happy path works from clean clone |
-| **6** | Docs reconciliation: update `ARCHITECTURE.md` + every `.mmd` to match reality; write `ROADMAP.md` | Docs and code agree |
-
----
-
-## 9. How to work with me
+## 8. How to work with me
 
 - **Ask before assuming** on anything that changes the data model, adds a dependency, or expands
   scope. Otherwise proceed.
@@ -415,14 +347,6 @@ you deviated on.
 - When you finish a phase, tell me: what you built, what you skipped and why, what surprised you,
   and the single riskiest thing in what you just wrote.
 - If you catch yourself writing a feature "because a bank would have it" — stop. Check §4.
-- Keep `docs/ARCHITECTURE.md` true. A diagram that lies is worse than no diagram.
+- Keep `README.md` true. A document that lies is worse than no document.
 
 ---
-
-## 10. Source material
-
-`docs/REFERENCES.md` lists the research this design rests on: the Romanian banking-app market
-brief (10 apps, 2025–2026), double-entry ledger practice, modular-monolith/hexagonal guidance,
-EU payments regulation (Instant Payments Regulation, PSD3/PSR), the European Accessibility Act,
-and the agent-orchestration and agentic-payments literature. Read it before proposing changes to
-§7 — the seams are not arbitrary.
