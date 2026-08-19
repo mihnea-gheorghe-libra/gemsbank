@@ -29,7 +29,7 @@ The archive's own numbering (`SCREEN 01`–`09`) is kept in the first column for
 
 | # | Screen in archive | Route | v0? |
 |---|---|---|---|
-| 01 | Onboarding & KYC (5-step wizard) | `/register` — **reduced** to email + password, no KYC steps | partial |
+| 01 | Onboarding & KYC (5-step wizard) | `/register` — **4 steps**, selfie dropped (§4.10) | built |
 | 02 | Authentication (PIN pad, captcha after 3 fails) | `/login` — **password**, not PIN (§4.4) | partial |
 | 03 | Dashboard | `/dashboard` | built |
 | 04 | Accounts & portfolio | `/dashboard` (list) + `/accounts/[id]` (detail) | built |
@@ -144,6 +144,25 @@ demo-system banner `PROMPT.md` §0 requires.
 **Resolution:** expressed declaratively in `tokens.css` for `prefers-color-scheme` **and** an
 explicit `data-theme` attribute, so it works without JS and survives SSR. Theme choice is a user
 preference — the same reversibility principle as hide-balances.
+
+### 4.10 The onboarding wizard opens with a biometric selfie
+
+Archive screen 01 step 1 is a live webcam capture for liveness detection.
+**Resolution:** **removed.** Face data is biometric data — special-category under GDPR Art. 9 —
+and `CLAUDE.md` forbids real PII in this system. The wizard is four steps, not five. The ID upload
+survives because it is the step that produces a name and a CNP, but nothing binary is persisted
+and the extracted values are synthetic: `DemoDocumentExtractor` hashes the bytes to pick a name
+from a fixed list, and masks the CNP to four digits. A real OCR vendor plugs in behind the
+`DocumentExtractor` port.
+
+Third divergence: the archive's extraction card shows name, CNP and expiry only. We add **date
+of birth**, because the account cannot be opened without proving the applicant is 18 — the field
+is not decoration, it is the input to a refusal. It renders with an `18+ verified` tag beside it.
+
+Second divergence on the same screen: the archive signs with an **SMS** code. The only OTP adapter
+that exists sends **email**. The phone number is still collected and validated — it is what a
+future SMS or push adapter will use — but the copy says email, because saying SMS while sending
+mail is a lie the user pays for.
 
 ## 5. What was extracted
 

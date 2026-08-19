@@ -41,10 +41,13 @@ services:
       - .env
     environment:
       MONGO_URI: mongodb://mongo:27017/gems?replicaSet=rs0
+      MONGO_DB_NAME: gems
+      WEB_DIR: /web
     ports:
       - "8000:8000"
     volumes:
       - ./apps/api:/app
+      - ./apps/web:/web
 
 volumes:
   mongo_data:

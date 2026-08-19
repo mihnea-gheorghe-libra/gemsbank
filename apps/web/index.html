@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GEMS — Create your account</title>
+
+  <link rel="stylesheet" href="./src/styles/tokens.css">
+  <link rel="stylesheet" href="./src/styles/components.css">
+  <link rel="stylesheet" href="./src/styles/onboarding.css">
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js" crossorigin></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <noscript>
+    <p style="padding:24px">This page needs JavaScript to open a GEMS account.</p>
+  </noscript>
+
+  <script src="./src/messages/en.js"></script>
+  <script src="./src/messages/ro.js"></script>
+  <script src="./src/lib/i18n.js"></script>
+  <script src="./src/lib/format/date.js"></script>
+  <script src="./src/lib/api/client.js"></script>
+
+  <script type="text/babel" data-presets="react" src="./src/components/ui/primitives.jsx"></script>
+  <script type="text/babel" data-presets="react" src="./src/components/onboarding/StepRail.jsx"></script>
+  <script type="text/babel" data-presets="react" src="./src/components/onboarding/AgentPanel.jsx"></script>
+  <script type="text/babel" data-presets="react" src="./src/components/onboarding/DocumentStep.jsx"></script>
+  <script type="text/babel" data-presets="react" src="./src/components/onboarding/ContactStep.jsx"></script>
+  <script type="text/babel" data-presets="react" src="./src/components/onboarding/CodeStep.jsx"></script>
+  <script type="text/babel" data-presets="react" src="./src/components/onboarding/CredentialsStep.jsx"></script>
+  <script type="text/babel" data-presets="react" src="./src/components/onboarding/DoneStep.jsx"></script>
+  <script type="text/babel" data-presets="react" src="./src/app/(auth)/register/RegisterPage.jsx"></script>
+  <script type="text/babel" data-presets="react" src="./src/app/bootstrap.jsx"></script>
+</body>
+</html>
