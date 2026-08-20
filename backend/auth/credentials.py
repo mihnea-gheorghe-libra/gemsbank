@@ -37,50 +37,86 @@ class AuthUser(BaseModel):
     pin_hash: str
     pin_encrypted: str | None = None
     status: str = "active"
-    failures: int = 0
-    locked_until: datetime | None = None
-
-    def _touch_lock(self, max_failures: int, lockout_seconds: int, now: datetime) -> None:
-        self.failures += 1
-        if self.failures >= max_failures:
-            self.locked_until = now + timedelta(seconds=lockout_seconds)
+    pin_failures: int = 0
+    pin_locked: bool = False
+    password_failures: int = 0
+    password_lockout_stage: int = 0
+    password_locked_until: datetime | None = None
 
     def guard_usable(self, now: datetime) -> None:
         if self.status != "active":
             raise AuthenticationError("This account is not active. Contact support.")
-        if self.locked_until is not None and now < self.locked_until:
+
+    def _guard_password_not_locked(self, now: datetime) -> None:
+        if self.password_locked_until is not None and now < self.password_locked_until:
             raise RateLimitedError(
                 "Too many failed attempts. Try again later.",
-                details={"retryAfterSeconds": int((self.locked_until - now).total_seconds())},
+                details={
+                    "field": "password",
+                    "retryAfterSeconds": int((self.password_locked_until - now).total_seconds()),
+                },
             )
 
-    def _accept(self) -> None:
-        self.failures = 0
-        self.locked_until = None
+    def _accept_pin(self) -> None:
+        self.pin_failures = 0
+        self.pin_locked = False
 
-    def sign_in(
-        self, pin_matches: bool, max_failures: int, lockout_seconds: int, now: datetime
-    ) -> None:
+    def _accept_password(self) -> None:
+        self.password_failures = 0
+        self.password_lockout_stage = 0
+        self.password_locked_until = None
+
+    def sign_in(self, pin_matches: bool, max_failures: int, now: datetime) -> None:
         self.guard_usable(now)
+        if self.pin_locked:
+            raise AuthenticationError(
+                "Too many incorrect PIN attempts. Sign in with your password instead.",
+                details={"field": "pin", "pinLocked": True},
+            )
         if not pin_matches:
-            self._touch_lock(max_failures, lockout_seconds, now)
+            self.pin_failures += 1
+            if self.pin_failures >= max_failures:
+                self.pin_locked = True
             raise AuthenticationError(
                 GENERIC_REJECTION,
-                details={"attemptsLeft": max(max_failures - self.failures, 0)},
+                details={
+                    "attemptsLeft": max(max_failures - self.pin_failures, 0),
+                    "pinLocked": self.pin_locked,
+                },
             )
-        self._accept()
+        self._accept_pin()
 
     def authorise_reveal(
-        self, password_matches: bool, max_failures: int, lockout_seconds: int, now: datetime
+        self,
+        password_matches: bool,
+        max_failures: int,
+        lockout_seconds: int,
+        extended_lockout_seconds: int,
+        now: datetime,
     ) -> None:
         self.guard_usable(now)
+        self._guard_password_not_locked(now)
         if not password_matches:
-            self._touch_lock(max_failures, lockout_seconds, now)
+            self.password_failures += 1
+            if self.password_failures >= max_failures:
+                if self.password_lockout_stage == 0:
+                    self.password_lockout_stage = 1
+                    self.password_locked_until = now + timedelta(seconds=lockout_seconds)
+                elif self.password_lockout_stage == 1:
+                    self.password_lockout_stage = 2
+                    self.password_locked_until = now + timedelta(seconds=extended_lockout_seconds)
+                else:
+                    self.password_lockout_stage = 3
+                    self.password_locked_until = None
+                    self.status = "locked"
             raise AuthenticationError(
                 GENERIC_PASSWORD_REJECTION,
-                details={"field": "password", "attemptsLeft": max(max_failures - self.failures, 0)},
+                details={
+                    "field": "password",
+                    "attemptsLeft": max(max_failures - self.password_failures, 0),
+                },
             )
-        self._accept()
+        self._accept_password()
 
     def require_recoverable_pin(self) -> str:
         if not self.pin_encrypted:
@@ -93,7 +129,7 @@ class AuthUser(BaseModel):
 
     def change_password(self, password_hash: str) -> None:
         self.password_hash = password_hash
-        self._accept()
+        self._accept_password()
 
     def public_view(self) -> dict[str, Any]:
         return {"userId": self.id, "username": self.username}

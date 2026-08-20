@@ -60,11 +60,18 @@
 
     const handleSignIn = (form) =>
       run(async () => {
-        const response = await api.login(form.username, form.pin);
-        setSession(response);
-        setPin(null);
-        setPinMissing(false);
-        setView(VIEWS.WELCOME);
+        try {
+          const response = await api.login(form.username, form.pin);
+          setSession(response);
+          setPin(null);
+          setPinMissing(false);
+          setView(VIEWS.WELCOME);
+        } catch (err) {
+          if (err.details && err.details.pinLocked) {
+            setView(VIEWS.PASSWORD);
+          }
+          throw err;
+        }
       });
 
     const handleReveal = (form) =>

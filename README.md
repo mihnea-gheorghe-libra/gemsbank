@@ -17,6 +17,10 @@ yet: the dashboard and the `sessions` collection arrive together, later.
 
 ```bash
 cp .env.example .env
+# fill in MONGO_URI, and the OTP/lockout tuning values (OTP_TTL_SECONDS,
+# PIN_MAX_FAILURES, PASSWORD_MAX_FAILURES, PASSWORD_LOCKOUT_SECONDS, ...) —
+# they have no defaults in config.py on purpose, so the app will refuse to
+# start without them.
 docker compose up --build
 ```
 
@@ -27,9 +31,10 @@ docker compose up --build
 Without `RESEND_API_KEY` the OTP is not emailed; it comes back in the response as `devCode` and is
 logged. That is intentional for local work. The same applies to the password-reset code.
 
-The onboarding OTP lives for `OTP_TTL_SECONDS` (5 minutes — the customer is already looking at the
-screen when it is sent). The password-reset code lives for `RESET_CODE_TTL_SECONDS` (10 minutes),
-because it is read out of an inbox that may be a few minutes behind.
+The onboarding OTP lives for `OTP_TTL_SECONDS` — the customer is already looking at the screen when
+it is sent, so it is short. The password-reset code lives for `RESET_CODE_TTL_SECONDS`, given more
+time because it is read out of an inbox that may be a few minutes behind. Exact values are set per
+environment in `.env`, not committed — see `.env.example`.
 
 The frontend is served with `Cache-Control: no-store`. There is no build step and no fingerprinted
 filenames, so a cached `.jsx` or `.css` would otherwise survive an edit and make you debug the
@@ -147,9 +152,19 @@ Other tradeoffs worth knowing:
 - `POST /auth/password/reset` returns 404 for an unknown username, which allows username
   enumeration. Consistent with a demo that already returns OTP codes in dev-mode responses;
   fix it when the system stops handing out `devCode`.
-- Sign-in failures and reveal failures share one counter and one lockout on the user record
-  (`signIn.failures`, `signIn.lockedUntil`). Five failures locks the account for 15 minutes,
-  and a correct credential is refused while locked.
+- PIN and password failures are two separate tracks on the user record (`AuthUser.sign_in` /
+  `AuthUser.authorise_reveal` in `backend/auth/credentials.py`), stored as `pin` / `password`
+  sub-documents. They do not share a counter or a lockout.
+  - **PIN** (`signIn`): after `PIN_MAX_FAILURES` wrong PINs, `pin.locked` is set — no timer, no
+    self-reset. Sign-in with PIN is refused until the password is verified once (the "I forgot my
+    PIN!" screen), which clears the flag.
+  - **Password** (used to reveal the PIN and, later, to reset it): failures escalate through
+    fixed tiers — `PASSWORD_MAX_FAILURES` wrong attempts locks it for `PASSWORD_LOCKOUT_SECONDS`;
+    one more wrong attempt after that lock expires extends it to
+    `PASSWORD_LOCKOUT_EXTENDED_SECONDS`; one more after that sets `status: "locked"`
+    permanently — there is no admin back-office in v0, so a permanently locked demo account has no
+    self-service recovery, by design. A correct password at any stage before that resets the
+    track to zero.
 
 ## Adding a feature
 
