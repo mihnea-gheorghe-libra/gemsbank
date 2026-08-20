@@ -4,8 +4,14 @@ Web banking app for the EU/RO market. **Demo system**: no licence, no real funds
 no real PII, no real card data. Built as a correct money core plus explicit seams for a future
 multi-agent AI layer.
 
-Currently one working screen: the four-step onboarding wizard (ID document → contact → email code
-→ credentials).
+Two working screens, toggled by a button in the top bar:
+
+- **Sign in** — username + 6-digit PIN, with PIN recovery and password reset.
+- **Create account** — the four-step onboarding wizard (ID document → contact → email code →
+  credentials).
+
+After a successful sign in you land on a placeholder welcome screen. There is no session token
+yet: the dashboard and the `sessions` collection arrive together, later.
 
 ## Run it
 
@@ -19,7 +25,18 @@ docker compose up --build
 - Mongo UI: <http://localhost:8081>
 
 Without `RESEND_API_KEY` the OTP is not emailed; it comes back in the response as `devCode` and is
-logged. That is intentional for local work.
+logged. That is intentional for local work. The same applies to the password-reset code.
+
+The onboarding OTP lives for `OTP_TTL_SECONDS` (5 minutes — the customer is already looking at the
+screen when it is sent). The password-reset code lives for `RESET_CODE_TTL_SECONDS` (10 minutes),
+because it is read out of an inbox that may be a few minutes behind.
+
+The frontend is served with `Cache-Control: no-store`. There is no build step and no fingerprinted
+filenames, so a cached `.jsx` or `.css` would otherwise survive an edit and make you debug the
+previous version.
+
+Without `PIN_ENCRYPTION_KEY` the PIN cipher falls back to a well-known demo key and logs
+`pin_cipher.dev_key_in_use` at startup. Fine locally, never anywhere else.
 
 Schema migrations in `ops/` are applied by hand, in order:
 
@@ -46,15 +63,24 @@ backend/
     service.py       commands, ports, handlers
     kyc.py           the KycCase aggregate and its transitions
     validation.py    username, password, PIN, email, phone rules
-    adapters.py      clock, password hasher, document extractor, OTP email
+    adapters.py      clock, document extractor, OTP email
+  auth/
+    service.py       commands, ports, handlers
+    credentials.py   the AuthUser and RecoveryCase aggregates and their transitions
+    validation.py    username, PIN shape, new-password rules
+    adapters.py      clock, reset-code email
   helpers/
     context.py       ids, Actor, correlation id, JSON logging
+    crypto.py        Argon2id hasher, AES-GCM PIN cipher
     errors.py        error taxonomy → HTTP status
 
 frontend/            no build step; index.html script order is the module graph
   index.html
-  main/register.jsx  page state and flow orchestration, mounts the app
-  components/        ui.jsx (primitives) · rails.jsx (step rail, agent panel) · steps.jsx
+  main/app.jsx       chooses sign in vs register, mounts the app
+  main/signin.jsx    sign in, PIN recovery, password reset, welcome
+  main/register.jsx  onboarding page state and flow orchestration
+  components/        ui.jsx (primitives) · rails.jsx (step rail, agent panel) · steps.jsx ·
+                     auth.jsx (sign-in forms, PIN panel, welcome)
   helpers/           api.js (the only fetch caller) · i18n.js · messages.js (en + ro)
   styles/            tokens.css (the only place a hex value may appear) · app.css
 
@@ -80,6 +106,50 @@ HTTP route → bus.execute(command, actor, idempotency_key)
 
 Nothing writes outside this path. When the agent layer arrives it becomes a second *caller* of
 `bus.execute`, never a second pathway.
+
+`CommandResult` has two output channels: `data` is stored and replayed under the idempotency key;
+`sensitive` is merged into the HTTP response and never persisted anywhere. Use `sensitive` for
+anything a replay must not hand out twice.
+
+Failed authentication is the one place a handler writes outside the command transaction: the
+attempt counter is saved with no session before the error propagates, because the rollback would
+otherwise erase the evidence of the failure. `onboarding` does the same for OTP attempts.
+
+## The recoverable PIN — a deliberate, documented weakening
+
+"I forgot my PIN" takes username + password, signs the customer in, and shows the PIN on the
+welcome screen behind a reveal toggle. A hash cannot do that, so the PIN is stored **twice**:
+`pinHash` (Argon2id, what sign-in checks) and `pinEncrypted` (AES-256-GCM, what the reveal
+decrypts, with the user id as associated data so a blob cannot be moved between users). This was
+chosen knowingly over the alternative — regenerating a fresh PIN — and it means:
+
+- anyone holding both the database and `PIN_ENCRYPTION_KEY` can read every customer's PIN;
+- key rotation needs a re-encryption pass that does not exist yet;
+- a real bank would reset the PIN instead. This one is a demo with no real funds.
+
+What the implementation does guarantee: the plaintext PIN appears **only** in the HTTP response
+body. `CommandResult.sensitive` is merged into the response but never written to the idempotency
+store, the audit log, or the outbox. Replaying a stored `Idempotency-Key` therefore returns the
+non-secret half only — a replayed reveal does not re-reveal.
+
+The password check in `auth.reveal_pin` is an authentication, so it lands on the same welcome
+screen as `auth.sign_in` — and so is `auth.password_reset.complete`, which knows the customer read
+a code sent to the address on the account. All three paths end on the welcome screen, the last two
+with the PIN panel on it. With no session token yet, "signed in" means exactly that screen; when
+sessions arrive, all three mint one.
+
+Accounts created before this feature have no `pinEncrypted`; their reveal fails with a clear
+message, and their password reset still succeeds and still signs them in — the welcome screen just
+says why there is no PIN to show.
+
+Other tradeoffs worth knowing:
+
+- `POST /auth/password/reset` returns 404 for an unknown username, which allows username
+  enumeration. Consistent with a demo that already returns OTP codes in dev-mode responses;
+  fix it when the system stops handing out `devCode`.
+- Sign-in failures and reveal failures share one counter and one lockout on the user record
+  (`signIn.failures`, `signIn.lockedUntil`). Five failures locks the account for 15 minutes,
+  and a correct credential is refused while locked.
 
 ## Adding a feature
 

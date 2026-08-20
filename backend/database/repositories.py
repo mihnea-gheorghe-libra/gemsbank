@@ -4,7 +4,17 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorClientSession
 from pymongo.errors import DuplicateKeyError
 
-from backend.database.mongo import kyc_cases_collection, users_collection
+from backend.auth.credentials import (
+    AuthUser,
+    RecoveryCase,
+    RecoveryStatus,
+    ResetChallenge,
+)
+from backend.database.mongo import (
+    kyc_cases_collection,
+    recovery_cases_collection,
+    users_collection,
+)
 from backend.helpers.errors import ConflictError
 from backend.onboarding.kyc import (
     Contact,
@@ -129,6 +139,7 @@ class MongoUserRepository:
         phone: str,
         password_hash: str,
         pin_hash: str,
+        pin_encrypted: str,
         kyc_case_id: str,
         session: AsyncIOMotorClientSession | None = None,
     ) -> None:
@@ -139,8 +150,10 @@ class MongoUserRepository:
             "phone": phone,
             "passwordHash": password_hash,
             "pinHash": pin_hash,
+            "pinEncrypted": pin_encrypted,
             "kycCaseId": kyc_case_id,
             "prefs": {"lang": "ro", "theme": "light", "tts": False, "hideBalances": True},
+            "signIn": {"failures": 0, "lockedUntil": None},
             "status": "active",
             "createdAt": datetime.now(timezone.utc),
         }
@@ -157,3 +170,107 @@ class MongoUserRepository:
 
     async def exists_email(self, email: str) -> bool:
         return await users_collection().count_documents({"email": email}, limit=1) > 0
+
+
+def _auth_user_from_bson(raw: dict[str, Any]) -> AuthUser:
+    sign_in = raw.get("signIn") or {}
+    return AuthUser(
+        id=raw["_id"],
+        username=raw["username"],
+        email=raw["email"],
+        password_hash=raw["passwordHash"],
+        pin_hash=raw["pinHash"],
+        pin_encrypted=raw.get("pinEncrypted"),
+        status=raw.get("status", "active"),
+        failures=sign_in.get("failures", 0),
+        locked_until=sign_in.get("lockedUntil"),
+    )
+
+
+class MongoAuthUserRepository:
+    async def get_by_username(self, username: str) -> AuthUser | None:
+        raw = await users_collection().find_one({"username": username})
+        return _auth_user_from_bson(raw) if raw else None
+
+    async def get(self, user_id: str) -> AuthUser | None:
+        raw = await users_collection().find_one({"_id": user_id})
+        return _auth_user_from_bson(raw) if raw else None
+
+    async def save(
+        self, user: AuthUser, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await users_collection().update_one(
+            {"_id": user.id},
+            {
+                "$set": {
+                    "passwordHash": user.password_hash,
+                    "signIn": {"failures": user.failures, "lockedUntil": user.locked_until},
+                }
+            },
+            session=session,
+        )
+
+
+def _challenge_to_bson(otp: ResetChallenge | None) -> dict[str, Any] | None:
+    if otp is None:
+        return None
+    return {
+        "codeHash": otp.code_hash,
+        "expiresAt": otp.expires_at,
+        "sentAt": otp.sent_at,
+        "attempts": otp.attempts,
+    }
+
+
+def _challenge_from_bson(raw: dict[str, Any] | None) -> ResetChallenge | None:
+    if raw is None:
+        return None
+    return ResetChallenge(
+        code_hash=raw["codeHash"],
+        expires_at=raw["expiresAt"],
+        sent_at=raw["sentAt"],
+        attempts=raw["attempts"],
+    )
+
+
+def _recovery_to_bson(case: RecoveryCase) -> dict[str, Any]:
+    return {
+        "_id": case.id,
+        "userId": case.user_id,
+        "kind": "password_reset",
+        "status": case.status.value,
+        "otp": _challenge_to_bson(case.otp),
+        "createdAt": case.created_at,
+        "updatedAt": case.updated_at,
+    }
+
+
+def _recovery_from_bson(raw: dict[str, Any]) -> RecoveryCase:
+    return RecoveryCase(
+        id=raw["_id"],
+        user_id=raw["userId"],
+        status=RecoveryStatus(raw["status"]),
+        otp=_challenge_from_bson(raw.get("otp")),
+        created_at=raw["createdAt"],
+        updated_at=raw["updatedAt"],
+    )
+
+
+class MongoRecoveryCaseRepository:
+    async def add(
+        self, case: RecoveryCase, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await recovery_cases_collection().insert_one(_recovery_to_bson(case), session=session)
+
+    async def get(self, case_id: str) -> RecoveryCase | None:
+        raw = await recovery_cases_collection().find_one({"_id": case_id})
+        return _recovery_from_bson(raw) if raw else None
+
+    async def save(
+        self, case: RecoveryCase, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        payload = _recovery_to_bson(case)
+        payload.pop("_id")
+        await recovery_cases_collection().update_one(
+            {"_id": case.id}, {"$set": payload}, session=session
+        )

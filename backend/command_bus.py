@@ -26,6 +26,7 @@ class CommandResult:
     data: dict[str, Any]
     audit: AuditRecord
     events: list[DomainEvent] = field(default_factory=list)
+    sensitive: dict[str, Any] = field(default_factory=dict)
 
 
 Handler = Callable[[Command, ActorContext, AsyncIOMotorClientSession], Awaitable[CommandResult]]
@@ -70,7 +71,7 @@ class CommandBus:
                 if idempotency_key:
                     await store_response(name, idempotency_key, result.data, session=session)
 
-        return result.data
+        return result.data | result.sensitive
 
 
 bus = CommandBus()

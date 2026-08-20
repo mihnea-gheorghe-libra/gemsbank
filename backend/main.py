@@ -2,12 +2,14 @@ import logging
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.auth.service import get_auth_service
 from backend.config import settings
 from backend.database.mongo import close_client, ensure_indexes
 from backend.helpers.context import (
@@ -27,6 +29,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     configure_logging()
     get_onboarding_service()
+    get_auth_service()
     await ensure_indexes()
     yield
     await close_client()
@@ -98,6 +101,13 @@ async def root() -> RedirectResponse:
     return RedirectResponse(url="/app/")
 
 
+class UncachedStaticFiles(StaticFiles):
+    def file_response(self, *args: Any, **kwargs: Any) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+
 _web_dir = Path(settings.web_dir)
 if _web_dir.is_dir():
-    app.mount("/app", StaticFiles(directory=_web_dir, html=True), name="web")
+    app.mount("/app", UncachedStaticFiles(directory=_web_dir, html=True), name="web")

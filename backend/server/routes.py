@@ -3,6 +3,13 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, File, Form, Header, UploadFile
 from pydantic import BaseModel, Field
 
+from backend.auth.service import (
+    RequestPasswordReset,
+    ResetPassword,
+    RevealPin,
+    SignIn,
+    VerifyResetCode,
+)
 from backend.command_bus import bus
 from backend.database.mongo import get_db
 from backend.helpers.context import Actor
@@ -36,15 +43,43 @@ class CredentialsRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class SignInRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    pin: str = Field(min_length=4, max_length=8)
+
+
+class RevealPinRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class PasswordResetRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+
+
+class NewPasswordRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=200)
+    password_confirmation: str = Field(
+        min_length=1, max_length=200, alias="passwordConfirmation"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
 ServiceDep = Annotated[OnboardingService, Depends(get_onboarding_service)]
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key")]
 
 api_router = APIRouter()
 onboarding_router = APIRouter(prefix="/onboarding", tags=["onboarding"])
+auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _actor() -> Actor:
     return Actor.public_onboarding()
+
+
+def _auth_actor() -> Actor:
+    return Actor.public_auth()
 
 
 @api_router.get("/health", tags=["platform"])
@@ -136,4 +171,53 @@ async def complete(
     return await bus.execute(command, _actor(), idempotency_key)
 
 
+@auth_router.post("/login")
+async def login(
+    payload: SignInRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = SignIn(username=payload.username, pin=payload.pin.strip())
+    return await bus.execute(command, _auth_actor(), idempotency_key)
+
+
+@auth_router.post("/pin/reveal")
+async def reveal_pin(
+    payload: RevealPinRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = RevealPin(username=payload.username, password=payload.password)
+    return await bus.execute(command, _auth_actor(), idempotency_key)
+
+
+@auth_router.post("/password/reset", status_code=201)
+async def request_password_reset(
+    payload: PasswordResetRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = RequestPasswordReset(username=payload.username)
+    return await bus.execute(command, _auth_actor(), idempotency_key)
+
+
+@auth_router.post("/password/reset/{recovery_case_id}/verify")
+async def verify_reset_code(
+    recovery_case_id: str,
+    payload: VerifyCodeRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = VerifyResetCode(recovery_case_id=recovery_case_id, code=payload.code.strip())
+    return await bus.execute(command, _auth_actor(), idempotency_key)
+
+
+@auth_router.post("/password/reset/{recovery_case_id}/complete")
+async def complete_password_reset(
+    recovery_case_id: str,
+    payload: NewPasswordRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = ResetPassword(
+        recovery_case_id=recovery_case_id,
+        password=payload.password,
+        password_confirmation=payload.password_confirmation,
+    )
+    return await bus.execute(command, _auth_actor(), idempotency_key)
+
+
 api_router.include_router(onboarding_router)
+api_router.include_router(auth_router)

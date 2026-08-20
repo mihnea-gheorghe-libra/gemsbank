@@ -65,5 +65,15 @@
       send("/onboarding/" + id + "/code/verify", { method: "POST", json: { code } }),
     complete: (id, payload) =>
       send("/onboarding/" + id + "/complete", { method: "POST", json: payload }),
+
+    login: (username, pin) => send("/auth/login", { method: "POST", json: { username, pin } }),
+    revealPin: (username, password) =>
+      send("/auth/pin/reveal", { method: "POST", json: { username, password } }),
+    requestPasswordReset: (username) =>
+      send("/auth/password/reset", { method: "POST", json: { username } }),
+    verifyResetCode: (id, code) =>
+      send("/auth/password/reset/" + id + "/verify", { method: "POST", json: { code } }),
+    completePasswordReset: (id, payload) =>
+      send("/auth/password/reset/" + id + "/complete", { method: "POST", json: payload }),
   };
 })();

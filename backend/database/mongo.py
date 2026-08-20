@@ -34,6 +34,10 @@ def kyc_cases_collection() -> AsyncIOMotorCollection:
     return get_db()["kycCases"]
 
 
+def recovery_cases_collection() -> AsyncIOMotorCollection:
+    return get_db()["recoveryCases"]
+
+
 def audit_log_collection() -> AsyncIOMotorCollection:
     return get_db()["auditLog"]
 
@@ -60,6 +64,9 @@ async def ensure_indexes() -> None:
 
     await kyc_cases_collection().create_index([("status", ASCENDING)], name="ix_status")
     await kyc_cases_collection().create_index([("createdAt", DESCENDING)], name="ix_created")
+
+    await recovery_cases_collection().create_index([("userId", ASCENDING)], name="ix_user")
+    await recovery_cases_collection().create_index([("createdAt", DESCENDING)], name="ix_created")
 
     await idempotency_collection().create_index(
         [("key", ASCENDING), ("scope", ASCENDING)], unique=True, name="uq_key_scope"

@@ -396,7 +396,7 @@
     );
   };
 
-  ONB.DoneStep = function DoneStep({ result }) {
+  ONB.DoneStep = function DoneStep({ result, onSignIn }) {
     return (
       <div className="onb-fade">
         <UI.Plate style={{ padding: 20, maxWidth: 560, background: "var(--color-surface)" }}>
@@ -407,9 +407,14 @@
           <UI.Tag>{t("credentials.passkeyTag")}</UI.Tag>
         </UI.Plate>
 
-        <UI.Button type="button" variant="primary" style={{ marginTop: 20 }} disabled>
-          {t("done.comingSoon")}
-        </UI.Button>
+        <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+          <UI.Button type="button" variant="primary" onClick={onSignIn}>
+            {t("done.goToSignIn")}
+          </UI.Button>
+          <UI.Button type="button" disabled>
+            {t("done.comingSoon")}
+          </UI.Button>
+        </div>
       </div>
     );
   };

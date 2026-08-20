@@ -11,10 +11,10 @@ from backend.config import Settings, settings
 from backend.database.records import AuditRecord, DomainEvent
 from backend.database.repositories import MongoKycCaseRepository, MongoUserRepository
 from backend.helpers.context import ActorContext, log_event, new_id
+from backend.helpers.crypto import AesGcmPinCipher, Argon2idHasher
 from backend.helpers.errors import ConflictError, DomainError, NotFoundError
 from backend.onboarding import validation
 from backend.onboarding.adapters import (
-    Argon2idHasher,
     DemoDocumentExtractor,
     ResendOtpSender,
     SystemClock,
@@ -95,6 +95,7 @@ class UserRepository(Protocol):
         phone: str,
         password_hash: str,
         pin_hash: str,
+        pin_encrypted: str,
         kyc_case_id: str,
         session: AsyncIOMotorClientSession | None = None,
     ) -> None: ...
@@ -108,6 +109,10 @@ class PasswordHasher(Protocol):
     def hash(self, secret: str) -> str: ...
 
     def verify(self, secret: str, hashed: str) -> bool: ...
+
+
+class PinCipher(Protocol):
+    def encrypt(self, plaintext: str, associated_data: str) -> str: ...
 
 
 class OtpSender(Protocol):
@@ -128,6 +133,7 @@ class OnboardingService:
         cases: KycCaseRepository,
         users: UserRepository,
         hasher: PasswordHasher,
+        cipher: PinCipher,
         otp_sender: OtpSender,
         extractor: DocumentExtractor,
         clock: Clock,
@@ -136,6 +142,7 @@ class OnboardingService:
         self._cases = cases
         self._users = users
         self._hasher = hasher
+        self._cipher = cipher
         self._otp = otp_sender
         self._extractor = extractor
         self._clock = clock
@@ -374,6 +381,7 @@ class OnboardingService:
             phone=case.contact.phone,
             password_hash=self._hasher.hash(password),
             pin_hash=self._hasher.hash(pin),
+            pin_encrypted=self._cipher.encrypt(pin, user_id),
             kyc_case_id=case.id,
             session=session,
         )
@@ -405,6 +413,7 @@ def get_onboarding_service() -> OnboardingService:
         cases=MongoKycCaseRepository(),
         users=MongoUserRepository(),
         hasher=Argon2idHasher(),
+        cipher=AesGcmPinCipher(settings.pin_encryption_key),
         otp_sender=ResendOtpSender(settings),
         extractor=DemoDocumentExtractor(),
         clock=SystemClock(),

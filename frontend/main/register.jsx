@@ -14,7 +14,7 @@
     return { [error.details.field]: error.message };
   }
 
-  function RegisterPage() {
+  function RegisterPage({ onSwitchToSignIn }) {
     const [caseId, setCaseId] = useState(null);
     const [step, setStep] = useState(1);
     const [extracted, setExtracted] = useState(null);
@@ -112,9 +112,11 @@
           >
             {t("screenTag")}
           </span>
-          <a href="/app/" title={t("signInSoon")} style={{ marginLeft: "auto", fontSize: 13 }}>
-            {t("backToSignIn")}
-          </a>
+          <div style={{ marginLeft: "auto" }}>
+            <UI.Button type="button" onClick={onSwitchToSignIn}>
+              {t("backToSignIn")}
+            </UI.Button>
+          </div>
         </header>
 
         <div className="onb-grid">
@@ -160,7 +162,9 @@
               />
             ) : null}
 
-            {done && result ? <ONB.DoneStep result={result} /> : null}
+            {done && result ? (
+              <ONB.DoneStep result={result} onSignIn={onSwitchToSignIn} />
+            ) : null}
 
             <UI.ErrorNote error={error} />
           </main>
@@ -174,6 +178,4 @@
   }
 
   ONB.RegisterPage = RegisterPage;
-
-  ReactDOM.createRoot(document.getElementById("root")).render(<RegisterPage />);
 })();

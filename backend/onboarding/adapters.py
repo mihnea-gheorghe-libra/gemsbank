@@ -3,9 +3,6 @@ import hashlib
 import logging
 from datetime import date, datetime, timezone
 
-from argon2 import PasswordHasher as Argon2PasswordHasher
-from argon2.exceptions import VerificationError, VerifyMismatchError
-
 from backend.config import Settings
 from backend.helpers.context import log_event
 from backend.helpers.errors import DeliveryError, ValidationError
@@ -35,20 +32,6 @@ MINOR_IN_ONE_OF = 8
 class SystemClock:
     def now(self) -> datetime:
         return datetime.now(timezone.utc)
-
-
-class Argon2idHasher:
-    def __init__(self) -> None:
-        self._hasher = Argon2PasswordHasher()
-
-    def hash(self, secret: str) -> str:
-        return self._hasher.hash(secret)
-
-    def verify(self, secret: str, hashed: str) -> bool:
-        try:
-            return self._hasher.verify(hashed, secret)
-        except (VerifyMismatchError, VerificationError):
-            return False
 
 
 def _cnp_gender_digit(birth_year: int, is_female: bool) -> int:

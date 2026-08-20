@@ -43,6 +43,10 @@ class Actor(BaseModel):
         return cls(kind="system", id="public-onboarding")
 
     @classmethod
+    def public_auth(cls) -> "Actor":
+        return cls(kind="system", id="public-auth")
+
+    @classmethod
     def user(cls, user_id: str) -> "Actor":
         return cls(kind="user", id=user_id)
 

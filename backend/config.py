@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     resend_api_key: str | None = None
     otp_from_email: str = "onboarding@resend.dev"
 
+    pin_encryption_key: str | None = None
+
     web_dir: str = str(_REPO_ROOT / "frontend")
 
     otp_ttl_seconds: int = 300
@@ -21,7 +23,13 @@ class Settings(BaseSettings):
     otp_max_resends: int = 3
     otp_max_attempts: int = 5
 
+    reset_code_ttl_seconds: int = 600
+
     minimum_age_years: int = 18
+
+    sign_in_max_failures: int = 5
+    sign_in_lockout_seconds: int = 900
+    reveal_max_failures: int = 5
 
 
 settings = Settings()
