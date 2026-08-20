@@ -67,13 +67,13 @@
 .dash-topbar-title { font-family: var(--font-heading); font-size: 19px; line-height: 1.1; color: var(--color-heading); }
 .dash-topbar-tag { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; opacity: 0.5; }
 .dash-search { margin-left: auto; max-width: 340px; width: 100%; }
-.dash-bell { position: relative; }
-.dash-bell-dot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-lime-600); display: block; }
 .dash-avatar {
+  position: relative;
   width: 34px; height: 34px; border-radius: 50%; flex: none;
   background: var(--color-plum-900); color: var(--color-lime-100);
   display: grid; place-items: center; font-family: var(--font-heading); font-size: 13px;
 }
+.dash-avatar-dot { position: absolute; top: -2px; right: -2px; width: 9px; height: 9px; border-radius: 50%; background: var(--color-lime-600); border: 2px solid var(--color-bg); display: block; }
 
 .dash-content { flex: 1; overflow: auto; padding: 26px; }
 

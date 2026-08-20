@@ -60,13 +60,9 @@
           {ttsOn ? t("dashboard.readAloudOn") : t("dashboard.readAloudOff")}
         </UI.Button>
 
-        <button type="button" className="btn btn-secondary dash-bell" aria-label={t("dashboard.notifications")}>
-          <span aria-hidden="true">3</span>
-          <span className="dash-bell-dot" aria-hidden="true" />
-        </button>
-
         <div className="dash-avatar" aria-hidden="true">
           {(username || "").slice(0, 2).toUpperCase()}
+          <span className="dash-avatar-dot" aria-hidden="true" />
         </div>
       </header>
     );
