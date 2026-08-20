@@ -22,7 +22,7 @@
     return { [error.details.field]: error.message };
   }
 
-  AUTH.SignInPage = function SignInPage({ onSwitchToRegister }) {
+  AUTH.SignInPage = function SignInPage({ onSwitchToRegister, onSignedIn }) {
     const [view, setView] = useState(VIEWS.SIGN_IN);
     const [session, setSession] = useState(null);
     const [pin, setPin] = useState(null);
@@ -50,6 +50,7 @@
     }, []);
 
     const resetToSignIn = useCallback(() => {
+      GEMS.session.clear();
       setPin(null);
       setPinMissing(false);
       setRecovery(null);
@@ -61,6 +62,7 @@
     const handleSignIn = (form) =>
       run(async () => {
         const response = await api.login(form.username, form.pin);
+        GEMS.session.set(response.sessionToken);
         setSession(response);
         setPin(null);
         setPinMissing(false);
@@ -70,6 +72,7 @@
     const handleReveal = (form) =>
       run(async () => {
         const response = await api.revealPin(form.username, form.password);
+        GEMS.session.set(response.sessionToken);
         setSession(response);
         setPin(response.pin);
         setView(VIEWS.WELCOME);
@@ -91,6 +94,7 @@
     const handleNewPassword = (form) =>
       run(async () => {
         const response = await api.completePasswordReset(recovery.recoveryCaseId, form);
+        GEMS.session.set(response.sessionToken);
         setSession(response);
         setPin(response.pin || null);
         setPinMissing(!response.pin);
@@ -162,6 +166,9 @@
               pin={pin}
               pinMissing={pinMissing}
               onSignOut={resetToSignIn}
+              onOpenPayments={
+                GEMS.session.has() ? () => onSignedIn(session.username) : null
+              }
             />
           ) : null}
 

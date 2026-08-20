@@ -30,6 +30,20 @@
     return body;
   }
 
+  let sessionToken = null;
+
+  GEMS.session = {
+    set(token) {
+      sessionToken = token || null;
+    },
+    clear() {
+      sessionToken = null;
+    },
+    has() {
+      return Boolean(sessionToken);
+    },
+  };
+
   async function send(path, { method = "GET", json, form } = {}) {
     const headers = {};
     let body;
@@ -43,9 +57,23 @@
     if (method !== "GET") {
       headers["Idempotency-Key"] = newIdempotencyKey();
     }
+    if (sessionToken) {
+      headers["Authorization"] = "Bearer " + sessionToken;
+    }
 
     const response = await fetch(path, { method, headers, body });
     return parse(response);
+  }
+
+  function query(params) {
+    const search = new URLSearchParams();
+    Object.keys(params || {}).forEach((key) => {
+      if (params[key] !== null && params[key] !== undefined && params[key] !== "") {
+        search.set(key, params[key]);
+      }
+    });
+    const text = search.toString();
+    return text ? "?" + text : "";
   }
 
   GEMS.ApiError = ApiError;
@@ -75,5 +103,17 @@
       send("/auth/password/reset/" + id + "/verify", { method: "POST", json: { code } }),
     completePasswordReset: (id, payload) =>
       send("/auth/password/reset/" + id + "/complete", { method: "POST", json: payload }),
+    logout: () => send("/auth/logout", { method: "POST" }),
+
+    listAccounts: () => send("/accounts"),
+    paymentsSummary: () => send("/payments/summary"),
+    listTransactions: (params) => send("/payments/transactions" + query(params)),
+    listPending: () => send("/payments/pending"),
+    listBeneficiaries: () => send("/payments/beneficiaries"),
+    addBeneficiary: (name, iban) =>
+      send("/payments/beneficiaries", { method: "POST", json: { name, iban } }),
+    transfer: (payload) => send("/payments/transfers", { method: "POST", json: payload }),
+    signTransfer: (id, code) =>
+      send("/payments/transfers/" + id + "/sign", { method: "POST", json: { code } }),
   };
 })();

@@ -2,6 +2,7 @@ import base64
 import hashlib
 import logging
 import os
+import secrets
 
 from argon2 import PasswordHasher as Argon2PasswordHasher
 from argon2.exceptions import VerificationError, VerifyMismatchError
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 NONCE_BYTES = 12
 KEY_BYTES = 32
+TOKEN_BYTES = 32
 DEV_KEY_SEED = b"gems-bank-demo-pin-key"
 
 
@@ -35,6 +37,14 @@ class Argon2idHasher:
             return self._hasher.verify(hashed, secret)
         except (VerifyMismatchError, VerificationError):
             return False
+
+
+def new_opaque_token() -> str:
+    return secrets.token_urlsafe(TOKEN_BYTES)
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def _resolve_key(configured: str | None) -> bytes:

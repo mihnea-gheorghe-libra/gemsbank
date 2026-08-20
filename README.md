@@ -4,14 +4,17 @@ Web banking app for the EU/RO market. **Demo system**: no licence, no real funds
 no real PII, no real card data. Built as a correct money core plus explicit seams for a future
 multi-agent AI layer.
 
-Two working screens, toggled by a button in the top bar:
+Three working screens:
 
 - **Sign in** — username + 6-digit PIN, with PIN recovery and password reset.
 - **Create account** — the four-step onboarding wizard (ID document → contact → email code →
-  credentials).
+  credentials). Completing it opens three accounts and posts a demo opening balance.
+- **Payments & transfers** — accounts with derived balances, the movements table (filter,
+  search, cursor pagination), pending signatures, and the new-payment flow.
 
-After a successful sign in you land on a placeholder welcome screen. There is no session token
-yet: the dashboard and the `sessions` collection arrive together, later.
+Sign in mints a **session token** (`sessions` collection). The frontend holds it in memory and
+sends it as `Authorization: Bearer …`; a page refresh signs you out, which is the intended
+behaviour while there is no refresh-token rotation (`PROMPT.md` §6: never `localStorage`).
 
 ## Run it
 
@@ -45,6 +48,11 @@ MSYS_NO_PATHCONV=1 docker cp ops/001_onboarding_kyc_schema.js gems-mongo:/tmp/m.
 MSYS_NO_PATHCONV=1 docker exec gems-mongo mongosh --quiet /tmp/m.js
 ```
 
+`004_payments_ledger_schema.js` is not optional. It creates `sessions`, `accounts`,
+`journalTransactions`, `payments`, `beneficiaries` and the empty `mandates`, and it installs the
+validator that makes the database refuse an unbalanced journal transaction. Without it the app
+runs and the ledger loses its second line of defence.
+
 Indexes are not migrations — `backend/database/mongo.py` creates them at startup.
 
 ## Structure
@@ -66,9 +74,24 @@ backend/
     adapters.py      clock, document extractor, OTP email
   auth/
     service.py       commands, ports, handlers
-    credentials.py   the AuthUser and RecoveryCase aggregates and their transitions
+    credentials.py   the AuthUser, Session and RecoveryCase aggregates and their transitions
     validation.py    username, PIN shape, new-password rules
     adapters.py      clock, reset-code email
+  ledger/            the money core — no public HTTP surface except read models
+    journal.py       JournalTransaction + JournalEntry; the balanced, append-only aggregate
+    service.py       post_transaction — the one money door — plus balance and movement reads
+    validation.py    ISO 4217 codes, minor-unit bounds
+    adapters.py      clock
+  accounts/
+    account.py       the Account aggregate and its guards
+    service.py       open, resolve by IBAN, list with balances derived from the ledger
+    validation.py    IBAN mod-97 check and generation
+    adapters.py      clock, the starter-account list
+  payments/
+    service.py       commands, ports, handlers, read models
+    payment.py       the Payment state machine and the Beneficiary aggregate
+    validation.py    reference, counterparty, category, cursor codec
+    adapters.py      clock, limit policy, step-up stub, Verification-of-Payee stub
   helpers/
     context.py       ids, Actor, correlation id, JSON logging
     crypto.py        Argon2id hasher, AES-GCM PIN cipher
@@ -79,9 +102,12 @@ frontend/            no build step; index.html script order is the module graph
   main/app.jsx       chooses sign in vs register, mounts the app
   main/signin.jsx    sign in, PIN recovery, password reset, welcome
   main/register.jsx  onboarding page state and flow orchestration
-  components/        ui.jsx (primitives) · rails.jsx (step rail, agent panel) · steps.jsx ·
-                     auth.jsx (sign-in forms, PIN panel, welcome)
-  helpers/           api.js (the only fetch caller) · i18n.js · messages.js (en + ro)
+  main/payments.jsx  payments page state, loading and flow orchestration
+  components/        ui.jsx (primitives, incl. Money) · rails.jsx (step rail, agent panel) ·
+                     steps.jsx · auth.jsx (sign-in forms, PIN panel, welcome) ·
+                     payments.jsx (account strip, pending panel, table, dialogs)
+  helpers/           api.js (the only fetch caller, holds the session token) · i18n.js ·
+                     messages.js (en + ro)
   styles/            tokens.css (the only place a hex value may appear) · app.css
 
 design/              Claude Design export — source of truth for tokens
@@ -114,6 +140,77 @@ anything a replay must not hand out twice.
 Failed authentication is the one place a handler writes outside the command transaction: the
 attempt counter is saved with no session before the error propagates, because the rollback would
 otherwise erase the evidence of the failure. `onboarding` does the same for OTP attempts.
+
+## How money moves
+
+One collection, `journalTransactions`, holds the whole ledger. Each document is one transaction
+in one currency with an embedded `entries` array, and it is written by exactly one function —
+`ledger.post_transaction`, called only from `payments`.
+
+Entry amounts are **signed integer minor units, from the account holder's point of view**: the
+account that receives gets `+`, the account that pays gets `−`. A customer balance is therefore
+the plain sum of that account's entries, and it is always derived — there is no balance column
+anywhere. House accounts (`house:settlement:RON`, `house:fee_revenue:*`, `house:suspense:*`) are
+chart-of-accounts constants, not rows in `accounts`; the settlement account carries the negative
+counter-leg of every demo deposit.
+
+The balanced-transaction rule is enforced **by Mongo**, not only by Python. The validator in
+`ops/004_payments_ledger_schema.js` carries three `$expr` clauses: entries sum to zero, at least
+two entries, no entry for zero. Verified by hand:
+
+```
+ACCEPTED  balanced pair          REJECTED  unbalanced pair
+ACCEPTED  three legs balanced    REJECTED  single leg
+                                 REJECTED  zero-amount leg
+```
+
+The journal is append-only: `MongoJournalRepository` has `append` and reads, and no update path.
+Do not add one — corrections are reversal entries (`TransactionKind.REVERSAL`, unused so far).
+
+A payment is a separate aggregate with its own state machine, so the ledger stays ignorant of
+intent:
+
+```
+draft ──(policy: allow)────────────────────────────────► posted
+  │                                                        ▲
+  └──(policy: require_approval)─► awaiting_signature ──────┘
+                                        │  (sign with the step-up code)
+  └──────────────────────────────► rejected
+```
+
+`pending` exists in the enum and is unreachable in v0. It is where SEPA/SCT Inst lands the day
+external rails are connected — the state machine accommodates them, `PROMPT.md` §4.
+
+The order inside `payments.transfer` is the one §4 asks for: validate → ownership and currency
+guards → balance → limits/policy → Verification-of-Payee → optional step-up → `post_transaction`
+→ outbox event. Every step above the arrow can refuse without writing anything.
+
+The three seams that were empty before now carry traffic:
+
+- **Policy** (`StaticLimitPolicy`) returns `allow | deny | require_approval` from a per-payment
+  limit, a rolling daily limit, and a step-up threshold. `mandates` exists as an empty collection;
+  agent mandates will be evaluated through this same interface.
+- **Step-up / SCA** (`DevCodeStepUp`) logs the challenge and accepts one fixed dev code. Anything
+  over `PAYMENT_STEP_UP_THRESHOLD_MINOR` (default 1.000,00) goes through it.
+- **Verification of Payee** (`InternalPayeeVerifier`) compares the name you typed against the
+  account holder's name. `no_match` refuses the payment until the caller re-sends it with
+  `acknowledgePayeeMismatch`.
+
+Signing re-checks ownership, account status and balance before posting. A payment approved
+yesterday cannot post today against money that is no longer there.
+
+### Accounts appear during onboarding
+
+Completing onboarding opens **RON current, RON savings, EUR savings** and posts
+`DEMO_OPENING_BALANCE_MINOR` (default 2.500,00 RON) into the current account from the house
+settlement account. It is a real double-entry posting, not a seeded number, which is why it goes
+through `payments` — rule 5 says only payments calls the money door.
+
+That is a demo convenience and it is the one place the code does something a bank would not.
+Set `DEMO_OPENING_BALANCE_MINOR=0` to open the accounts empty.
+
+Multi-currency is at the schema level only. An account holds exactly one currency and a transfer
+must be same-currency; RON→EUR is refused with a clear message. There is no FX in v0.
 
 ## The recoverable PIN — a deliberate, documented weakening
 
@@ -150,6 +247,37 @@ Other tradeoffs worth knowing:
 - Sign-in failures and reveal failures share one counter and one lockout on the user record
   (`signIn.failures`, `signIn.lockedUntil`). Five failures locks the account for 15 minutes,
   and a correct credential is refused while locked.
+
+## What the payments screen does not do yet
+
+Present in the interface, deliberately inert, each marked "coming soon" rather than removed
+(`PROMPT.md` §4: no dead links):
+
+| Control | Why it is not built |
+|---|---|
+| Split bill | Not in `PROMPT.md` §4 |
+| Scan QR | Not in §4 |
+| Read aloud | Text-to-speech is a settings feature; `/settings` is unbuilt |
+| Ask GEMS | The entire agent layer is out of scope by §7 |
+| Cards filter | Cards are explicitly not in v0 |
+
+The rest of the design archive — dashboard, portfolio, cards, analytics, settings, and the left
+navigation rail that carries them — is unbuilt. This release renders the payments screen on its
+own chrome; the rail arrives with the second screen that needs it.
+
+Also missing, and worth knowing:
+
+- **Sessions do not refresh.** One opaque token, SHA-256 hashed at rest, TTL from
+  `SESSION_TTL_SECONDS`, revoked on sign-out and swept by a Mongo TTL index. No rotation, no
+  refresh token, no "remember me". A reload signs you out.
+- **The daily limit resets at UTC midnight**, not in the customer's timezone.
+- **`GET /payments/transactions` returns one row per journal entry you own**, so a transfer
+  between two of your own accounts shows twice — once out, once in. That is the ledger telling
+  the truth rather than the UI hiding a leg.
+- **No seed script.** `PROMPT.md` §4 asks for one with two demo users and ~30 transactions;
+  registering through the wizard is currently the only way to get data.
+- **No automated tests.** The invariants in this section were verified by hand against a running
+  stack. `PROMPT.md`'s definition of done wants them in `pytest`; they are not there yet.
 
 ## Adding a feature
 

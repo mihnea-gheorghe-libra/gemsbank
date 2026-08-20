@@ -50,12 +50,24 @@ def idempotency_collection() -> AsyncIOMotorCollection:
     return get_db()["idempotencyKeys"]
 
 
+def sessions_collection() -> AsyncIOMotorCollection:
+    return get_db()["sessions"]
+
+
 def accounts_collection() -> AsyncIOMotorCollection:
     return get_db()["accounts"]
 
 
-def transactions_collection() -> AsyncIOMotorCollection:
-    return get_db()["transactions"]
+def journal_collection() -> AsyncIOMotorCollection:
+    return get_db()["journalTransactions"]
+
+
+def payments_collection() -> AsyncIOMotorCollection:
+    return get_db()["payments"]
+
+
+def beneficiaries_collection() -> AsyncIOMotorCollection:
+    return get_db()["beneficiaries"]
 
 
 async def ensure_indexes() -> None:
@@ -83,4 +95,39 @@ async def ensure_indexes() -> None:
 
     await outbox_collection().create_index(
         [("dispatchedAt", ASCENDING), ("occurredAt", ASCENDING)], name="ix_undispatched"
+    )
+
+    await sessions_collection().create_index(
+        [("tokenHash", ASCENDING)], unique=True, name="uq_token"
+    )
+    await sessions_collection().create_index([("userId", ASCENDING)], name="ix_user")
+    await sessions_collection().create_index(
+        [("expiresAt", ASCENDING)], expireAfterSeconds=0, name="ttl_expires"
+    )
+
+    await accounts_collection().create_index([("iban", ASCENDING)], unique=True, name="uq_iban")
+    await accounts_collection().create_index(
+        [("userId", ASCENDING), ("openedAt", ASCENDING)], name="ix_user_opened"
+    )
+
+    await journal_collection().create_index(
+        [("entries.accountId", ASCENDING), ("postedAt", DESCENDING)], name="ix_account_posted"
+    )
+    await journal_collection().create_index(
+        [("postedAt", DESCENDING), ("_id", DESCENDING)], name="ix_cursor"
+    )
+    await journal_collection().create_index(
+        [("correlationId", ASCENDING)], name="ix_correlation"
+    )
+
+    await payments_collection().create_index(
+        [("userId", ASCENDING), ("status", ASCENDING), ("createdAt", DESCENDING)],
+        name="ix_user_status",
+    )
+    await payments_collection().create_index(
+        [("journalTransactionId", ASCENDING)], name="ix_journal"
+    )
+
+    await beneficiaries_collection().create_index(
+        [("userId", ASCENDING), ("iban", ASCENDING)], unique=True, name="uq_user_iban"
     )

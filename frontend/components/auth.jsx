@@ -332,7 +332,7 @@
     );
   };
 
-  AUTH.Welcome = function Welcome({ username, pin, pinMissing, onSignOut }) {
+  AUTH.Welcome = function Welcome({ username, pin, pinMissing, onSignOut, onOpenPayments }) {
     return (
       <div className="onb-fade">
         <UI.Plate style={{ padding: 24, maxWidth: 480, background: "var(--color-surface)" }}>
@@ -356,6 +356,11 @@
         ) : null}
 
         <div className="auth-actions">
+          {onOpenPayments ? (
+            <UI.Button type="button" variant="primary" onClick={onOpenPayments}>
+              {t("auth.goToPayments")}
+            </UI.Button>
+          ) : null}
           <UI.Button type="button" variant="ghost" onClick={onSignOut}>
             {t("auth.signOut")}
           </UI.Button>
