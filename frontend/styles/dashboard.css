@@ -150,8 +150,29 @@
 .dash-card-kind { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.16em; }
 .dash-card-num { font-family: var(--font-mono); font-size: 15px; letter-spacing: 0.18em; }
 .dash-card-meta { display: flex; justify-content: space-between; font-size: 11px; margin-top: 8px; }
+.dash-card-date { font-family: var(--font-mono); font-size: 10px; opacity: 0.55; margin-top: 4px; }
 .dash-settings-list { display: flex; flex-direction: column; gap: 8px; }
 .dash-settings-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+
+/* ── card flip (Show details → CVV on the back) ─────────────── */
+.dash-card-flip { aspect-ratio: 1.6; perspective: 1200px; }
+.dash-card-flip-inner {
+  position: relative; width: 100%; height: 100%;
+  transition: transform 0.6s ease; transform-style: preserve-3d;
+}
+.dash-card-flip.is-flipped .dash-card-flip-inner { transform: rotateY(180deg); }
+.dash-card-face-front, .dash-card-face-back {
+  position: absolute; inset: 0;
+  backface-visibility: hidden; -webkit-backface-visibility: hidden;
+}
+.dash-card-face-front { margin: 0; }
+.dash-card-face-back {
+  transform: rotateY(180deg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  background: var(--color-plum-900); color: var(--color-lime-100);
+  border-radius: var(--radius-lg);
+}
+.dash-card-cvv { font-family: var(--font-mono); font-size: 22px; letter-spacing: 0.3em; }
 
 /* ── analytics ───────────────────────────────────────────── */
 .dash-analytics-cols { display: grid; grid-template-columns: 1fr 1.3fr; gap: 20px; }
@@ -213,6 +234,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .dash-agent-dot, .dash-msg { animation: none; }
+  .dash-card-flip-inner { transition: none; }
 }
 
 @media (max-width: 1100px) {

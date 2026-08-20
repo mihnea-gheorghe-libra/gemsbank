@@ -75,5 +75,29 @@
       send("/auth/password/reset/" + id + "/verify", { method: "POST", json: { code } }),
     completePasswordReset: (id, payload) =>
       send("/auth/password/reset/" + id + "/complete", { method: "POST", json: payload }),
+
+    listCards: (username) => send("/cards?username=" + encodeURIComponent(username)),
+    issueVirtualCard: (username) =>
+      send("/cards/virtual", { method: "POST", json: { username } }),
+    freezeCard: (username, cardId) =>
+      send("/cards/" + cardId + "/freeze", { method: "POST", json: { username } }),
+    unfreezeCard: (username, cardId) =>
+      send("/cards/" + cardId + "/unfreeze", { method: "POST", json: { username } }),
+    blockCard: (username, cardId) =>
+      send("/cards/" + cardId + "/block", { method: "POST", json: { username } }),
+    revealCardPin: (username, cardId) =>
+      send("/cards/" + cardId + "/pin/reveal", { method: "POST", json: { username } }),
+    revealCardDetails: (username, cardId) =>
+      send("/cards/" + cardId + "/details/reveal", { method: "POST", json: { username } }),
+    setCardAtmLimit: (username, cardId, limitMinor) =>
+      send("/cards/" + cardId + "/limits/atm", {
+        method: "POST",
+        json: { username, limitMinor },
+      }),
+    setCardOnlineLimit: (username, cardId, limitMinor) =>
+      send("/cards/" + cardId + "/limits/online", {
+        method: "POST",
+        json: { username, limitMinor },
+      }),
   };
 })();

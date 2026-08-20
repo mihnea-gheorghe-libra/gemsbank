@@ -4,6 +4,7 @@
   const DASH = GEMS.dashboardUi;
   const SCR = GEMS.dashboardScreens;
   const t = GEMS.i18n.t;
+  const api = GEMS.api;
   const DATA = GEMS.dashboardData;
   const { useState, useCallback, useEffect } = React;
 
@@ -43,9 +44,17 @@
     const [filter, setFilter] = useState("all");
     const [range, setRange] = useState("quarter");
     const [lang, setLang] = useState(GEMS.i18n.locale);
-    const [cardIndex, setCardIndex] = useState(0);
-    const [cardFrozen, setCardFrozen] = useState(false);
+    const [cards, setCards] = useState([]);
+    const [cardsLoaded, setCardsLoaded] = useState(false);
+    const [cardsLoading, setCardsLoading] = useState(false);
+    const [cardsError, setCardsError] = useState(null);
+    const [cardIssuing, setCardIssuing] = useState(false);
+    const [cardBusy, setCardBusy] = useState(false);
+    const [selectedCardId, setSelectedCardId] = useState(null);
+    const [cardPin, setCardPin] = useState(null);
     const [pinShown, setPinShown] = useState(false);
+    const [cardCvv, setCardCvv] = useState(null);
+    const [detailsShown, setDetailsShown] = useState(false);
     const [micOn, setMicOn] = useState(false);
     const [draft, setDraft] = useState("");
     const [messages, setMessages] = useState([
@@ -100,6 +109,163 @@
       setMessages((list) => list.concat([{ role: "ai", kind: "text", text: t("dashboard.chat.txConfirmedNote") }]));
     }, []);
 
+    const applyCard = useCallback((updated) => {
+      setCards((list) => list.map((card) => (card.cardId === updated.cardId ? updated : card)));
+    }, []);
+
+    const loadCards = useCallback(async () => {
+      setCardsLoading(true);
+      setCardsError(null);
+      try {
+        const response = await api.listCards(username);
+        setCards(response.cards);
+        setCardsLoaded(true);
+        setSelectedCardId((current) =>
+          current && response.cards.some((card) => card.cardId === current)
+            ? current
+            : response.cards.length
+              ? response.cards[0].cardId
+              : null
+        );
+      } catch (err) {
+        setCardsError(err);
+      } finally {
+        setCardsLoading(false);
+      }
+    }, [username]);
+
+    useEffect(() => {
+      if (screen === "cards" && !cardsLoaded && !cardsLoading) {
+        loadCards();
+      }
+    }, [screen, cardsLoaded, cardsLoading, loadCards]);
+
+    const selectCard = useCallback((cardId) => {
+      setSelectedCardId(cardId);
+      setPinShown(false);
+      setCardPin(null);
+      setDetailsShown(false);
+      setCardCvv(null);
+    }, []);
+
+    const issueCard = useCallback(async () => {
+      setCardIssuing(true);
+      setCardsError(null);
+      try {
+        const card = await api.issueVirtualCard(username);
+        setCards((list) => list.concat([card]));
+        selectCard(card.cardId);
+      } catch (err) {
+        setCardsError(err);
+      } finally {
+        setCardIssuing(false);
+      }
+    }, [username, selectCard]);
+
+    const freezeCard = useCallback(async () => {
+      if (!selectedCardId) return;
+      setCardBusy(true);
+      setCardsError(null);
+      try {
+        applyCard(await api.freezeCard(username, selectedCardId));
+      } catch (err) {
+        setCardsError(err);
+      } finally {
+        setCardBusy(false);
+      }
+    }, [username, selectedCardId, applyCard]);
+
+    const unfreezeCard = useCallback(async () => {
+      if (!selectedCardId) return;
+      setCardBusy(true);
+      setCardsError(null);
+      try {
+        applyCard(await api.unfreezeCard(username, selectedCardId));
+      } catch (err) {
+        setCardsError(err);
+      } finally {
+        setCardBusy(false);
+      }
+    }, [username, selectedCardId, applyCard]);
+
+    const blockCard = useCallback(async () => {
+      if (!selectedCardId) return;
+      if (!window.confirm(t("dashboard.cards.confirmBlock"))) return;
+      setCardBusy(true);
+      setCardsError(null);
+      try {
+        applyCard(await api.blockCard(username, selectedCardId));
+      } catch (err) {
+        setCardsError(err);
+      } finally {
+        setCardBusy(false);
+      }
+    }, [username, selectedCardId, applyCard]);
+
+    const toggleCardPin = useCallback(async () => {
+      if (!selectedCardId) return;
+      if (pinShown) {
+        setPinShown(false);
+        return;
+      }
+      setCardBusy(true);
+      setCardsError(null);
+      try {
+        const result = await api.revealCardPin(username, selectedCardId);
+        setCardPin(result.pin);
+        setPinShown(true);
+      } catch (err) {
+        setCardsError(err);
+      } finally {
+        setCardBusy(false);
+      }
+    }, [username, selectedCardId, pinShown]);
+
+    const toggleCardDetails = useCallback(async () => {
+      if (!selectedCardId) return;
+      if (detailsShown) {
+        setDetailsShown(false);
+        return;
+      }
+      setCardBusy(true);
+      setCardsError(null);
+      try {
+        const result = await api.revealCardDetails(username, selectedCardId);
+        setCardCvv(result.cvv);
+        setDetailsShown(true);
+      } catch (err) {
+        setCardsError(err);
+      } finally {
+        setCardBusy(false);
+      }
+    }, [username, selectedCardId, detailsShown]);
+
+    const setCardAtmLimit = useCallback(async (minor) => {
+      if (!selectedCardId) return;
+      setCardBusy(true);
+      setCardsError(null);
+      try {
+        applyCard(await api.setCardAtmLimit(username, selectedCardId, minor));
+      } catch (err) {
+        setCardsError(err);
+      } finally {
+        setCardBusy(false);
+      }
+    }, [username, selectedCardId, applyCard]);
+
+    const setCardOnlineLimit = useCallback(async (minor) => {
+      if (!selectedCardId) return;
+      setCardBusy(true);
+      setCardsError(null);
+      try {
+        applyCard(await api.setCardOnlineLimit(username, selectedCardId, minor));
+      } catch (err) {
+        setCardsError(err);
+      } finally {
+        setCardBusy(false);
+      }
+    }, [username, selectedCardId, applyCard]);
+
     return (
       <div className="dash-shell">
         <DASH.Sidebar screen={screen} onNavigate={navigate} onSignOut={onSignOut} />
@@ -131,12 +297,25 @@
             {screen === "portfolio" ? <SCR.PortfolioScreen /> : null}
             {screen === "cards" ? (
               <SCR.CardsScreen
-                selectedIndex={cardIndex}
-                onSelect={(index) => { setCardIndex(index); setPinShown(false); }}
-                frozen={cardFrozen}
-                onToggleFreeze={() => setCardFrozen((value) => !value)}
+                cards={cards}
+                loading={cardsLoading && !cardsLoaded}
+                error={cardsError}
+                selectedCardId={selectedCardId}
+                onSelect={selectCard}
+                onIssue={issueCard}
+                issuing={cardIssuing}
+                busy={cardBusy}
+                onFreeze={freezeCard}
+                onUnfreeze={unfreezeCard}
+                onBlock={blockCard}
+                pin={cardPin}
                 pinShown={pinShown}
-                onShowPin={() => setPinShown((value) => !value)}
+                onTogglePin={toggleCardPin}
+                cvv={cardCvv}
+                detailsShown={detailsShown}
+                onToggleDetails={toggleCardDetails}
+                onSetAtmLimit={setCardAtmLimit}
+                onSetOnlineLimit={setCardOnlineLimit}
               />
             ) : null}
             {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} /> : null}

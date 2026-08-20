@@ -45,13 +45,6 @@
       { num: "02", who: "Chirie august", noteKey: "rent", amount: "2.400,00" },
     ],
 
-    cards: [
-      { kindKey: "physicalDebit", num: "•••• •••• •••• 4127", owner: "A. POP", exp: "09/29", state: "active" },
-      { kindKey: "virtualMastercard", num: "•••• •••• •••• 3319", owner: "A. POP", exp: "04/28", state: "active" },
-      { kindKey: "virtualSingleUse", num: "•••• •••• •••• 7740", owner: "A. POP", exp: "08/26", state: "frozen" },
-      { kindKey: "physicalMetal", num: "•••• •••• •••• 1002", owner: "A. POP", exp: "12/30", state: "active" },
-    ],
-
     deposits: [
       { name: "Term deposit 12M", rate: "6,10%", due: "14.02.2027", value: "55.410,00" },
       { name: "EUR savings", rate: "2,25%", due: "—", value: "11.940,00" },

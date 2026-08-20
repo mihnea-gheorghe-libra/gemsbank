@@ -5,6 +5,7 @@
   const DASH = GEMS.dashboardUi;
   const t = GEMS.i18n.t;
   const DATA = GEMS.dashboardData;
+  const { useState, useEffect } = React;
 
   const QUICK_ACTIONS = [
     { num: "01", key: "transact", go: "payments" },
@@ -12,6 +13,39 @@
     { num: "03", key: "exchange", go: "portfolio" },
     { num: "04", key: "scanQr", go: "payments" },
   ];
+
+  const MONEY_FORMAT = new Intl.NumberFormat("ro-RO", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  function formatMinor(minor) {
+    return MONEY_FORMAT.format(minor / 100);
+  }
+
+  function kindToI18nKey(kind) {
+    return kind.replace(/_([a-z])/g, (match, letter) => letter.toUpperCase());
+  }
+
+  function formatExpiry(iso) {
+    if (!iso) return "";
+    const [year, month] = iso.split("-");
+    return month + "/" + year.slice(2);
+  }
+
+  function useLiveDate() {
+    const [now, setNow] = useState(() => new Date());
+    useEffect(() => {
+      const id = setInterval(() => setNow(new Date()), 60000);
+      return () => clearInterval(id);
+    }, []);
+    return now;
+  }
+
+  function formatCardDate(date) {
+    const locale = GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB";
+    return new Intl.DateTimeFormat(locale, { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+  }
 
   function TxTable({ rows, compact }) {
     return (
@@ -260,54 +294,236 @@
     );
   };
 
-  SCR.CardsScreen = function CardsScreen({ selectedIndex, onSelect, frozen, onToggleFreeze, pinShown, onShowPin }) {
-    const card = DATA.cards[selectedIndex];
+  function LimitRow({ label, minor, editing, onStart, onCancel, onSubmit, disabled }) {
+    const [draft, setDraft] = useState(() => formatMinor(minor));
+
+    if (editing) {
+      return (
+        <div className="dash-settings-row" style={{ alignItems: "flex-end", gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <UI.Field id={"limit-" + label} label={t("dashboard.cards.newLimitLabel")}>
+              <UI.TextInput
+                id={"limit-" + label}
+                inputMode="decimal"
+                autoFocus
+                defaultValue={formatMinor(minor)}
+                onChange={(event) => setDraft(event.target.value)}
+              />
+            </UI.Field>
+          </div>
+          <UI.Button type="button" variant="primary" disabled={disabled} onClick={() => onSubmit(draft)}>
+            {t("dashboard.cards.save")}
+          </UI.Button>
+          <UI.Button type="button" variant="secondary" onClick={onCancel}>
+            {t("dashboard.cards.cancel")}
+          </UI.Button>
+        </div>
+      );
+    }
+    return (
+      <UI.Button type="button" variant="secondary" style={{ justifyContent: "space-between" }} disabled={disabled} onClick={onStart}>
+        {label}
+      </UI.Button>
+    );
+  }
+
+  SCR.CardsScreen = function CardsScreen({
+    cards,
+    loading,
+    error,
+    selectedCardId,
+    onSelect,
+    onIssue,
+    issuing,
+    busy,
+    onFreeze,
+    onUnfreeze,
+    onBlock,
+    pin,
+    pinShown,
+    onTogglePin,
+    cvv,
+    detailsShown,
+    onToggleDetails,
+    onSetAtmLimit,
+    onSetOnlineLimit,
+  }) {
+    const [editingLimit, setEditingLimit] = useState(null);
+    const now = useLiveDate();
+    const card = cards.find((row) => row.cardId === selectedCardId) || null;
+    const disabled = busy || !card || card.state === "blocked";
+
+    function submitLimit(kind, raw) {
+      const normalized = raw.replace(",", ".").trim();
+      const value = Number(normalized);
+      if (!Number.isFinite(value) || value < 0) {
+        setEditingLimit(null);
+        return;
+      }
+      const minor = Math.round(value * 100);
+      setEditingLimit(null);
+      if (kind === "atm") onSetAtmLimit(minor);
+      else onSetOnlineLimit(minor);
+    }
+
     return (
       <div>
         <div className="dash-screen-head">
           <h3 style={{ margin: 0 }}>{t("dashboard.cards.title")}</h3>
-          <UI.Button type="button" variant="secondary">{t("dashboard.cards.issue")}</UI.Button>
+          <UI.Button type="button" variant="secondary" disabled={issuing} onClick={onIssue}>
+            {issuing ? t("dashboard.cards.issuing") : t("dashboard.cards.issue")}
+          </UI.Button>
         </div>
 
-        <div className="dash-cards-layout">
-          <div className="dash-cards-grid">
-            {DATA.cards.map((row, index) => (
-              <button key={index} type="button" className="dash-card-tile" onClick={() => onSelect(index)} aria-pressed={index === selectedIndex}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <span className="dash-card-kind">{t("dashboard.cards.kind." + row.kindKey)}</span>
-                  <UI.Tag variant="outline">{t("dashboard.cards.state." + row.state)}</UI.Tag>
-                </div>
-                <div>
-                  <div className="dash-card-num">{row.num}</div>
-                  <div className="dash-card-meta text-muted">
-                    <span>{row.owner}</span><span>{row.exp}</span>
+        <UI.ErrorNote error={error} />
+
+        {loading ? (
+          <p className="text-muted">{t("dashboard.cards.loading")}</p>
+        ) : cards.length === 0 ? (
+          <p className="text-muted">{t("dashboard.cards.empty")}</p>
+        ) : (
+          <div className="dash-cards-layout">
+            <div className="dash-cards-grid">
+              {cards.map((row) => {
+                const isSelected = row.cardId === selectedCardId;
+                const flipped = isSelected && detailsShown;
+                const front = (
+                  <div className="dash-card-tile" style={{ width: "100%", height: "100%" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <span className="dash-card-kind">{t("dashboard.cards.kind." + kindToI18nKey(row.kind))}</span>
+                      <UI.Tag variant="outline">{t("dashboard.cards.state." + row.state)}</UI.Tag>
+                    </div>
+                    <div>
+                      <div className="dash-card-num">{row.numberMasked}</div>
+                      <div className="dash-card-meta text-muted">
+                        <span>{row.owner}</span><span>{formatExpiry(row.expiresOn)}</span>
+                      </div>
+                      <div className="dash-card-date" aria-label={t("dashboard.cards.todayAria")}>
+                        {formatCardDate(now)}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))}
-          </div>
+                );
 
-          <UI.Plate className="elev-sm" style={{ padding: 16, alignSelf: "start", background: "var(--color-surface)" }}>
-            <UI.Kicker style={{ marginBottom: 6 }}>{t("dashboard.cards.quickSettings")}</UI.Kicker>
-            <div style={{ fontFamily: "var(--font-heading)", fontSize: 20, marginBottom: 12 }}>
-              {t("dashboard.cards.kind." + card.kindKey) + " " + card.num.slice(-4)}
+                if (isSelected) {
+                  return (
+                    <button
+                      key={row.cardId}
+                      type="button"
+                      className={"dash-card-flip" + (flipped ? " is-flipped" : "")}
+                      onClick={() => onSelect(row.cardId)}
+                      aria-pressed={isSelected}
+                    >
+                      <div className="dash-card-flip-inner">
+                        <div className="dash-card-face-front">{front}</div>
+                        <div className="dash-card-face-back">
+                          <div className="dash-card-kind">{t("dashboard.cards.showDetails")}</div>
+                          <div className="dash-card-cvv">
+                            {cvv ? t("dashboard.cards.cvvLabel", { cvv }) : "•••"}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                }
+
+                return (
+                  <button
+                    key={row.cardId}
+                    type="button"
+                    className="dash-card-tile"
+                    onClick={() => onSelect(row.cardId)}
+                    aria-pressed={isSelected}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <span className="dash-card-kind">{t("dashboard.cards.kind." + kindToI18nKey(row.kind))}</span>
+                      <UI.Tag variant="outline">{t("dashboard.cards.state." + row.state)}</UI.Tag>
+                    </div>
+                    <div>
+                      <div className="dash-card-num">{row.numberMasked}</div>
+                      <div className="dash-card-meta text-muted">
+                        <span>{row.owner}</span><span>{formatExpiry(row.expiresOn)}</span>
+                      </div>
+                      <div className="dash-card-date" aria-label={t("dashboard.cards.todayAria")}>
+                        {formatCardDate(now)}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-            <div className="dash-settings-list">
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "space-between" }} onClick={onToggleFreeze}>
-                {frozen ? t("dashboard.cards.unfreeze") : t("dashboard.cards.freeze")}
-              </UI.Button>
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "space-between" }} onClick={onShowPin}>
-                {pinShown ? t("dashboard.cards.pinValue") : t("dashboard.cards.showPin")}
-              </UI.Button>
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "space-between" }}>{t("dashboard.cards.atmLimit")}</UI.Button>
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "space-between" }}>{t("dashboard.cards.onlineLimit")}</UI.Button>
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "space-between", color: "var(--color-negative)" }}>{t("dashboard.cards.blockPermanently")}</UI.Button>
-            </div>
-            <div className="hr" />
-            <div className="text-muted" style={{ fontSize: 12 }}>{t("dashboard.cards.monthlySpend")}</div>
-            <div style={{ marginTop: 6 }}><DASH.ProgressBar pct={46} label={t("dashboard.cards.monthlySpend")} /></div>
-          </UI.Plate>
-        </div>
+
+            {card ? (
+              <UI.Plate className="elev-sm" style={{ padding: 16, alignSelf: "start", background: "var(--color-surface)" }}>
+                <UI.Kicker style={{ marginBottom: 6 }}>{t("dashboard.cards.quickSettings")}</UI.Kicker>
+                <div style={{ fontFamily: "var(--font-heading)", fontSize: 20, marginBottom: 12 }}>
+                  {t("dashboard.cards.kind." + kindToI18nKey(card.kind)) + " " + card.numberMasked.slice(-4)}
+                </div>
+                <div className="dash-settings-list">
+                  <UI.Button
+                    type="button"
+                    variant="secondary"
+                    style={{ justifyContent: "space-between" }}
+                    disabled={busy || card.state === "blocked"}
+                    onClick={onTogglePin}
+                  >
+                    {pinShown && pin ? t("dashboard.cards.pinLabel", { pin: pin.split("").join(" ") }) : t("dashboard.cards.showPin")}
+                  </UI.Button>
+                  <UI.Button
+                    type="button"
+                    variant="secondary"
+                    style={{ justifyContent: "space-between" }}
+                    disabled={busy || card.state === "blocked"}
+                    onClick={onToggleDetails}
+                  >
+                    {detailsShown ? t("dashboard.cards.hideDetails") : t("dashboard.cards.showDetails")}
+                  </UI.Button>
+                  <UI.Button
+                    type="button"
+                    variant="secondary"
+                    style={{ justifyContent: "space-between" }}
+                    disabled={busy || card.state === "blocked"}
+                    onClick={card.state === "frozen" ? onUnfreeze : onFreeze}
+                  >
+                    {card.state === "frozen" ? t("dashboard.cards.unfreeze") : t("dashboard.cards.freeze")}
+                  </UI.Button>
+                  <LimitRow
+                    key={"atm-" + card.cardId}
+                    label={t("dashboard.cards.atmLimit")}
+                    minor={card.atmLimitMinor}
+                    editing={editingLimit === "atm"}
+                    disabled={busy}
+                    onStart={() => setEditingLimit("atm")}
+                    onCancel={() => setEditingLimit(null)}
+                    onSubmit={(raw) => submitLimit("atm", raw)}
+                  />
+                  <LimitRow
+                    key={"online-" + card.cardId}
+                    label={t("dashboard.cards.onlineLimit")}
+                    minor={card.onlineLimitMinor}
+                    editing={editingLimit === "online"}
+                    disabled={busy}
+                    onStart={() => setEditingLimit("online")}
+                    onCancel={() => setEditingLimit(null)}
+                    onSubmit={(raw) => submitLimit("online", raw)}
+                  />
+                  <UI.Button
+                    type="button"
+                    variant="secondary"
+                    style={{ justifyContent: "space-between", color: "var(--color-negative)" }}
+                    disabled={disabled}
+                    onClick={onBlock}
+                  >
+                    {t("dashboard.cards.blockPermanently")}
+                  </UI.Button>
+                </div>
+                <div className="hr" />
+                <div className="text-muted" style={{ fontSize: 12 }}>{t("dashboard.cards.monthlySpend")}</div>
+                <div style={{ marginTop: 6 }}><DASH.ProgressBar pct={46} label={t("dashboard.cards.monthlySpend")} /></div>
+              </UI.Plate>
+            ) : null}
+          </div>
+        )}
       </div>
     );
   };
