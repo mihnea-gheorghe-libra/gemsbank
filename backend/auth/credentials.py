@@ -109,14 +109,22 @@ class AuthUser(BaseModel):
                     self.password_lockout_stage = 3
                     self.password_locked_until = None
                     self.status = "locked"
-            raise AuthenticationError(
-                GENERIC_PASSWORD_REJECTION,
-                details={
-                    "field": "password",
-                    "attemptsLeft": max(max_failures - self.password_failures, 0),
-                },
-            )
+            if self.password_lockout_stage == 3:
+                raise AuthenticationError(
+                    "Too many failed attempts. This account has been locked. Contact support.",
+                    details={"field": "password", "permanentlyLocked": True},
+                )
+            details: dict[str, Any] = {
+                "field": "password",
+                "attemptsLeft": max(max_failures - self.password_failures, 0),
+            }
+            if self.password_locked_until is not None:
+                details["retryAfterSeconds"] = int(
+                    (self.password_locked_until - now).total_seconds()
+                )
+            raise AuthenticationError(GENERIC_PASSWORD_REJECTION, details=details)
         self._accept_password()
+        self._accept_pin()
 
     def require_recoverable_pin(self) -> str:
         if not self.pin_encrypted:
@@ -130,6 +138,7 @@ class AuthUser(BaseModel):
     def change_password(self, password_hash: str) -> None:
         self.password_hash = password_hash
         self._accept_password()
+        self._accept_pin()
 
     def public_view(self) -> dict[str, Any]:
         return {"userId": self.id, "username": self.username}
