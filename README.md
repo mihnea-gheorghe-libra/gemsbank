@@ -10,8 +10,16 @@ Two working screens, toggled by a button in the top bar:
 - **Create account** — the four-step onboarding wizard (ID document → contact → email code →
   credentials).
 
-After a successful sign in you land on a placeholder welcome screen. There is no session token
-yet: the dashboard and the `sessions` collection arrive together, later.
+After a successful sign in you land on a **dashboard mockup**: a static, frontend-only prototype
+(`frontend/main/dashboard.jsx` and `frontend/components/dashboard-*.jsx`) covering Dashboard,
+Payments, AI Assistant, Portfolio, Cards, Analytics and Settings. It is a deliberate, explicitly
+approved deviation from `PROMPT.md` §4 — cards, investments, analytics and the chatbot are listed
+there as *not in v0* — kept as UI only, with hand-authored demo data
+(`frontend/helpers/dashboard-data.js`), no backend calls, and no session token. The PIN-reveal
+welcome screen (`AUTH.Welcome`) still runs first whenever a flow surfaces the PIN, exactly as
+before; a "Continue to dashboard" action leads from there into the mockup. Plain PIN sign-in goes
+straight in, since it has no PIN to show. There is still no session token: the real dashboard and
+the `sessions` collection arrive together, later.
 
 ## Run it
 
@@ -77,12 +85,17 @@ backend/
 frontend/            no build step; index.html script order is the module graph
   index.html
   main/app.jsx       chooses sign in vs register, mounts the app
-  main/signin.jsx    sign in, PIN recovery, password reset, welcome
+  main/signin.jsx    sign in, PIN recovery, password reset, welcome, hands off to the dashboard
   main/register.jsx  onboarding page state and flow orchestration
+  main/dashboard.jsx post-login dashboard mockup: screen state, chat state, mock-data wiring
   components/        ui.jsx (primitives) · rails.jsx (step rail, agent panel) · steps.jsx ·
-                     auth.jsx (sign-in forms, PIN panel, welcome)
-  helpers/           api.js (the only fetch caller) · i18n.js · messages.js (en + ro)
-  styles/            tokens.css (the only place a hex value may appear) · app.css
+                     auth.jsx (sign-in forms, PIN panel, welcome) ·
+                     dashboard-widgets.jsx (segmented control, bars, donut, progress, amount) ·
+                     dashboard-shell.jsx (sidebar, topbar, agent dock, new-payment dialog) ·
+                     dashboard-screens.jsx (home, payments, chat, portfolio, cards, analytics, settings)
+  helpers/           api.js (the only fetch caller) · i18n.js · messages.js (en + ro) ·
+                     dashboard-data.js (hand-authored demo data for the dashboard mockup)
+  styles/            tokens.css (the only place a hex value may appear) · app.css · dashboard.css
 
 design/              Claude Design export — source of truth for tokens
 ops/                 Mongo schema migrations

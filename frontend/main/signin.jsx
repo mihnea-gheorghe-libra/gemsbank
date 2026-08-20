@@ -23,6 +23,7 @@
   }
 
   AUTH.SignInPage = function SignInPage({ onSwitchToRegister }) {
+    const DASHBOARD = GEMS.dashboard;
     const [view, setView] = useState(VIEWS.SIGN_IN);
     const [session, setSession] = useState(null);
     const [pin, setPin] = useState(null);
@@ -30,6 +31,7 @@
     const [recovery, setRecovery] = useState(null);
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(false);
+    const [dashboardOpen, setDashboardOpen] = useState(false);
 
     const run = useCallback(async (work) => {
       setBusy(true);
@@ -55,6 +57,7 @@
       setRecovery(null);
       setSession(null);
       setError(null);
+      setDashboardOpen(false);
       setView(VIEWS.SIGN_IN);
     }, []);
 
@@ -65,6 +68,9 @@
         setPin(null);
         setPinMissing(false);
         setView(VIEWS.WELCOME);
+        // Plain sign-in has no PIN to reveal, so there is nothing the
+        // welcome screen needs to show first — go straight in.
+        setDashboardOpen(true);
       });
 
     const handleReveal = (form) =>
@@ -102,6 +108,10 @@
       username: (session && session.username) || "",
     });
     const lede = t("auth.views." + view + ".lede");
+
+    if (dashboardOpen && session) {
+      return <DASHBOARD.Dashboard username={session.username} onSignOut={resetToSignIn} />;
+    }
 
     return (
       <div className="onb-shell">
@@ -157,12 +167,19 @@
           ) : null}
 
           {view === VIEWS.WELCOME && session ? (
-            <AUTH.Welcome
-              username={session.username}
-              pin={pin}
-              pinMissing={pinMissing}
-              onSignOut={resetToSignIn}
-            />
+            <React.Fragment>
+              <AUTH.Welcome
+                username={session.username}
+                pin={pin}
+                pinMissing={pinMissing}
+                onSignOut={resetToSignIn}
+              />
+              <div className="auth-actions">
+                <UI.Button type="button" variant="primary" onClick={() => setDashboardOpen(true)}>
+                  {t("auth.goToDashboard")}
+                </UI.Button>
+              </div>
+            </React.Fragment>
           ) : null}
 
           <UI.ErrorNote error={error} />
