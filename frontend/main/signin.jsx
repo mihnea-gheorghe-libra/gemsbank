@@ -14,7 +14,6 @@
     RESET_CODE: "resetCode",
     NEW_PASSWORD: "newPassword",
     PIN_REVEAL: "pinReveal",
-    WELCOME: "welcome",
   };
 
   function toFieldErrors(error) {
@@ -78,7 +77,7 @@
           setSession(response);
           setPin(null);
           setPinMissing(false);
-          setView(VIEWS.WELCOME);
+          setDashboardOpen(true);
         } catch (err) {
           if (err.details && err.details.pinLocked) {
             setPinLockedUsername(normaliseUsername(form.username));
@@ -125,7 +124,7 @@
     const handleContinueToDashboard = useCallback(() => {
       setPin(null);
       setPinMissing(false);
-      setView(VIEWS.WELCOME);
+      setDashboardOpen(true);
     }, []);
 
     const fieldErrors = toFieldErrors(error);
@@ -206,10 +205,6 @@
               pinMissing={pinMissing}
               onContinue={handleContinueToDashboard}
             />
-          ) : null}
-
-          {view === VIEWS.WELCOME && session ? (
-            <AUTH.Welcome username={session.username} onSignOut={resetToSignIn} />
           ) : null}
 
           <UI.ErrorNote error={error} />

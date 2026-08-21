@@ -404,24 +404,4 @@
       </div>
     );
   };
-
-  AUTH.Welcome = function Welcome({ username, onSignOut }) {
-    return (
-      <div className="onb-fade">
-        <UI.Plate style={{ padding: 24, maxWidth: 480, background: "var(--color-surface)" }}>
-          <UI.Kicker style={{ marginBottom: 8 }}>{t("auth.welcomeKicker")}</UI.Kicker>
-          <h2 style={{ marginBottom: 6 }}>{t("auth.welcomeTitle", { username })}</h2>
-          <p className="text-muted" style={{ margin: 0, fontSize: 14 }}>
-            {t("auth.dashboardIncoming")}
-          </p>
-        </UI.Plate>
-
-        <div className="auth-actions">
-          <UI.Button type="button" variant="ghost" onClick={onSignOut}>
-            {t("auth.signOut")}
-          </UI.Button>
-        </div>
-      </div>
-    );
-  };
 })();

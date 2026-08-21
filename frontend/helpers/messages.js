@@ -130,10 +130,6 @@
       retryInLabel: "You can try again in",
       permanentlyLocked: "Too many failed attempts. This account has been locked. Contact support.",
       continueToDashboard: "Close and continue",
-      welcomeKicker: "SIGNED IN",
-      welcomeTitle: "Welcome, {username}",
-      dashboardIncoming: "Dashboard incoming.",
-      goToDashboard: "Continue to dashboard",
       views: {
         signIn: { title: "Sign in to GEMS", lede: "Your username and your 6-digit PIN." },
         password: {
@@ -152,7 +148,6 @@
           title: "Here is your PIN",
           lede: "Have a look, then close this screen to continue.",
         },
-        welcome: { title: "Welcome to GEMS", lede: "You are signed in." },
       },
     },
     dashboard: {
@@ -505,10 +500,6 @@
       permanentlyLocked:
         "Prea multe încercări greșite. Acest cont a fost blocat. Contactează suportul.",
       continueToDashboard: "Închide și continuă",
-      welcomeKicker: "AUTENTIFICAT",
-      welcomeTitle: "Bine ai venit, {username}",
-      dashboardIncoming: "Dashboard-ul urmează.",
-      goToDashboard: "Continuă spre dashboard",
       views: {
         signIn: {
           title: "Autentifică-te în GEMS",
@@ -530,7 +521,6 @@
           title: "Iată PIN-ul tău",
           lede: "Aruncă o privire, apoi închide ecranul ca să continui.",
         },
-        welcome: { title: "Bine ai venit în GEMS", lede: "Ești autentificat." },
       },
     },
     dashboard: {

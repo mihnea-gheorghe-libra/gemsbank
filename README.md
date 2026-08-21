@@ -15,10 +15,11 @@ After a successful sign in you land on a **dashboard mockup**: a static, fronten
 Payments, AI Assistant, Portfolio, Cards, Analytics and Settings. It is a deliberate, explicitly
 approved deviation from `PROMPT.md` §4 — cards, investments, analytics and the chatbot are listed
 there as *not in v0* — kept as UI only, with hand-authored demo data
-(`frontend/helpers/dashboard-data.js`). The PIN-reveal welcome screen (`AUTH.Welcome`) still runs
-first whenever a flow surfaces the PIN, exactly as before; a "Continue to dashboard" action leads
-from there into the mockup. Plain PIN sign-in goes straight in, since it has no PIN to show. There
-is still no session token: the real dashboard and the `sessions` collection arrive together, later.
+(`frontend/helpers/dashboard-data.js`). The PIN-reveal screen (`AUTH.PinRevealScreen`) still runs
+first whenever a flow surfaces the PIN (forgot-PIN, password reset); its "Close and continue"
+action opens the dashboard mockup. Plain PIN sign-in opens it directly, since it has no PIN to
+show — there is no separate "welcome" screen any more. There is still no session token: the real
+dashboard and the `sessions` collection arrive together, later.
 
 The **Cards** screen is the one exception: it has a real backend (`backend/cards/`) — issue a
 virtual card, freeze/unfreeze, reveal PIN, set ATM/online limits, block permanently — but the
