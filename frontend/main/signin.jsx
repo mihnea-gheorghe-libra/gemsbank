@@ -57,6 +57,7 @@
     }, []);
 
     const resetToSignIn = useCallback(() => {
+      GEMS.session.clear();
       setPin(null);
       setPinMissing(false);
       setRecovery(null);

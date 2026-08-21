@@ -144,6 +144,28 @@ class AuthUser(BaseModel):
         return {"userId": self.id, "username": self.username}
 
 
+class Session(BaseModel):
+    id: str = Field(default_factory=new_id)
+    user_id: str
+    token_hash: str
+    issued_at: datetime
+    expires_at: datetime
+    revoked_at: datetime | None = None
+
+    def guard_live(self, now: datetime) -> None:
+        if self.revoked_at is not None:
+            raise AuthenticationError("You are signed out. Sign in again.")
+        if now >= self.expires_at:
+            raise AuthenticationError("Your session expired. Sign in again.")
+
+    def revoke(self, now: datetime) -> None:
+        if self.revoked_at is None:
+            self.revoked_at = now
+
+    def public_view(self) -> dict[str, Any]:
+        return {"sessionId": self.id, "expiresAt": self.expires_at.isoformat()}
+
+
 class RecoveryCase(BaseModel):
     id: str = Field(default_factory=new_id)
     user_id: str

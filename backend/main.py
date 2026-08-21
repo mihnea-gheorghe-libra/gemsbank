@@ -21,6 +21,7 @@ from backend.helpers.context import (
 )
 from backend.helpers.errors import DomainError
 from backend.onboarding.service import get_onboarding_service
+from backend.payments.service import get_payments_service
 from backend.server.routes import api_router
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
+    get_payments_service()
     get_onboarding_service()
     get_auth_service()
     get_cards_service()

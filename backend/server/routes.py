@@ -1,14 +1,18 @@
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, Form, Header, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, Query, UploadFile
 from pydantic import BaseModel, Field
 
+from backend.accounts.service import AccountsService, get_accounts_service
 from backend.auth.service import (
+    AuthService,
     RequestPasswordReset,
     ResetPassword,
     RevealPin,
     SignIn,
+    SignOut,
     VerifyResetCode,
+    get_auth_service,
 )
 from backend.cards.service import (
     BlockCardPermanently,
@@ -25,6 +29,7 @@ from backend.cards.service import (
 from backend.command_bus import bus
 from backend.database.mongo import get_db
 from backend.helpers.context import Actor
+from backend.helpers.errors import AuthenticationError
 from backend.onboarding.service import (
     CompleteOnboarding,
     OnboardingService,
@@ -34,6 +39,13 @@ from backend.onboarding.service import (
     SubmitIdentityDocument,
     VerifyCode,
     get_onboarding_service,
+)
+from backend.payments.service import (
+    AddBeneficiary,
+    MakeTransfer,
+    PaymentsService,
+    SignPayment,
+    get_payments_service,
 )
 
 
@@ -78,6 +90,29 @@ class NewPasswordRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class TransferRequest(BaseModel):
+    source_account_id: str = Field(alias="sourceAccountId", min_length=1, max_length=64)
+    target_account_id: str | None = Field(default=None, alias="targetAccountId", max_length=64)
+    iban: str | None = Field(default=None, max_length=42)
+    counterparty: str = Field(min_length=2, max_length=70)
+    amount_minor: int = Field(alias="amountMinorUnits", gt=0)
+    reference: str = Field(min_length=1, max_length=140)
+    category: str | None = Field(default=None, max_length=32)
+    acknowledge_payee_mismatch: bool = Field(
+        default=False, alias="acknowledgePayeeMismatch"
+    )
+    model_config = {"populate_by_name": True}
+
+
+class SignPaymentRequest(BaseModel):
+    code: str = Field(min_length=4, max_length=8)
+
+
+class BeneficiaryRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=70)
+    iban: str = Field(min_length=15, max_length=42)
+
+
 class UsernameRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32)
 
@@ -85,17 +120,22 @@ class UsernameRequest(BaseModel):
 class LimitRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     limit_minor: int = Field(ge=0, le=5_000_000, alias="limitMinor")
-
     model_config = {"populate_by_name": True}
 
 
 ServiceDep = Annotated[OnboardingService, Depends(get_onboarding_service)]
+AuthDep = Annotated[AuthService, Depends(get_auth_service)]
+AccountsDep = Annotated[AccountsService, Depends(get_accounts_service)]
+PaymentsDep = Annotated[PaymentsService, Depends(get_payments_service)]
 CardsServiceDep = Annotated[CardsService, Depends(get_cards_service)]
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key")]
+BearerToken = Annotated[str | None, Header(alias="Authorization")]
 
 api_router = APIRouter()
 onboarding_router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
+accounts_router = APIRouter(prefix="/accounts", tags=["accounts"])
+payments_router = APIRouter(prefix="/payments", tags=["payments"])
 cards_router = APIRouter(prefix="/cards", tags=["cards"])
 
 
@@ -107,6 +147,21 @@ def _auth_actor() -> Actor:
     return Actor.public_auth()
 
 
+def bearer_token(authorization: BearerToken = None) -> str:
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise AuthenticationError("Sign in to continue.")
+    return token.strip()
+
+
+async def current_actor(
+    auth: AuthDep, token: Annotated[str, Depends(bearer_token)]
+) -> Actor:
+    return await auth.resolve_actor(token)
+
+
+CurrentActor = Annotated[Actor, Depends(current_actor)]
+SessionToken = Annotated[str, Depends(bearer_token)]
 def _cards_actor() -> Actor:
     return Actor.public_cards()
 
@@ -248,6 +303,85 @@ async def complete_password_reset(
     return await bus.execute(command, _auth_actor(), idempotency_key)
 
 
+@auth_router.post("/logout")
+async def logout(
+    token: SessionToken, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    return await bus.execute(SignOut(session_token=token), _auth_actor(), idempotency_key)
+
+
+@accounts_router.get("")
+async def list_accounts(actor: CurrentActor, accounts: AccountsDep) -> dict[str, Any]:
+    return {"accounts": await accounts.list_for_user(actor.id)}
+
+
+@payments_router.get("/summary")
+async def payments_summary(actor: CurrentActor, payments: PaymentsDep) -> dict[str, Any]:
+    return await payments.summary(actor.id)
+
+
+@payments_router.get("/transactions")
+async def list_transactions(
+    actor: CurrentActor,
+    payments: PaymentsDep,
+    direction: Annotated[str | None, Query()] = None,
+    search: Annotated[str | None, Query(max_length=70)] = None,
+    cursor: Annotated[str | None, Query(max_length=256)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=100)] = None,
+) -> dict[str, Any]:
+    return await payments.list_transactions(
+        actor.id, direction=direction, search=search, cursor=cursor, limit=limit
+    )
+
+
+@payments_router.get("/pending")
+async def list_pending(actor: CurrentActor, payments: PaymentsDep) -> dict[str, Any]:
+    return await payments.list_pending(actor.id)
+
+
+@payments_router.get("/beneficiaries")
+async def list_beneficiaries(actor: CurrentActor, payments: PaymentsDep) -> dict[str, Any]:
+    return await payments.list_beneficiaries(actor.id)
+
+
+@payments_router.post("/beneficiaries", status_code=201)
+async def add_beneficiary(
+    actor: CurrentActor,
+    payload: BeneficiaryRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = AddBeneficiary(name=payload.name, iban=payload.iban)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@payments_router.post("/transfers", status_code=201)
+async def make_transfer(
+    actor: CurrentActor,
+    payload: TransferRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = MakeTransfer(
+        source_account_id=payload.source_account_id,
+        target_account_id=payload.target_account_id,
+        target_iban=payload.iban,
+        counterparty=payload.counterparty,
+        amount_minor=payload.amount_minor,
+        reference=payload.reference,
+        category=payload.category,
+        acknowledge_payee_mismatch=payload.acknowledge_payee_mismatch,
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@payments_router.post("/transfers/{payment_id}/sign")
+async def sign_transfer(
+    actor: CurrentActor,
+    payment_id: str,
+    payload: SignPaymentRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = SignPayment(payment_id=payment_id, code=payload.code.strip())
+    return await bus.execute(command, actor, idempotency_key)
 @cards_router.get("")
 async def list_cards(username: str, service: CardsServiceDep) -> dict[str, Any]:
     return await service.list_cards(username)
@@ -321,4 +455,6 @@ async def set_online_limit(
 
 api_router.include_router(onboarding_router)
 api_router.include_router(auth_router)
+api_router.include_router(accounts_router)
+api_router.include_router(payments_router)
 api_router.include_router(cards_router)

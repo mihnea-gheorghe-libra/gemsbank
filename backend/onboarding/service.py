@@ -26,6 +26,7 @@ from backend.onboarding.kyc import (
     OtpChallenge,
     SubmittedDocument,
 )
+from backend.payments.service import get_payments_service
 
 logger = logging.getLogger(__name__)
 
@@ -127,11 +128,23 @@ class Clock(Protocol):
     def now(self) -> datetime: ...
 
 
+class AccountProvisioning(Protocol):
+    async def provision_starter_accounts(
+        self,
+        user_id: str,
+        holder_name: str,
+        correlation_id: str,
+        actor: str,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> list[str]: ...
+
+
 class OnboardingService:
     def __init__(
         self,
         cases: KycCaseRepository,
         users: UserRepository,
+        provisioning: AccountProvisioning,
         hasher: PasswordHasher,
         cipher: PinCipher,
         otp_sender: OtpSender,
@@ -141,6 +154,7 @@ class OnboardingService:
     ) -> None:
         self._cases = cases
         self._users = users
+        self._provisioning = provisioning
         self._hasher = hasher
         self._cipher = cipher
         self._otp = otp_sender
@@ -387,21 +401,35 @@ class OnboardingService:
         )
         await self._cases.save(case, session=session)
 
+        assert case.document is not None
+        account_ids = await self._provisioning.provision_starter_accounts(
+            user_id=user_id,
+            holder_name=case.document.extracted.full_name,
+            correlation_id=context.correlation_id,
+            actor=context.actor.label(),
+            session=session,
+        )
+
         return CommandResult(
-            data={"userId": user_id, "username": username} | case.public_view(),
+            data={"userId": user_id, "username": username, "accountsOpened": len(account_ids)}
+            | case.public_view(),
             audit=AuditRecord(
                 action="identity.user_registered",
                 entity_type="user",
                 entity_id=user_id,
                 before={"status": before},
-                after={"username": username, "kycCaseId": case.id},
+                after={
+                    "username": username,
+                    "kycCaseId": case.id,
+                    "accountIds": account_ids,
+                },
             ),
             events=[
                 DomainEvent(
                     name="identity.user_registered",
                     aggregate_type="user",
                     aggregate_id=user_id,
-                    payload={"kycCaseId": case.id},
+                    payload={"kycCaseId": case.id, "accountIds": account_ids},
                 )
             ],
         )
@@ -412,6 +440,7 @@ def get_onboarding_service() -> OnboardingService:
     service = OnboardingService(
         cases=MongoKycCaseRepository(),
         users=MongoUserRepository(),
+        provisioning=get_payments_service(),
         hasher=Argon2idHasher(),
         cipher=AesGcmPinCipher(settings.pin_encryption_key),
         otp_sender=ResendOtpSender(settings),

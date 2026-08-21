@@ -14,6 +14,7 @@ from backend.auth.credentials import (
     AuthUser,
     RecoveryCase,
     ResetChallenge,
+    Session,
 )
 from backend.command_bus import Command, CommandBus, CommandResult, bus
 from backend.config import Settings, settings
@@ -21,9 +22,15 @@ from backend.database.records import AuditRecord, DomainEvent
 from backend.database.repositories import (
     MongoAuthUserRepository,
     MongoRecoveryCaseRepository,
+    MongoSessionRepository,
 )
-from backend.helpers.context import ActorContext, log_event
-from backend.helpers.crypto import AesGcmPinCipher, Argon2idHasher
+from backend.helpers.context import Actor, ActorContext, log_event
+from backend.helpers.crypto import (
+    AesGcmPinCipher,
+    Argon2idHasher,
+    hash_token,
+    new_opaque_token,
+)
 from backend.helpers.errors import AuthenticationError, DomainError, NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -62,6 +69,24 @@ class ResetPassword(Command):
     recovery_case_id: str
     password: str
     password_confirmation: str
+
+
+class SignOut(Command):
+    command_name: ClassVar[str] = "auth.sign_out"
+
+    session_token: str
+
+
+class SessionRepository(Protocol):
+    async def add(
+        self, record: Session, session: AsyncIOMotorClientSession | None = None
+    ) -> None: ...
+
+    async def get_by_token_hash(self, token_hash: str) -> Session | None: ...
+
+    async def revoke(
+        self, record: Session, session: AsyncIOMotorClientSession | None = None
+    ) -> None: ...
 
 
 class AuthUserRepository(Protocol):
@@ -109,6 +134,7 @@ class AuthService:
         self,
         users: AuthUserRepository,
         cases: RecoveryCaseRepository,
+        sessions: SessionRepository,
         hasher: PasswordHasher,
         cipher: PinCipher,
         code_sender: ResetCodeSender,
@@ -117,6 +143,7 @@ class AuthService:
     ) -> None:
         self._users = users
         self._cases = cases
+        self._sessions = sessions
         self._hasher = hasher
         self._cipher = cipher
         self._codes = code_sender
@@ -129,6 +156,59 @@ class AuthService:
         command_bus.register(RequestPasswordReset, self._handle_reset_request)
         command_bus.register(VerifyResetCode, self._handle_reset_verify)
         command_bus.register(ResetPassword, self._handle_reset_complete)
+        command_bus.register(SignOut, self._handle_sign_out)
+
+    async def _issue_session(
+        self, user: AuthUser, session: AsyncIOMotorClientSession
+    ) -> dict[str, Any]:
+        token = new_opaque_token()
+        now = self._clock.now()
+        record = Session(
+            user_id=user.id,
+            token_hash=hash_token(token),
+            issued_at=now,
+            expires_at=now + timedelta(seconds=self._config.session_ttl_seconds),
+        )
+        await self._sessions.add(record, session=session)
+        return {"sessionToken": token} | record.public_view()
+
+    async def resolve_actor(self, token: str) -> Actor:
+        record = await self._sessions.get_by_token_hash(hash_token(token))
+        if record is None:
+            raise AuthenticationError("Sign in to continue.")
+        record.guard_live(self._clock.now())
+        user = await self._users.get(record.user_id)
+        if user is None:
+            raise AuthenticationError("Sign in to continue.")
+        user.guard_usable(self._clock.now())
+        return Actor.user(user.id)
+
+    async def _handle_sign_out(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, SignOut)
+        record = await self._sessions.get_by_token_hash(hash_token(command.session_token))
+        if record is None:
+            raise NotFoundError("That session is already gone.")
+        record.revoke(self._clock.now())
+        await self._sessions.revoke(record, session=session)
+
+        return CommandResult(
+            data={"signedOut": True},
+            audit=AuditRecord(
+                action="auth.signed_out",
+                entity_type="session",
+                entity_id=record.id,
+                after={"userId": record.user_id},
+            ),
+            events=[
+                DomainEvent(
+                    name="auth.signed_out",
+                    aggregate_type="session",
+                    aggregate_id=record.id,
+                )
+            ],
+        )
 
     async def _load_user(self, username: str, rejection: str) -> AuthUser:
         user = await self._users.get_by_username(username)
@@ -170,9 +250,11 @@ class AuthService:
             await self._users.save(user)
             raise
         await self._users.save(user, session=session)
+        granted = await self._issue_session(user, session)
 
         return CommandResult(
             data=user.public_view(),
+            sensitive=granted,
             audit=AuditRecord(
                 action="auth.signed_in",
                 entity_type="user",
@@ -209,10 +291,11 @@ class AuthService:
             raise
         revealed = self._reveal_payload(user)
         await self._users.save(user, session=session)
+        granted = await self._issue_session(user, session)
 
         return CommandResult(
             data=user.public_view(),
-            sensitive=revealed,
+            sensitive=revealed | granted,
             audit=AuditRecord(
                 action="auth.pin_revealed",
                 entity_type="user",
@@ -334,10 +417,11 @@ class AuthService:
 
         await self._users.save(user, session=session)
         await self._cases.save(case, session=session)
+        granted = await self._issue_session(user, session)
 
         return CommandResult(
             data=case.public_view() | user.public_view(),
-            sensitive=revealed,
+            sensitive=revealed | granted,
             audit=AuditRecord(
                 action="auth.password_changed",
                 entity_type="user",
@@ -361,6 +445,7 @@ def get_auth_service() -> AuthService:
     service = AuthService(
         users=MongoAuthUserRepository(),
         cases=MongoRecoveryCaseRepository(),
+        sessions=MongoSessionRepository(),
         hasher=Argon2idHasher(),
         cipher=AesGcmPinCipher(settings.pin_encryption_key),
         code_sender=ResendResetCodeSender(settings),

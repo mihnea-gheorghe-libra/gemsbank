@@ -33,5 +33,18 @@ class Settings(BaseSettings):
     password_lockout_seconds: int
     password_lockout_extended_seconds: int
 
+    session_ttl_seconds: int = 3600
+
+    demo_opening_balance_minor: int = 250000
+
+    payment_per_transaction_limit_minor: int = 2000000
+    payment_daily_limit_minor: int = 5000000
+    payment_step_up_threshold_minor: int = 100000
+    step_up_code_ttl_seconds: int = 300
+    step_up_max_attempts: int = 3
+    step_up_dev_code: str = "000000"
+
+    transactions_page_size: int = 25
+
 
 settings = Settings()
