@@ -161,6 +161,7 @@ class MongoUserRepository:
         pin_hash: str,
         pin_encrypted: str,
         kyc_case_id: str,
+        prefs: dict[str, Any] | None = None,
         session: AsyncIOMotorClientSession | None = None,
     ) -> None:
         payload = {
@@ -172,7 +173,7 @@ class MongoUserRepository:
             "pinHash": pin_hash,
             "pinEncrypted": pin_encrypted,
             "kycCaseId": kyc_case_id,
-            "prefs": {"lang": "ro", "theme": "light", "tts": False, "hideBalances": True},
+            "prefs": {"lang": "ro", "theme": "light", "tts": False, "hideBalances": True} | (prefs or {}),
             "pin": {"failures": 0, "locked": False},
             "password": {"failures": 0, "lockoutStage": 0, "lockedUntil": None},
             "status": "active",
@@ -209,6 +210,7 @@ def _auth_user_from_bson(raw: dict[str, Any]) -> AuthUser:
         password_failures=password.get("failures", 0),
         password_lockout_stage=password.get("lockoutStage", 0),
         password_locked_until=password.get("lockedUntil"),
+        prefs=raw.get("prefs", {}),
     )
 
 
@@ -236,6 +238,7 @@ class MongoAuthUserRepository:
                         "lockoutStage": user.password_lockout_stage,
                         "lockedUntil": user.password_locked_until,
                     },
+                    "prefs": user.prefs,
                 }
             },
             session=session,

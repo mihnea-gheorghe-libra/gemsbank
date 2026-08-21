@@ -104,6 +104,7 @@
     completePasswordReset: (id, payload) =>
       send("/auth/password/reset/" + id + "/complete", { method: "POST", json: payload }),
     logout: () => send("/auth/logout", { method: "POST" }),
+    updatePreferences: (prefs) => send("/auth/preferences", { method: "PUT", json: { prefs } }),
 
     listAccounts: () => send("/accounts"),
     paymentsSummary: () => send("/payments/summary"),

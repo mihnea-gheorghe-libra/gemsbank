@@ -33,17 +33,15 @@
     return answerFor(null);
   }
 
-  DASHBOARD.Dashboard = function Dashboard({ username, onSignOut }) {
+  DASHBOARD.Dashboard = function Dashboard({ username, theme, onTheme, lang, onLang, onSignOut }) {
     const [screen, setScreen] = useState("home");
     const [balanceHidden, setBalanceHidden] = useState(true);
     const [ttsOn, setTtsOn] = useState(false);
-    const [theme, setTheme] = useState("light");
     const [dockOpen, setDockOpen] = useState(true);
     const [payOpen, setPayOpen] = useState(false);
     const [payType, setPayType] = useState("iban");
     const [filter, setFilter] = useState("all");
     const [range, setRange] = useState("quarter");
-    const [lang, setLang] = useState(GEMS.i18n.locale);
     const [cards, setCards] = useState([]);
     const [cardsLoaded, setCardsLoaded] = useState(false);
     const [cardsLoading, setCardsLoading] = useState(false);
@@ -60,12 +58,6 @@
     const [messages, setMessages] = useState([
       { role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) },
     ]);
-
-    useEffect(() => {
-      if (theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
-      else document.documentElement.setAttribute("data-theme", "light");
-      return () => document.documentElement.removeAttribute("data-theme");
-    }, [theme]);
 
     const navigate = useCallback((key) => {
       if (SCREENS.indexOf(key) >= 0) setScreen(key);
@@ -322,9 +314,9 @@
             {screen === "settings" ? (
               <SCR.SettingsScreen
                 lang={lang}
-                onLang={setLang}
+                onLang={onLang}
                 theme={theme}
-                onTheme={setTheme}
+                onTheme={onTheme}
                 ttsOn={ttsOn}
                 onToggleTts={() => setTtsOn((value) => !value)}
                 onSignOut={onSignOut}

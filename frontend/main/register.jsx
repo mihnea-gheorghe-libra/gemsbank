@@ -14,7 +14,7 @@
     return { [error.details.field]: error.message };
   }
 
-  function RegisterPage({ onSwitchToSignIn }) {
+  function RegisterPage({ onSwitchToSignIn, theme, onTheme, lang, onLang }) {
     const [caseId, setCaseId] = useState(null);
     const [step, setStep] = useState(1);
     const [extracted, setExtracted] = useState(null);
@@ -85,6 +85,7 @@
           password: form.password,
           pin: form.pin,
           pinConfirmation: form.pinConfirmation,
+          prefs: { theme, lang },
         });
         setResult(response);
         setStep(5);
@@ -112,7 +113,15 @@
           >
             {t("screenTag")}
           </span>
-          <div style={{ marginLeft: "auto" }}>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 16, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 4 }}>
+              <UI.Button type="button" variant={lang === "ro" ? "primary" : "ghost"} onClick={() => onLang("ro")}>RO</UI.Button>
+              <UI.Button type="button" variant={lang === "en" ? "primary" : "ghost"} onClick={() => onLang("en")}>EN</UI.Button>
+            </div>
+            <div style={{ display: "flex", gap: 4 }}>
+              <UI.Button type="button" variant={theme === "light" ? "primary" : "ghost"} onClick={() => onTheme("light")}>Light</UI.Button>
+              <UI.Button type="button" variant={theme === "dark" ? "primary" : "ghost"} onClick={() => onTheme("dark")}>Dark</UI.Button>
+            </div>
             <UI.Button type="button" onClick={onSwitchToSignIn}>
               {t("backToSignIn")}
             </UI.Button>

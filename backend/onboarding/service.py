@@ -73,6 +73,7 @@ class CompleteOnboarding(Command):
     password: str
     pin: str
     pin_confirmation: str
+    prefs: dict[str, Any] | None = None
 
 
 class KycCaseRepository(Protocol):
@@ -98,6 +99,7 @@ class UserRepository(Protocol):
         pin_hash: str,
         pin_encrypted: str,
         kyc_case_id: str,
+        prefs: dict[str, Any] | None = None,
         session: AsyncIOMotorClientSession | None = None,
     ) -> None: ...
 
@@ -397,6 +399,7 @@ class OnboardingService:
             pin_hash=self._hasher.hash(pin),
             pin_encrypted=self._cipher.encrypt(pin, user_id),
             kyc_case_id=case.id,
+            prefs=command.prefs,
             session=session,
         )
         await self._cases.save(case, session=session)
