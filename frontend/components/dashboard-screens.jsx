@@ -977,7 +977,14 @@
             <div className="dash-settings-list">
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }} onClick={onGoChat}>{t("dashboard.settings.chatSupport")}</UI.Button>
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }} onClick={() => setContactDialogOpen(true)}>{t("dashboard.settings.customerService")}</UI.Button>
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }}>{t("dashboard.settings.faq")}</UI.Button>
+              <UI.Button
+                type="button"
+                variant="secondary"
+                style={{ justifyContent: "flex-start" }}
+                onClick={() => window.open("./help.html", "_blank", "noopener,noreferrer")}
+              >
+                {t("dashboard.settings.faq")}
+              </UI.Button>
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }}>{t("dashboard.settings.agentInstructions")}</UI.Button>
               <div className="hr" style={{ margin: "4px 0" }} />
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }} onClick={onSignOut}>{t("dashboard.signOut")}</UI.Button>
