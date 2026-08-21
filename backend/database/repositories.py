@@ -589,6 +589,11 @@ def _payment_from_bson(raw: dict[str, Any]) -> Payment:
         signature=_signature_from_bson(raw.get("signature")),
         journal_transaction_id=raw.get("journalTransactionId"),
         rejected_reason=raw.get("rejectedReason"),
+        created_at=raw["createdAt"],
+        updated_at=raw["updatedAt"],
+    )
+
+
 def _card_to_bson(card: Card) -> dict[str, Any]:
     return {
         "_id": card.id,
