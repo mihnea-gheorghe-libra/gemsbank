@@ -28,6 +28,7 @@
   }
 
   AUTH.SignInPage = function SignInPage({ onSwitchToRegister }) {
+    const DASHBOARD = GEMS.dashboard;
     const [view, setView] = useState(VIEWS.SIGN_IN);
     const [session, setSession] = useState(null);
     const [pin, setPin] = useState(null);
@@ -36,6 +37,7 @@
     const [pinLockedUsername, setPinLockedUsername] = useState(null);
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(false);
+    const [dashboardOpen, setDashboardOpen] = useState(false);
 
     const run = useCallback(async (work) => {
       setBusy(true);
@@ -61,6 +63,7 @@
       setRecovery(null);
       setSession(null);
       setError(null);
+      setDashboardOpen(false);
       setView(VIEWS.SIGN_IN);
     }, []);
 
@@ -137,6 +140,10 @@
       username: (session && session.username) || "",
     });
     const lede = t("auth.views." + view + ".lede");
+
+    if (dashboardOpen && session) {
+      return <DASHBOARD.Dashboard username={session.username} onSignOut={resetToSignIn} />;
+    }
 
     return (
       <div className="onb-shell">
