@@ -14,6 +14,18 @@ from backend.auth.service import (
     VerifyResetCode,
     get_auth_service,
 )
+from backend.cards.service import (
+    BlockCardPermanently,
+    CardsService,
+    FreezeCard,
+    IssueVirtualCard,
+    RevealCardDetails,
+    RevealCardPin,
+    SetAtmLimit,
+    SetOnlineLimit,
+    UnfreezeCard,
+    get_cards_service,
+)
 from backend.command_bus import bus
 from backend.database.mongo import get_db
 from backend.helpers.context import Actor
@@ -89,7 +101,6 @@ class TransferRequest(BaseModel):
     acknowledge_payee_mismatch: bool = Field(
         default=False, alias="acknowledgePayeeMismatch"
     )
-
     model_config = {"populate_by_name": True}
 
 
@@ -102,10 +113,21 @@ class BeneficiaryRequest(BaseModel):
     iban: str = Field(min_length=15, max_length=42)
 
 
+class UsernameRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+
+
+class LimitRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    limit_minor: int = Field(ge=0, le=5_000_000, alias="limitMinor")
+    model_config = {"populate_by_name": True}
+
+
 ServiceDep = Annotated[OnboardingService, Depends(get_onboarding_service)]
 AuthDep = Annotated[AuthService, Depends(get_auth_service)]
 AccountsDep = Annotated[AccountsService, Depends(get_accounts_service)]
 PaymentsDep = Annotated[PaymentsService, Depends(get_payments_service)]
+CardsServiceDep = Annotated[CardsService, Depends(get_cards_service)]
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key")]
 BearerToken = Annotated[str | None, Header(alias="Authorization")]
 
@@ -114,6 +136,7 @@ onboarding_router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 accounts_router = APIRouter(prefix="/accounts", tags=["accounts"])
 payments_router = APIRouter(prefix="/payments", tags=["payments"])
+cards_router = APIRouter(prefix="/cards", tags=["cards"])
 
 
 def _actor() -> Actor:
@@ -139,6 +162,8 @@ async def current_actor(
 
 CurrentActor = Annotated[Actor, Depends(current_actor)]
 SessionToken = Annotated[str, Depends(bearer_token)]
+def _cards_actor() -> Actor:
+    return Actor.public_cards()
 
 
 @api_router.get("/health", tags=["platform"])
@@ -357,9 +382,79 @@ async def sign_transfer(
 ) -> dict[str, Any]:
     command = SignPayment(payment_id=payment_id, code=payload.code.strip())
     return await bus.execute(command, actor, idempotency_key)
+@cards_router.get("")
+async def list_cards(username: str, service: CardsServiceDep) -> dict[str, Any]:
+    return await service.list_cards(username)
+
+
+@cards_router.post("/virtual", status_code=201)
+async def issue_virtual_card(
+    payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = IssueVirtualCard(username=payload.username)
+    return await bus.execute(command, _cards_actor(), idempotency_key)
+
+
+@cards_router.post("/{card_id}/freeze")
+async def freeze_card(
+    card_id: str, payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = FreezeCard(username=payload.username, card_id=card_id)
+    return await bus.execute(command, _cards_actor(), idempotency_key)
+
+
+@cards_router.post("/{card_id}/unfreeze")
+async def unfreeze_card(
+    card_id: str, payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = UnfreezeCard(username=payload.username, card_id=card_id)
+    return await bus.execute(command, _cards_actor(), idempotency_key)
+
+
+@cards_router.post("/{card_id}/block")
+async def block_card(
+    card_id: str, payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = BlockCardPermanently(username=payload.username, card_id=card_id)
+    return await bus.execute(command, _cards_actor(), idempotency_key)
+
+
+@cards_router.post("/{card_id}/pin/reveal")
+async def reveal_card_pin(
+    card_id: str, payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = RevealCardPin(username=payload.username, card_id=card_id)
+    return await bus.execute(command, _cards_actor(), idempotency_key)
+
+
+@cards_router.post("/{card_id}/details/reveal")
+async def reveal_card_details(
+    card_id: str, payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = RevealCardDetails(username=payload.username, card_id=card_id)
+    return await bus.execute(command, _cards_actor(), idempotency_key)
+
+
+@cards_router.post("/{card_id}/limits/atm")
+async def set_atm_limit(
+    card_id: str, payload: LimitRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = SetAtmLimit(username=payload.username, card_id=card_id, limit_minor=payload.limit_minor)
+    return await bus.execute(command, _cards_actor(), idempotency_key)
+
+
+@cards_router.post("/{card_id}/limits/online")
+async def set_online_limit(
+    card_id: str, payload: LimitRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = SetOnlineLimit(
+        username=payload.username, card_id=card_id, limit_minor=payload.limit_minor
+    )
+    return await bus.execute(command, _cards_actor(), idempotency_key)
 
 
 api_router.include_router(onboarding_router)
 api_router.include_router(auth_router)
 api_router.include_router(accounts_router)
 api_router.include_router(payments_router)
+api_router.include_router(cards_router)

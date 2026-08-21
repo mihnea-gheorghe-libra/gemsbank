@@ -14,10 +14,12 @@ from backend.auth.credentials import (
     ResetChallenge,
     Session,
 )
+from backend.cards.card import Card, CardKind, CardState
 from backend.database.mongo import (
     accounts_collection,
     beneficiaries_collection,
     journal_collection,
+    cards_collection,
     kyc_cases_collection,
     payments_collection,
     recovery_cases_collection,
@@ -171,7 +173,8 @@ class MongoUserRepository:
             "pinEncrypted": pin_encrypted,
             "kycCaseId": kyc_case_id,
             "prefs": {"lang": "ro", "theme": "light", "tts": False, "hideBalances": True},
-            "signIn": {"failures": 0, "lockedUntil": None},
+            "pin": {"failures": 0, "locked": False},
+            "password": {"failures": 0, "lockoutStage": 0, "lockedUntil": None},
             "status": "active",
             "createdAt": datetime.now(timezone.utc),
         }
@@ -191,7 +194,8 @@ class MongoUserRepository:
 
 
 def _auth_user_from_bson(raw: dict[str, Any]) -> AuthUser:
-    sign_in = raw.get("signIn") or {}
+    pin = raw.get("pin") or {}
+    password = raw.get("password") or {}
     return AuthUser(
         id=raw["_id"],
         username=raw["username"],
@@ -200,8 +204,11 @@ def _auth_user_from_bson(raw: dict[str, Any]) -> AuthUser:
         pin_hash=raw["pinHash"],
         pin_encrypted=raw.get("pinEncrypted"),
         status=raw.get("status", "active"),
-        failures=sign_in.get("failures", 0),
-        locked_until=sign_in.get("lockedUntil"),
+        pin_failures=pin.get("failures", 0),
+        pin_locked=pin.get("locked", False),
+        password_failures=password.get("failures", 0),
+        password_lockout_stage=password.get("lockoutStage", 0),
+        password_locked_until=password.get("lockedUntil"),
     )
 
 
@@ -222,7 +229,13 @@ class MongoAuthUserRepository:
             {
                 "$set": {
                     "passwordHash": user.password_hash,
-                    "signIn": {"failures": user.failures, "lockedUntil": user.locked_until},
+                    "status": user.status,
+                    "pin": {"failures": user.pin_failures, "locked": user.pin_locked},
+                    "password": {
+                        "failures": user.password_failures,
+                        "lockoutStage": user.password_lockout_stage,
+                        "lockedUntil": user.password_locked_until,
+                    },
                 }
             },
             session=session,
@@ -576,6 +589,39 @@ def _payment_from_bson(raw: dict[str, Any]) -> Payment:
         signature=_signature_from_bson(raw.get("signature")),
         journal_transaction_id=raw.get("journalTransactionId"),
         rejected_reason=raw.get("rejectedReason"),
+def _card_to_bson(card: Card) -> dict[str, Any]:
+    return {
+        "_id": card.id,
+        "userId": card.user_id,
+        "kind": card.kind.value,
+        "last4": card.last4,
+        "ownerName": card.owner_name,
+        "currency": card.currency,
+        "expiresOn": card.expires_on.isoformat(),
+        "state": card.state.value,
+        "pinEncrypted": card.pin_encrypted,
+        "cvvEncrypted": card.cvv_encrypted,
+        "atmLimitMinor": card.atm_limit_minor,
+        "onlineLimitMinor": card.online_limit_minor,
+        "createdAt": card.created_at,
+        "updatedAt": card.updated_at,
+    }
+
+
+def _card_from_bson(raw: dict[str, Any]) -> Card:
+    return Card(
+        id=raw["_id"],
+        user_id=raw["userId"],
+        kind=CardKind(raw["kind"]),
+        last4=raw["last4"],
+        owner_name=raw["ownerName"],
+        currency=raw.get("currency", "RON"),
+        expires_on=date.fromisoformat(raw["expiresOn"]),
+        state=CardState(raw["state"]),
+        pin_encrypted=raw["pinEncrypted"],
+        cvv_encrypted=raw.get("cvvEncrypted"),
+        atm_limit_minor=raw["atmLimitMinor"],
+        online_limit_minor=raw["onlineLimitMinor"],
         created_at=raw["createdAt"],
         updated_at=raw["updatedAt"],
     )
@@ -654,3 +700,19 @@ class MongoBeneficiaryRepository:
     async def find(self, user_id: str, iban: str) -> Beneficiary | None:
         raw = await beneficiaries_collection().find_one({"userId": user_id, "iban": iban})
         return _beneficiary_from_bson(raw) if raw else None
+class MongoCardRepository:
+    async def add(self, card: Card, session: AsyncIOMotorClientSession | None = None) -> None:
+        await cards_collection().insert_one(_card_to_bson(card), session=session)
+
+    async def get(self, card_id: str) -> Card | None:
+        raw = await cards_collection().find_one({"_id": card_id})
+        return _card_from_bson(raw) if raw else None
+
+    async def list_for_user(self, user_id: str) -> list[Card]:
+        cursor = cards_collection().find({"userId": user_id}).sort("createdAt", 1)
+        return [_card_from_bson(raw) async for raw in cursor]
+
+    async def save(self, card: Card, session: AsyncIOMotorClientSession | None = None) -> None:
+        payload = _card_to_bson(card)
+        payload.pop("_id")
+        await cards_collection().update_one({"_id": card.id}, {"$set": payload}, session=session)

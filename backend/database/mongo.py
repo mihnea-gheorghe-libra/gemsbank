@@ -70,6 +70,10 @@ def beneficiaries_collection() -> AsyncIOMotorCollection:
     return get_db()["beneficiaries"]
 
 
+def cards_collection() -> AsyncIOMotorCollection:
+    return get_db()["cards"]
+
+
 async def ensure_indexes() -> None:
     await users_collection().create_index([("username", ASCENDING)], unique=True, name="uq_username")
     await users_collection().create_index([("email", ASCENDING)], unique=True, name="uq_email")
@@ -131,3 +135,5 @@ async def ensure_indexes() -> None:
     await beneficiaries_collection().create_index(
         [("userId", ASCENDING), ("iban", ASCENDING)], unique=True, name="uq_user_iban"
     )
+    await cards_collection().create_index([("userId", ASCENDING)], name="ix_user")
+    await cards_collection().create_index([("createdAt", ASCENDING)], name="ix_created")

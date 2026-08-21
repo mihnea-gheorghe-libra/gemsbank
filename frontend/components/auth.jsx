@@ -133,11 +133,45 @@
     );
   };
 
-  AUTH.PasswordForm = function PasswordForm({ busy, fieldErrors, onSubmit, onForgotPassword, onBack }) {
+  function formatCountdown(totalSeconds) {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return minutes + ":" + String(seconds).padStart(2, "0");
+  }
+
+  AUTH.useCountdown = function useCountdown(retryAfterSeconds) {
+    const [secondsLeft, setSecondsLeft] = useState(retryAfterSeconds || 0);
+
+    useEffect(() => {
+      if (!retryAfterSeconds) {
+        setSecondsLeft(0);
+        return undefined;
+      }
+      setSecondsLeft(retryAfterSeconds);
+      const id = setInterval(() => {
+        setSecondsLeft((current) => (current > 0 ? current - 1 : 0));
+      }, 1000);
+      return () => clearInterval(id);
+    }, [retryAfterSeconds]);
+
+    return secondsLeft;
+  };
+
+  AUTH.PasswordForm = function PasswordForm({
+    busy,
+    fieldErrors,
+    lockout,
+    pinLockNotice,
+    onSubmit,
+    onForgotPassword,
+    onBack,
+  }) {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
+    const secondsLeft = AUTH.useCountdown(lockout && lockout.retryAfterSeconds);
+    const locked = (lockout && lockout.permanentlyLocked) || secondsLeft > 0;
 
-    const ready = username.trim().length >= 3 && password.length > 0;
+    const ready = username.trim().length >= 3 && password.length > 0 && !locked;
 
     return (
       <form
@@ -148,6 +182,12 @@
           onSubmit({ username: username.trim(), password });
         }}
       >
+        {pinLockNotice ? (
+          <div className="auth-notice" role="alert">
+            {t("auth.pinLockedNotice")}
+          </div>
+        ) : null}
+
         <div className="auth-stack">
           <UI.Field id="reveal-username" label={t("auth.username")} error={fieldErrors.username}>
             <UI.TextInput
@@ -172,6 +212,19 @@
             />
           </UI.Field>
         </div>
+
+        {lockout && lockout.permanentlyLocked ? (
+          <div className="auth-notice" role="alert">
+            {t("auth.permanentlyLocked")}
+          </div>
+        ) : null}
+
+        {secondsLeft > 0 ? (
+          <div className="auth-countdown" role="status" aria-live="polite">
+            <div className="auth-countdown-label">{t("auth.retryInLabel")}</div>
+            <div className="auth-countdown-time">{formatCountdown(secondsLeft)}</div>
+          </div>
+        ) : null}
 
         <div className="auth-actions">
           <UI.Button type="submit" variant="primary" disabled={busy || !ready}>
@@ -332,37 +385,20 @@
     );
   };
 
-  AUTH.Welcome = function Welcome({ username, pin, pinMissing, onSignOut, onOpenPayments }) {
+  AUTH.PinRevealScreen = function PinRevealScreen({ pin, pinMissing, onContinue }) {
     return (
       <div className="onb-fade">
-        <UI.Plate style={{ padding: 24, maxWidth: 480, background: "var(--color-surface)" }}>
-          <UI.Kicker style={{ marginBottom: 8 }}>{t("auth.welcomeKicker")}</UI.Kicker>
-          <h2 style={{ marginBottom: 6 }}>{t("auth.welcomeTitle", { username })}</h2>
-          <p className="text-muted" style={{ margin: 0, fontSize: 14 }}>
-            {t("auth.dashboardIncoming")}
-          </p>
-        </UI.Plate>
-
-        {pin ? (
-          <div style={{ marginTop: 24 }}>
-            <AUTH.PinPanel pin={pin} />
-          </div>
-        ) : null}
+        {pin ? <AUTH.PinPanel pin={pin} /> : null}
 
         {!pin && pinMissing ? (
-          <UI.Plate style={{ padding: 20, maxWidth: 480, marginTop: 24 }}>
+          <UI.Plate style={{ padding: 20, maxWidth: 480 }}>
             <p style={{ margin: 0, fontSize: 14 }}>{t("auth.pinUnavailable")}</p>
           </UI.Plate>
         ) : null}
 
         <div className="auth-actions">
-          {onOpenPayments ? (
-            <UI.Button type="button" variant="primary" onClick={onOpenPayments}>
-              {t("auth.goToPayments")}
-            </UI.Button>
-          ) : null}
-          <UI.Button type="button" variant="ghost" onClick={onSignOut}>
-            {t("auth.signOut")}
+          <UI.Button type="button" variant="primary" onClick={onContinue}>
+            {t("auth.continueToDashboard")}
           </UI.Button>
         </div>
       </div>

@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.auth.service import get_auth_service
+from backend.cards.service import get_cards_service
 from backend.config import settings
 from backend.database.mongo import close_client, ensure_indexes
 from backend.helpers.context import (
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI):
     get_payments_service()
     get_onboarding_service()
     get_auth_service()
+    get_cards_service()
     await ensure_indexes()
     yield
     await close_client()

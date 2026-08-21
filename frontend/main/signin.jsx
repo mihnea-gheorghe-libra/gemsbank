@@ -13,7 +13,7 @@
     PASSWORD: "password",
     RESET_CODE: "resetCode",
     NEW_PASSWORD: "newPassword",
-    WELCOME: "welcome",
+    PIN_REVEAL: "pinReveal",
   };
 
   function toFieldErrors(error) {
@@ -22,14 +22,21 @@
     return { [error.details.field]: error.message };
   }
 
-  AUTH.SignInPage = function SignInPage({ onSwitchToRegister, onSignedIn }) {
+  function normaliseUsername(value) {
+    return value.trim().toLowerCase();
+  }
+
+  AUTH.SignInPage = function SignInPage({ onSwitchToRegister }) {
+    const DASHBOARD = GEMS.dashboard;
     const [view, setView] = useState(VIEWS.SIGN_IN);
     const [session, setSession] = useState(null);
     const [pin, setPin] = useState(null);
     const [pinMissing, setPinMissing] = useState(false);
     const [recovery, setRecovery] = useState(null);
+    const [pinLockedUsername, setPinLockedUsername] = useState(null);
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(false);
+    const [dashboardOpen, setDashboardOpen] = useState(false);
 
     const run = useCallback(async (work) => {
       setBusy(true);
@@ -56,26 +63,40 @@
       setRecovery(null);
       setSession(null);
       setError(null);
+      setDashboardOpen(false);
       setView(VIEWS.SIGN_IN);
     }, []);
 
     const handleSignIn = (form) =>
       run(async () => {
-        const response = await api.login(form.username, form.pin);
-        GEMS.session.set(response.sessionToken);
-        setSession(response);
-        setPin(null);
-        setPinMissing(false);
-        setView(VIEWS.WELCOME);
+        if (pinLockedUsername && normaliseUsername(form.username) === pinLockedUsername) {
+          setView(VIEWS.PASSWORD);
+          return;
+        }
+        try {
+          const response = await api.login(form.username, form.pin);
+          setSession(response);
+          setPin(null);
+          setPinMissing(false);
+          setDashboardOpen(true);
+        } catch (err) {
+          if (err.details && err.details.pinLocked) {
+            setPinLockedUsername(normaliseUsername(form.username));
+            setView(VIEWS.PASSWORD);
+          }
+          throw err;
+        }
       });
 
     const handleReveal = (form) =>
       run(async () => {
         const response = await api.revealPin(form.username, form.password);
-        GEMS.session.set(response.sessionToken);
+        if (normaliseUsername(form.username) === pinLockedUsername) {
+          setPinLockedUsername(null);
+        }
         setSession(response);
         setPin(response.pin);
-        setView(VIEWS.WELCOME);
+        setView(VIEWS.PIN_REVEAL);
       });
 
     const handleForgotPassword = (username) =>
@@ -94,18 +115,35 @@
     const handleNewPassword = (form) =>
       run(async () => {
         const response = await api.completePasswordReset(recovery.recoveryCaseId, form);
-        GEMS.session.set(response.sessionToken);
+        setPinLockedUsername(null);
         setSession(response);
         setPin(response.pin || null);
         setPinMissing(!response.pin);
-        setView(VIEWS.WELCOME);
+        setView(VIEWS.PIN_REVEAL);
       });
 
+    const handleContinueToDashboard = useCallback(() => {
+      setPin(null);
+      setPinMissing(false);
+      setDashboardOpen(true);
+    }, []);
+
     const fieldErrors = toFieldErrors(error);
+    const lockout =
+      error && error.details && error.details.field === "password"
+        ? {
+            retryAfterSeconds: error.details.retryAfterSeconds || null,
+            permanentlyLocked: !!error.details.permanentlyLocked,
+          }
+        : null;
     const title = t("auth.views." + view + ".title", {
       username: (session && session.username) || "",
     });
     const lede = t("auth.views." + view + ".lede");
+
+    if (dashboardOpen && session) {
+      return <DASHBOARD.Dashboard username={session.username} onSignOut={resetToSignIn} />;
+    }
 
     return (
       <div className="onb-shell">
@@ -137,6 +175,8 @@
             <AUTH.PasswordForm
               busy={busy}
               fieldErrors={fieldErrors}
+              lockout={lockout}
+              pinLockNotice={!!pinLockedUsername}
               onSubmit={handleReveal}
               onForgotPassword={handleForgotPassword}
               onBack={resetToSignIn}
@@ -160,15 +200,11 @@
             />
           ) : null}
 
-          {view === VIEWS.WELCOME && session ? (
-            <AUTH.Welcome
-              username={session.username}
+          {view === VIEWS.PIN_REVEAL ? (
+            <AUTH.PinRevealScreen
               pin={pin}
               pinMissing={pinMissing}
-              onSignOut={resetToSignIn}
-              onOpenPayments={
-                GEMS.session.has() ? () => onSignedIn(session.username) : null
-              }
+              onContinue={handleContinueToDashboard}
             />
           ) : null}
 

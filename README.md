@@ -15,11 +15,30 @@ Three working screens:
 Sign in mints a **session token** (`sessions` collection). The frontend holds it in memory and
 sends it as `Authorization: Bearer …`; a page refresh signs you out, which is the intended
 behaviour while there is no refresh-token rotation (`PROMPT.md` §6: never `localStorage`).
+After a successful sign in you land on a **dashboard mockup**: a static, frontend-only prototype
+(`frontend/main/dashboard.jsx` and `frontend/components/dashboard-*.jsx`) covering Dashboard,
+Payments, AI Assistant, Portfolio, Cards, Analytics and Settings. It is a deliberate, explicitly
+approved deviation from `PROMPT.md` §4 — cards, investments, analytics and the chatbot are listed
+there as *not in v0* — kept as UI only, with hand-authored demo data
+(`frontend/helpers/dashboard-data.js`). The PIN-reveal screen (`AUTH.PinRevealScreen`) still runs
+first whenever a flow surfaces the PIN (forgot-PIN, password reset); its "Close and continue"
+action opens the dashboard mockup. Plain PIN sign-in opens it directly, since it has no PIN to
+show — there is no separate "welcome" screen any more. There is still no session token: the real
+dashboard and the `sessions` collection arrive together, later.
+
+The **Cards** screen is the one exception: it has a real backend (`backend/cards/`) — issue a
+virtual card, freeze/unfreeze, reveal PIN, set ATM/online limits, block permanently — but the
+Cards screen itself still renders from `dashboard-data.js`, not from these endpoints. See
+"Cards — a backend without a session" below before wiring it up.
 
 ## Run it
 
 ```bash
 cp .env.example .env
+# fill in MONGO_URI, and the OTP/lockout tuning values (OTP_TTL_SECONDS,
+# PIN_MAX_FAILURES, PASSWORD_MAX_FAILURES, PASSWORD_LOCKOUT_SECONDS, ...) —
+# they have no defaults in config.py on purpose, so the app will refuse to
+# start without them.
 docker compose up --build
 ```
 
@@ -30,9 +49,10 @@ docker compose up --build
 Without `RESEND_API_KEY` the OTP is not emailed; it comes back in the response as `devCode` and is
 logged. That is intentional for local work. The same applies to the password-reset code.
 
-The onboarding OTP lives for `OTP_TTL_SECONDS` (5 minutes — the customer is already looking at the
-screen when it is sent). The password-reset code lives for `RESET_CODE_TTL_SECONDS` (10 minutes),
-because it is read out of an inbox that may be a few minutes behind.
+The onboarding OTP lives for `OTP_TTL_SECONDS` — the customer is already looking at the screen when
+it is sent, so it is short. The password-reset code lives for `RESET_CODE_TTL_SECONDS`, given more
+time because it is read out of an inbox that may be a few minutes behind. Exact values are set per
+environment in `.env`, not committed — see `.env.example`.
 
 The frontend is served with `Cache-Control: no-store`. There is no build step and no fingerprinted
 filenames, so a cached `.jsx` or `.css` would otherwise survive an edit and make you debug the
@@ -100,15 +120,17 @@ backend/
 frontend/            no build step; index.html script order is the module graph
   index.html
   main/app.jsx       chooses sign in vs register, mounts the app
-  main/signin.jsx    sign in, PIN recovery, password reset, welcome
+  main/signin.jsx    sign in, PIN recovery, password reset, welcome, hands off to the dashboard
   main/register.jsx  onboarding page state and flow orchestration
-  main/payments.jsx  payments page state, loading and flow orchestration
-  components/        ui.jsx (primitives, incl. Money) · rails.jsx (step rail, agent panel) ·
-                     steps.jsx · auth.jsx (sign-in forms, PIN panel, welcome) ·
-                     payments.jsx (account strip, pending panel, table, dialogs)
-  helpers/           api.js (the only fetch caller, holds the session token) · i18n.js ·
-                     messages.js (en + ro)
-  styles/            tokens.css (the only place a hex value may appear) · app.css
+  main/dashboard.jsx post-login dashboard mockup: screen state, chat state, mock-data wiring
+  components/        ui.jsx (primitives) · rails.jsx (step rail, agent panel) · steps.jsx ·
+                     auth.jsx (sign-in forms, PIN panel, welcome) ·
+                     dashboard-widgets.jsx (segmented control, bars, donut, progress, amount) ·
+                     dashboard-shell.jsx (sidebar, topbar, agent dock, new-payment dialog) ·
+                     dashboard-screens.jsx (home, payments, chat, portfolio, cards, analytics, settings)
+  helpers/           api.js (the only fetch caller) · i18n.js · messages.js (en + ro) ·
+                     dashboard-data.js (hand-authored demo data for the dashboard mockup)
+  styles/            tokens.css (the only place a hex value may appear) · app.css · dashboard.css
 
 design/              Claude Design export — source of truth for tokens
 ops/                 Mongo schema migrations
@@ -244,9 +266,63 @@ Other tradeoffs worth knowing:
 - `POST /auth/password/reset` returns 404 for an unknown username, which allows username
   enumeration. Consistent with a demo that already returns OTP codes in dev-mode responses;
   fix it when the system stops handing out `devCode`.
-- Sign-in failures and reveal failures share one counter and one lockout on the user record
-  (`signIn.failures`, `signIn.lockedUntil`). Five failures locks the account for 15 minutes,
-  and a correct credential is refused while locked.
+- PIN and password failures are two separate tracks on the user record (`AuthUser.sign_in` /
+  `AuthUser.authorise_reveal` in `backend/auth/credentials.py`), stored as `pin` / `password`
+  sub-documents. They do not share a counter or a lockout.
+  - **PIN** (`signIn`): after `PIN_MAX_FAILURES` wrong PINs, `pin.locked` is set — no timer, no
+    self-reset. Sign-in with PIN is refused until the password is verified once (the "I forgot my
+    PIN!" screen), which clears the flag.
+  - **Password** (used to reveal the PIN and, later, to reset it): failures escalate through
+    fixed tiers — `PASSWORD_MAX_FAILURES` wrong attempts locks it for `PASSWORD_LOCKOUT_SECONDS`;
+    one more wrong attempt after that lock expires extends it to
+    `PASSWORD_LOCKOUT_EXTENDED_SECONDS`; one more after that sets `status: "locked"`
+    permanently — there is no admin back-office in v0, so a permanently locked demo account has no
+    self-service recovery, by design. A correct password at any stage before that resets the
+    track to zero.
+
+## Cards — a backend without a session
+
+`backend/cards/` implements the six actions on the dashboard's Cards mockup, through the same one
+write path as everything else (`bus.execute` → policy-free for now, audit, outbox, idempotency):
+
+- `POST /cards/virtual` — issue a virtual Mastercard for a user
+- `POST /cards/{id}/freeze` / `/unfreeze` — reversible pause
+- `POST /cards/{id}/block` — terminal; every other action on that card then fails with
+  `illegal_transition`
+- `POST /cards/{id}/pin/reveal` — same `CommandResult.sensitive` channel as `auth.reveal_pin`, so a
+  replayed `Idempotency-Key` does not re-reveal
+- `POST /cards/{id}/details/reveal` — same `sensitive` channel, returns the CVV; the frontend's
+  "Show details" button flips the card to its back face to show it. Cards issued before this
+  endpoint existed have `cvvEncrypted: null` and reject the call with `illegal_transition`
+  (`ops/005_cards_cvv.js` backfills the field as `null`, not required, for exactly that reason)
+- `POST /cards/{id}/limits/atm` and `/limits/online` — bigint minor units, bounded in
+  `cards/validation.py`
+- `GET /cards?username=` — read model, bypasses the bus like `GET /onboarding/{id}` does
+
+"Monthly online spend" has no backend — it stays a static number on the mock, unchanged, as asked.
+The date printed on the front of each card is client-side only (the browser's local clock via
+`Intl.DateTimeFormat`), not persisted or served by the backend.
+
+There is no session token (see above), so every card endpoint takes `username` in the request body
+instead of a bearer token, resolves it to a user id, and checks the card belongs to that user
+before doing anything. The `Actor` on each command is `Actor.public_cards()` — a system actor, not
+`Actor.user(...)` — exactly like `auth.sign_in` stays on `Actor.public_auth()`; the resolved
+`userId` lands in the audit `after`/event `payload` instead. This is a real gap (anyone who knows a
+username can manage that user's cards) and not a new one — it is the same gap every existing
+endpoint already has. Close it once for all of them when sessions arrive, not per-feature.
+
+The card PIN is 4 digits, generated at issuance and stored only as `pinEncrypted`
+(`AesGcmPinCipher`, same key as the account PIN, associated data = card id so a blob cannot move
+between cards) — there is no `pinHash`, because nothing ever authenticates *with* a card PIN here.
+The CVV is 3 digits, same treatment: generated at issuance, stored only as `cvvEncrypted` with its
+own associated data (`card id + ":cvv"`) so a PIN blob and a CVV blob can never be swapped for the
+same card even if both were somehow exfiltrated together.
+Card numbers are never generated or stored in full: only a random last-4 exists, anywhere, ever —
+see `cards/adapters.py`. Keep it that way; a full PAN puts real card-data handling code in a repo
+that promises there is none (`PROMPT.md` §0).
+
+New users start with zero cards; there is no seed script yet for a starter set matching the mock's
+four cards. `ops/004_cards_schema.js` adds the `cards` collection.
 
 ## What the payments screen does not do yet
 

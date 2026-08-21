@@ -18,18 +18,20 @@ class Settings(BaseSettings):
 
     web_dir: str = str(_REPO_ROOT / "frontend")
 
-    otp_ttl_seconds: int = 300
-    otp_resend_cooldown_seconds: int = 30
-    otp_max_resends: int = 3
-    otp_max_attempts: int = 5
+    otp_ttl_seconds: int
+    otp_resend_cooldown_seconds: int
+    otp_max_resends: int
+    otp_max_attempts: int
 
-    reset_code_ttl_seconds: int = 600
+    reset_code_ttl_seconds: int
 
     minimum_age_years: int = 18
 
-    sign_in_max_failures: int = 5
-    sign_in_lockout_seconds: int = 900
-    reveal_max_failures: int = 5
+    pin_max_failures: int
+
+    password_max_failures: int
+    password_lockout_seconds: int
+    password_lockout_extended_seconds: int
 
     session_ttl_seconds: int = 3600
 

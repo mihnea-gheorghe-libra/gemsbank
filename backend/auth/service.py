@@ -243,8 +243,7 @@ class AuthService:
         try:
             user.sign_in(
                 matches,
-                self._config.sign_in_max_failures,
-                self._config.sign_in_lockout_seconds,
+                self._config.pin_max_failures,
                 self._clock.now(),
             )
         except DomainError:
@@ -282,8 +281,9 @@ class AuthService:
         try:
             user.authorise_reveal(
                 matches,
-                self._config.reveal_max_failures,
-                self._config.sign_in_lockout_seconds,
+                self._config.password_max_failures,
+                self._config.password_lockout_seconds,
+                self._config.password_lockout_extended_seconds,
                 self._clock.now(),
             )
         except DomainError:
