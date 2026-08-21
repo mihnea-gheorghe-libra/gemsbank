@@ -5,6 +5,7 @@
   const DASH = GEMS.dashboardUi;
   const t = GEMS.i18n.t;
   const DATA = GEMS.dashboardData;
+  const api = GEMS.api;
   const { useState, useEffect } = React;
 
   const QUICK_ACTIONS = [
@@ -80,7 +81,7 @@
     );
   }
 
-  SCR.HomeScreen = function HomeScreen({ balanceHidden, onToggleBalance, onSpeakBalance, onNavigate }) {
+  SCR.HomeScreen = function HomeScreen({ balanceHidden, onToggleBalance, onNavigate }) {
     return (
       <div className="dash-grid-home">
         <UI.Plate className="dash-balance-card elev-sm">
@@ -90,8 +91,7 @@
               {balanceHidden ? t("dashboard.home.reveal") : t("dashboard.home.hide")}
             </UI.Button>
           </div>
-          <div className="dash-balance-figure" onClick={onSpeakBalance} role="button" tabIndex={0}
-               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSpeakBalance(); }}>
+          <div className="dash-balance-figure">
             {balanceHidden ? "•••••••• RON" : DATA.totalBalance + " RON"}
           </div>
           <div className="text-muted" style={{ fontSize: 12 }}>
@@ -454,7 +454,7 @@
             </div>
 
             {card ? (
-              <UI.Plate className="elev-sm" style={{ padding: 16, alignSelf: "start", background: "var(--color-surface)" }}>
+              <UI.Plate className="elev-sm dash-quick-settings-panel" style={{ padding: 16, alignSelf: "start" }}>
                 <UI.Kicker style={{ marginBottom: 6 }}>{t("dashboard.cards.quickSettings")}</UI.Kicker>
                 <div style={{ fontFamily: "var(--font-heading)", fontSize: 20, marginBottom: 12 }}>
                   {t("dashboard.cards.kind." + kindToI18nKey(card.kind)) + " " + card.numberMasked.slice(-4)}
@@ -519,7 +519,7 @@
                 </div>
                 <div className="hr" />
                 <div className="text-muted" style={{ fontSize: 12 }}>{t("dashboard.cards.monthlySpend")}</div>
-                <div style={{ marginTop: 6 }}><DASH.ProgressBar pct={46} label={t("dashboard.cards.monthlySpend")} /></div>
+                <div style={{ marginTop: 6 }}><DASH.ProgressBar pct={46} label={t("dashboard.cards.monthlySpend")} className="dash-progress-negative" /></div>
               </UI.Plate>
             ) : null}
           </div>
@@ -584,11 +584,339 @@
     );
   };
 
-  SCR.SettingsScreen = function SettingsScreen({ lang, onLang, theme, onTheme, ttsOn, onToggleTts, onSignOut, onGoChat }) {
+  function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
+    const [code, setCode] = useState("");
+    return (
+      <UI.Dialog labelledBy={titleId} onDismiss={onDismiss}>
+        <h2 id={titleId} className="dialog-title">{t("dashboard.settings.otp.title")}</h2>
+        <p className="text-muted" style={{ fontSize: 13 }}>
+          {t("dashboard.settings.otp.body", { email: delivery ? delivery.sentTo : "" })}
+        </p>
+        <form noValidate onSubmit={(event) => { event.preventDefault(); onSubmit(code); }}>
+          <UI.Field id="otp-code" label={t("dashboard.settings.otp.codeLabel")} error={error ? error.message : null}>
+            <UI.TextInput
+              id="otp-code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+            />
+          </UI.Field>
+          {delivery && delivery.devCode ? (
+            <p className="text-muted" style={{ fontSize: 12 }}>
+              {t("dashboard.settings.otp.devHint", { code: delivery.devCode })}
+            </p>
+          ) : null}
+          <div className="dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onDismiss}>{t("dashboard.settings.otp.cancel")}</UI.Button>
+            <UI.Button type="submit" variant="primary" disabled={busy}>{t("dashboard.settings.otp.confirm")}</UI.Button>
+          </div>
+        </form>
+      </UI.Dialog>
+    );
+  }
+
+  function PinChangeDialog({ busy, error, onSubmit, onDismiss }) {
+    const [newPin, setNewPin] = useState("");
+    const [confirmation, setConfirmation] = useState("");
+    return (
+      <UI.Dialog labelledBy="pin-change-title" onDismiss={onDismiss}>
+        <h2 id="pin-change-title" className="dialog-title">{t("dashboard.settings.pinDialog.title")}</h2>
+        <form noValidate onSubmit={(event) => { event.preventDefault(); onSubmit(newPin, confirmation); }}>
+          <UI.Field id="pin-new" label={t("dashboard.settings.pinDialog.newPin")} error={error ? error.message : null}>
+            <UI.TextInput id="pin-new" inputMode="numeric" autoFocus value={newPin} onChange={(event) => setNewPin(event.target.value)} />
+          </UI.Field>
+          <UI.Field id="pin-confirm" label={t("dashboard.settings.pinDialog.confirmPin")}>
+            <UI.TextInput id="pin-confirm" inputMode="numeric" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
+          </UI.Field>
+          <div className="dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onDismiss}>{t("dashboard.settings.pinDialog.cancel")}</UI.Button>
+            <UI.Button type="submit" variant="primary" disabled={busy}>{t("dashboard.settings.pinDialog.submit")}</UI.Button>
+          </div>
+        </form>
+      </UI.Dialog>
+    );
+  }
+
+  function SessionsDialog({ onDismiss }) {
+    const [sessions, setSessions] = useState(null);
+    const [error, setError] = useState(null);
+    const [revokingId, setRevokingId] = useState(null);
+
+    useEffect(() => {
+      api
+        .listSessions()
+        .then((response) => setSessions(response.sessions))
+        .catch((err) => setError(err));
+    }, []);
+
+    async function revoke(sessionId) {
+      setRevokingId(sessionId);
+      setError(null);
+      try {
+        await api.revokeSession(sessionId);
+        setSessions((current) => current.filter((row) => row.sessionId !== sessionId));
+      } catch (err) {
+        setError(err);
+      } finally {
+        setRevokingId(null);
+      }
+    }
+
+    return (
+      <UI.Dialog labelledBy="sessions-title" onDismiss={onDismiss}>
+        <h2 id="sessions-title" className="dialog-title">{t("dashboard.settings.sessionsDialog.title")}</h2>
+        <UI.ErrorNote error={error} />
+        {sessions === null ? (
+          <p className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.settings.sessionsDialog.loading")}</p>
+        ) : sessions.length === 0 ? (
+          <p className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.settings.sessionsDialog.empty")}</p>
+        ) : (
+          <div className="dash-settings-list">
+            {sessions.map((row) => (
+              <div className="dash-settings-row" key={row.sessionId} style={{ alignItems: "flex-start" }}>
+                <div>
+                  <div style={{ fontFamily: "var(--font-heading)", fontSize: 15 }}>
+                    {row.device}
+                    {row.isCurrent ? " · " + t("dashboard.settings.sessionsDialog.thisDevice") : ""}
+                  </div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>{row.location}</div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>
+                    {t("dashboard.settings.sessionsDialog.ip") + ": " + (row.ipAddress || "—")}
+                  </div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>
+                    {t("dashboard.settings.sessionsDialog.signedIn") + ": " + GEMS.i18n.isoToDisplayDate(row.issuedAt.slice(0, 10)) + " " + row.issuedAt.slice(11, 16)}
+                  </div>
+                </div>
+                {row.isCurrent ? null : (
+                  <UI.Button
+                    type="button"
+                    variant="secondary"
+                    disabled={revokingId === row.sessionId}
+                    onClick={() => revoke(row.sessionId)}
+                  >
+                    {t("dashboard.settings.sessionsDialog.revoke")}
+                  </UI.Button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="dialog-actions">
+          <UI.Button type="button" variant="primary" onClick={onDismiss}>{t("dashboard.settings.sessionsDialog.close")}</UI.Button>
+        </div>
+      </UI.Dialog>
+    );
+  }
+
+  function CloseAccountDialog({ onDismiss }) {
+    const [step, setStep] = useState("confirm");
+    const [pin, setPin] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+
+    async function submitPin(event) {
+      event.preventDefault();
+      setBusy(true);
+      setError(null);
+      try {
+        await api.requestAccountClosure(pin);
+        setStep("done");
+      } catch (err) {
+        setError(err);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    if (step === "done") {
+      return (
+        <UI.Dialog labelledBy="close-account-title" onDismiss={onDismiss}>
+          <h2 id="close-account-title" className="dialog-title">{t("dashboard.settings.closeAccountDialog.doneTitle")}</h2>
+          <p style={{ fontSize: 14 }}>{t("dashboard.settings.closeAccountDialog.doneBody")}</p>
+          <div className="dialog-actions">
+            <UI.Button type="button" variant="primary" onClick={onDismiss}>{t("dashboard.settings.closeAccountDialog.close")}</UI.Button>
+          </div>
+        </UI.Dialog>
+      );
+    }
+
+    if (step === "pin") {
+      return (
+        <UI.Dialog labelledBy="close-account-title" onDismiss={onDismiss}>
+          <h2 id="close-account-title" className="dialog-title">{t("dashboard.settings.closeAccountDialog.pinTitle")}</h2>
+          <form noValidate onSubmit={submitPin}>
+            <UI.Field id="close-account-pin" label={t("dashboard.settings.closeAccountDialog.pinLabel")} error={error ? error.message : null}>
+              <UI.TextInput id="close-account-pin" inputMode="numeric" autoFocus value={pin} onChange={(event) => setPin(event.target.value)} />
+            </UI.Field>
+            <div className="dialog-actions">
+              <UI.Button type="button" variant="secondary" onClick={onDismiss}>{t("dashboard.settings.closeAccountDialog.cancel")}</UI.Button>
+              <UI.Button type="submit" variant="primary" disabled={busy}>{t("dashboard.settings.closeAccountDialog.confirm")}</UI.Button>
+            </div>
+          </form>
+        </UI.Dialog>
+      );
+    }
+
+    return (
+      <UI.Dialog labelledBy="close-account-title" onDismiss={onDismiss}>
+        <h2 id="close-account-title" className="dialog-title">{t("dashboard.settings.closeAccountDialog.title")}</h2>
+        <p style={{ fontSize: 14 }}>{t("dashboard.settings.closeAccountDialog.body")}</p>
+        <div className="dialog-actions">
+          <UI.Button type="button" variant="secondary" onClick={onDismiss}>{t("dashboard.settings.closeAccountDialog.cancel")}</UI.Button>
+          <UI.Button type="button" variant="primary" style={{ background: "var(--color-negative)" }} onClick={() => setStep("pin")}>
+            {t("dashboard.settings.closeAccountDialog.send")}
+          </UI.Button>
+        </div>
+      </UI.Dialog>
+    );
+  }
+
+  function ContactDialog({ onDismiss }) {
+    return (
+      <UI.Dialog labelledBy="contact-title" onDismiss={onDismiss}>
+        <h2 id="contact-title" className="dialog-title">{t("dashboard.settings.contactDialog.title")}</h2>
+        <dl className="pay-receipt">
+          <dt>{t("dashboard.settings.contactDialog.phoneLabel")}</dt>
+          <dd>{t("dashboard.settings.contactDialog.phoneValue")}</dd>
+          <dt>{t("dashboard.settings.contactDialog.emailLabel")}</dt>
+          <dd>{t("dashboard.settings.contactDialog.emailValue")}</dd>
+        </dl>
+        <p className="text-muted" style={{ fontSize: 12 }}>{t("dashboard.settings.contactDialog.hours")}</p>
+        <div className="dialog-actions">
+          <UI.Button type="button" variant="primary" onClick={onDismiss}>{t("dashboard.settings.contactDialog.close")}</UI.Button>
+        </div>
+      </UI.Dialog>
+    );
+  }
+
+  SCR.SettingsScreen = function SettingsScreen({ lang, onLang, theme, onTheme, onSignOut, onGoChat, me, onMeChange }) {
     const langs = [
       { value: "ro", label: "Română" },
       { value: "en", label: "English" },
     ];
+
+    const [emailDraft, setEmailDraft] = useState("");
+    const [phoneDraft, setPhoneDraft] = useState("");
+    const [savingContact, setSavingContact] = useState(false);
+    const [contactError, setContactError] = useState(null);
+    const [contactNotice, setContactNotice] = useState(null);
+    const [activeCase, setActiveCase] = useState(null);
+    const [otpBusy, setOtpBusy] = useState(false);
+    const [otpError, setOtpError] = useState(null);
+
+    const [pinDialogOpen, setPinDialogOpen] = useState(false);
+    const [pinBusy, setPinBusy] = useState(false);
+    const [pinError, setPinError] = useState(null);
+    const [pinCase, setPinCase] = useState(null);
+    const [pinOtpBusy, setPinOtpBusy] = useState(false);
+    const [pinOtpError, setPinOtpError] = useState(null);
+    const [pinNotice, setPinNotice] = useState(null);
+
+    const [sessionsOpen, setSessionsOpen] = useState(false);
+    const [closeAccountOpen, setCloseAccountOpen] = useState(false);
+    const [contactDialogOpen, setContactDialogOpen] = useState(false);
+
+    useEffect(() => {
+      if (me) {
+        setEmailDraft(me.email);
+        setPhoneDraft(me.phone);
+      }
+    }, [me]);
+
+    function runNextChange(queue) {
+      if (!queue.length) {
+        setSavingContact(false);
+        return;
+      }
+      const [current, ...rest] = queue;
+      const request = current.kind === "email" ? api.requestEmailChange(current.value) : api.requestPhoneChange(current.value);
+      request
+        .then((response) => setActiveCase({ kind: current.kind, caseId: response.recoveryCaseId, delivery: response.delivery, rest }))
+        .catch((err) => {
+          setContactError(err);
+          setSavingContact(false);
+        });
+    }
+
+    function saveContact() {
+      if (!me) return;
+      const changes = [];
+      const nextEmail = emailDraft.trim();
+      const nextPhone = phoneDraft.trim();
+      if (nextEmail && nextEmail !== me.email) changes.push({ kind: "email", value: nextEmail });
+      if (nextPhone && nextPhone !== me.phone) changes.push({ kind: "phone", value: nextPhone });
+      if (!changes.length) return;
+      setContactError(null);
+      setContactNotice(null);
+      setSavingContact(true);
+      runNextChange(changes);
+    }
+
+    function submitContactOtp(code) {
+      if (!activeCase) return;
+      setOtpBusy(true);
+      setOtpError(null);
+      api
+        .verifySecureChange(activeCase.caseId, code)
+        .then((response) => {
+          onMeChange({
+            userId: response.userId,
+            username: response.username,
+            email: response.email,
+            phone: response.phone,
+            fullName: response.fullName,
+          });
+          setEmailDraft(response.email);
+          setPhoneDraft(response.phone);
+          const rest = activeCase.rest || [];
+          const kind = activeCase.kind;
+          setActiveCase(null);
+          setOtpBusy(false);
+          if (rest.length) {
+            runNextChange(rest);
+          } else {
+            setSavingContact(false);
+            setContactNotice(t(kind === "email" ? "dashboard.settings.otp.successEmail" : "dashboard.settings.otp.successPhone"));
+          }
+        })
+        .catch((err) => {
+          setOtpError(err);
+          setOtpBusy(false);
+        });
+    }
+
+    function submitNewPin(newPin, confirmation) {
+      setPinBusy(true);
+      setPinError(null);
+      api
+        .requestPinChange(newPin, confirmation)
+        .then((response) => {
+          setPinDialogOpen(false);
+          setPinCase({ caseId: response.recoveryCaseId, delivery: response.delivery });
+        })
+        .catch((err) => setPinError(err))
+        .finally(() => setPinBusy(false));
+    }
+
+    function submitPinOtp(code) {
+      if (!pinCase) return;
+      setPinOtpBusy(true);
+      setPinOtpError(null);
+      api
+        .verifySecureChange(pinCase.caseId, code)
+        .then(() => {
+          setPinCase(null);
+          setPinOtpBusy(false);
+          setPinNotice(t("dashboard.settings.otp.successPin"));
+        })
+        .catch((err) => {
+          setPinOtpError(err);
+          setPinOtpBusy(false);
+        });
+    }
+
     return (
       <div>
         <h3 style={{ margin: "0 0 18px" }}>{t("dashboard.nav.settings")}</h3>
@@ -597,28 +925,34 @@
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.settings.personalDetails")}</UI.Kicker>
             <div className="dash-field-grid">
               <UI.Field id="set-name" label={t("dashboard.settings.fullName")}>
-                <UI.TextInput id="set-name" defaultValue="Andrei-Mihai Pop" />
+                <UI.TextInput id="set-name" value={me ? me.fullName : ""} disabled />
+              </UI.Field>
+              <UI.Field id="set-id" label={t("dashboard.settings.userId")}>
+                <UI.TextInput id="set-id" value={me ? DASH.deriveDisplayId(me.fullName, me.userId) : ""} disabled />
               </UI.Field>
               <UI.Field id="set-phone" label={t("dashboard.settings.phone")}>
-                <UI.TextInput id="set-phone" defaultValue="+40 7•• ••• 214" />
+                <UI.TextInput id="set-phone" value={phoneDraft} onChange={(event) => setPhoneDraft(event.target.value)} disabled={!me} />
               </UI.Field>
-              <div style={{ gridColumn: "span 2" }}>
-                <UI.Field id="set-email" label={t("dashboard.settings.email")}>
-                  <UI.TextInput id="set-email" defaultValue="andrei.pop@mail.ro" />
-                </UI.Field>
-              </div>
+              <UI.Field id="set-email" label={t("dashboard.settings.email")}>
+                <UI.TextInput id="set-email" value={emailDraft} onChange={(event) => setEmailDraft(event.target.value)} disabled={!me} />
+              </UI.Field>
             </div>
-            <UI.Button type="button" variant="primary" style={{ marginTop: 14 }}>{t("dashboard.settings.save")}</UI.Button>
+            <UI.ErrorNote error={contactError} />
+            {contactNotice ? <p className="text-muted" style={{ fontSize: 12 }}>{contactNotice}</p> : null}
+            <UI.Button type="button" variant="primary" style={{ marginTop: 14 }} disabled={!me || savingContact} onClick={saveContact}>
+              {savingContact ? t("dashboard.settings.saving") : t("dashboard.settings.save")}
+            </UI.Button>
           </UI.Plate>
 
           <UI.Plate className="elev-sm" style={{ padding: 18 }}>
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.settings.security")}</UI.Kicker>
             <div className="dash-settings-list">
-              <div className="dash-settings-row"><span>{t("dashboard.settings.changePin")}</span><UI.Button type="button" variant="secondary">{t("dashboard.settings.update")}</UI.Button></div>
+              <div className="dash-settings-row"><span>{t("dashboard.settings.changePin")}</span><UI.Button type="button" variant="secondary" onClick={() => { setPinError(null); setPinDialogOpen(true); }}>{t("dashboard.settings.update")}</UI.Button></div>
               <div className="dash-settings-row"><span>{t("dashboard.settings.twoFactor")}</span><UI.Tag variant="accent">{t("dashboard.settings.authenticator")}</UI.Tag></div>
               <div className="dash-settings-row"><span>{t("dashboard.settings.passkeys")}</span><UI.Tag variant="accent">{t("dashboard.settings.passkeysCount")}</UI.Tag></div>
-              <div className="dash-settings-row"><span>{t("dashboard.settings.sessions")}</span><UI.Button type="button" variant="secondary">{t("dashboard.settings.review")}</UI.Button></div>
+              <div className="dash-settings-row"><span>{t("dashboard.settings.sessions")}</span><UI.Button type="button" variant="secondary" onClick={() => setSessionsOpen(true)}>{t("dashboard.settings.review")}</UI.Button></div>
             </div>
+            {pinNotice ? <p className="text-muted" style={{ fontSize: 12, marginTop: 10 }}>{pinNotice}</p> : null}
           </UI.Plate>
 
           <UI.Plate className="elev-sm" style={{ padding: 18 }}>
@@ -635,13 +969,6 @@
                   <UI.Button type="button" variant={theme === "dark" ? "primary" : "secondary"} onClick={() => onTheme("dark")}>{t("dashboard.settings.dark")}</UI.Button>
                 </div>
               </div>
-              <div>
-                <div style={{ fontSize: 13, marginBottom: 6 }}>{t("dashboard.settings.tts")}</div>
-                <UI.Button type="button" variant="secondary" aria-pressed={ttsOn} onClick={onToggleTts}>
-                  {ttsOn ? t("dashboard.readAloudOn") : t("dashboard.readAloudOff")}
-                </UI.Button>
-                <div className="text-muted" style={{ fontSize: 12, marginTop: 8 }}>{t("dashboard.settings.ttsNote")}</div>
-              </div>
             </div>
           </UI.Plate>
 
@@ -649,14 +976,50 @@
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.settings.support")}</UI.Kicker>
             <div className="dash-settings-list">
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }} onClick={onGoChat}>{t("dashboard.settings.chatSupport")}</UI.Button>
+              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }} onClick={() => setContactDialogOpen(true)}>{t("dashboard.settings.customerService")}</UI.Button>
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }}>{t("dashboard.settings.faq")}</UI.Button>
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }}>{t("dashboard.settings.agentInstructions")}</UI.Button>
               <div className="hr" style={{ margin: "4px 0" }} />
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }} onClick={onSignOut}>{t("dashboard.signOut")}</UI.Button>
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", color: "var(--color-negative)" }}>{t("dashboard.settings.closeAccount")}</UI.Button>
+              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", color: "var(--color-negative)" }} onClick={() => setCloseAccountOpen(true)}>{t("dashboard.settings.closeAccount")}</UI.Button>
             </div>
           </UI.Plate>
         </div>
+
+        {activeCase ? (
+          <OtpDialog
+            titleId="contact-otp-title"
+            delivery={activeCase.delivery}
+            busy={otpBusy}
+            error={otpError}
+            onSubmit={submitContactOtp}
+            onDismiss={() => { setActiveCase(null); setSavingContact(false); }}
+          />
+        ) : null}
+
+        {pinDialogOpen ? (
+          <PinChangeDialog
+            busy={pinBusy}
+            error={pinError}
+            onSubmit={submitNewPin}
+            onDismiss={() => setPinDialogOpen(false)}
+          />
+        ) : null}
+
+        {pinCase ? (
+          <OtpDialog
+            titleId="pin-otp-title"
+            delivery={pinCase.delivery}
+            busy={pinOtpBusy}
+            error={pinOtpError}
+            onSubmit={submitPinOtp}
+            onDismiss={() => setPinCase(null)}
+          />
+        ) : null}
+
+        {sessionsOpen ? <SessionsDialog onDismiss={() => setSessionsOpen(false)} /> : null}
+        {closeAccountOpen ? <CloseAccountDialog onDismiss={() => setCloseAccountOpen(false)} /> : null}
+        {contactDialogOpen ? <ContactDialog onDismiss={() => setContactDialogOpen(false)} /> : null}
       </div>
     );
   };

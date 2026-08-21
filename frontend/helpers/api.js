@@ -104,6 +104,22 @@
     completePasswordReset: (id, payload) =>
       send("/auth/password/reset/" + id + "/complete", { method: "POST", json: payload }),
     logout: () => send("/auth/logout", { method: "POST" }),
+    me: () => send("/auth/me"),
+    listSessions: () => send("/auth/sessions"),
+    revokeSession: (sessionId) => send("/auth/sessions/" + sessionId + "/revoke", { method: "POST" }),
+    requestEmailChange: (newEmail) =>
+      send("/auth/email/change", { method: "POST", json: { newEmail } }),
+    requestPhoneChange: (newPhone) =>
+      send("/auth/phone/change", { method: "POST", json: { newPhone } }),
+    requestPinChange: (newPin, newPinConfirmation) =>
+      send("/auth/pin/change", {
+        method: "POST",
+        json: { newPin, newPinConfirmation },
+      }),
+    verifySecureChange: (caseId, code) =>
+      send("/auth/secure-change/" + caseId + "/verify", { method: "POST", json: { code } }),
+    requestAccountClosure: (pin) =>
+      send("/auth/account/closure-request", { method: "POST", json: { pin } }),
 
     listAccounts: () => send("/accounts"),
     paymentsSummary: () => send("/payments/summary"),

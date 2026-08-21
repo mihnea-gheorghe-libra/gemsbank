@@ -4,6 +4,22 @@
   const UI = GEMS.ui;
   const t = GEMS.i18n.t;
   const DATA = GEMS.dashboardData;
+  const { useState, useEffect, useRef } = React;
+
+  function deriveDisplayId(fullName, userId) {
+    const parts = (fullName || "").trim().split(/\s+/).filter(Boolean);
+    const surname = (parts[0] || "").toUpperCase();
+    const given = (parts[1] || "").split("-")[0].toUpperCase();
+    const initials = (surname.slice(0, 2) + given.slice(0, 2)).padEnd(4, "X");
+    const seed = String(userId || "");
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+    }
+    const digits = String(hash % 1000000).padStart(6, "0");
+    return initials + digits;
+  }
+  DASH.deriveDisplayId = deriveDisplayId;
 
   DASH.Sidebar = function Sidebar({ screen, onNavigate, onSignOut }) {
     return (
@@ -41,7 +57,28 @@
     );
   };
 
-  DASH.Topbar = function Topbar({ screen, username, ttsOn, onToggleTts }) {
+  DASH.Topbar = function Topbar({ screen, username, me, onOpenSettings, onSignOut }) {
+    const [menuOpen, setMenuOpen] = useState(false);
+    const containerRef = useRef(null);
+
+    useEffect(() => {
+      if (!menuOpen) return undefined;
+      function onPointerDown(event) {
+        if (containerRef.current && !containerRef.current.contains(event.target)) {
+          setMenuOpen(false);
+        }
+      }
+      function onKeyDown(event) {
+        if (event.key === "Escape") setMenuOpen(false);
+      }
+      document.addEventListener("mousedown", onPointerDown);
+      document.addEventListener("keydown", onKeyDown);
+      return () => {
+        document.removeEventListener("mousedown", onPointerDown);
+        document.removeEventListener("keydown", onKeyDown);
+      };
+    }, [menuOpen]);
+
     return (
       <header className="dash-topbar">
         <div>
@@ -56,13 +93,46 @@
           placeholder={t("dashboard.searchPlaceholder")}
         />
 
-        <UI.Button type="button" variant="secondary" aria-pressed={ttsOn} onClick={onToggleTts}>
-          {ttsOn ? t("dashboard.readAloudOn") : t("dashboard.readAloudOff")}
-        </UI.Button>
+        <div className="dash-profile" ref={containerRef}>
+          <button
+            type="button"
+            className="dash-avatar"
+            aria-haspopup="true"
+            aria-expanded={menuOpen}
+            aria-label={t("dashboard.profileMenu.trigger")}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            {(username || "").slice(0, 2).toUpperCase()}
+            <span className="dash-avatar-dot" aria-hidden="true" />
+          </button>
 
-        <div className="dash-avatar" aria-hidden="true">
-          {(username || "").slice(0, 2).toUpperCase()}
-          <span className="dash-avatar-dot" aria-hidden="true" />
+          {menuOpen ? (
+            <div className="dash-profile-menu elev-md plate" role="menu">
+              <div className="dash-profile-name">{me ? me.fullName : ""}</div>
+              <div className="dash-profile-id">
+                {t("dashboard.profileMenu.idPrefix")}: {me ? deriveDisplayId(me.fullName, me.userId) : "…"}
+              </div>
+              <div className="hr" />
+              <UI.Button
+                type="button"
+                variant="secondary"
+                role="menuitem"
+                style={{ justifyContent: "flex-start" }}
+                onClick={() => { setMenuOpen(false); onOpenSettings(); }}
+              >
+                {t("dashboard.profileMenu.settings")}
+              </UI.Button>
+              <UI.Button
+                type="button"
+                variant="secondary"
+                role="menuitem"
+                style={{ justifyContent: "flex-start" }}
+                onClick={() => { setMenuOpen(false); onSignOut(); }}
+              >
+                {t("dashboard.signOut")}
+              </UI.Button>
+            </div>
+          ) : null}
         </div>
       </header>
     );

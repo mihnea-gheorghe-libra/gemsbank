@@ -49,6 +49,59 @@
 }
 .dash-nav-item:hover { background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
 .dash-nav-item.is-active { background: var(--color-plum-900); color: var(--color-lime-100); }
+:root[data-theme="dark"] .dash-nav-item.is-active { background: #4D2954; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .dash-nav-item.is-active { background: #4D2954; }
+}
+
+/* Card-like tiles keep the light-mode green surface in dark mode (by request); pin
+   their content colours to the light-mode foreground too, so text stays legible
+   instead of going light-on-light. */
+:root[data-theme="dark"] .dash-account-tile,
+:root[data-theme="dark"] .dash-pending-row,
+:root[data-theme="dark"] .dash-card-tile,
+:root[data-theme="dark"] .dash-tx-card,
+:root[data-theme="dark"] .dash-quick-settings-panel {
+  --color-text: var(--color-on-light-text);
+  --color-heading: var(--color-on-light-heading);
+  --color-primary: var(--color-on-light-primary);
+  --color-muted: var(--color-on-light-muted);
+  --color-border: var(--color-on-light-border);
+  --color-negative: var(--color-on-light-negative);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .dash-account-tile,
+  :root:not([data-theme="light"]) .dash-pending-row,
+  :root:not([data-theme="light"]) .dash-card-tile,
+  :root:not([data-theme="light"]) .dash-tx-card,
+  :root:not([data-theme="light"]) .dash-quick-settings-panel {
+    --color-text: var(--color-on-light-text);
+    --color-heading: var(--color-on-light-heading);
+    --color-primary: var(--color-on-light-primary);
+    --color-muted: var(--color-on-light-muted);
+    --color-border: var(--color-on-light-border);
+    --color-negative: var(--color-on-light-negative);
+  }
+}
+
+/* The card surface itself (not its text) becomes the GEMS colour in dark mode —
+   light mode is untouched. */
+:root[data-theme="dark"] .dash-account-tile,
+:root[data-theme="dark"] .dash-pending-row,
+:root[data-theme="dark"] .dash-card-tile,
+:root[data-theme="dark"] .dash-tx-card,
+:root[data-theme="dark"] .dash-quick-settings-panel {
+  background: var(--color-lime-500);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .dash-account-tile,
+  :root:not([data-theme="light"]) .dash-pending-row,
+  :root:not([data-theme="light"]) .dash-card-tile,
+  :root:not([data-theme="light"]) .dash-tx-card,
+  :root:not([data-theme="light"]) .dash-quick-settings-panel {
+    background: var(--color-lime-500);
+  }
+}
 .dash-nav-num { font-family: var(--font-mono); font-size: 10px; opacity: 0.45; letter-spacing: 0.08em; }
 .dash-nav-item.is-active .dash-nav-num { color: var(--color-lime-500); opacity: 1; }
 .dash-nav-dot { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--color-lime-500); display: block; }
@@ -67,13 +120,22 @@
 .dash-topbar-title { font-family: var(--font-heading); font-size: 19px; line-height: 1.1; color: var(--color-heading); }
 .dash-topbar-tag { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; opacity: 0.5; }
 .dash-search { margin-left: auto; max-width: 340px; width: 100%; }
+.dash-profile { position: relative; flex: none; }
 .dash-avatar {
   position: relative;
+  border: 0; padding: 0; margin: 0; cursor: pointer; font: inherit;
   width: 34px; height: 34px; border-radius: 50%; flex: none;
   background: var(--color-plum-900); color: var(--color-lime-100);
   display: grid; place-items: center; font-family: var(--font-heading); font-size: 13px;
 }
 .dash-avatar-dot { position: absolute; top: -2px; right: -2px; width: 9px; height: 9px; border-radius: 50%; background: var(--color-lime-600); border: 2px solid var(--color-bg); display: block; }
+.dash-profile-menu {
+  position: absolute; top: calc(100% + 10px); right: 0; z-index: 40;
+  width: 240px; padding: 14px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--color-bg);
+}
+.dash-profile-id { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; color: var(--color-muted); }
+.dash-profile-name { font-family: var(--font-heading); font-size: 16px; color: var(--color-heading); }
 
 .dash-content { flex: 1; overflow: auto; padding: 26px; }
 
@@ -91,7 +153,7 @@
 }
 .dash-quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .dash-accounts-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.dash-account-tile { padding: 12px; background: var(--color-surface); }
+.dash-account-tile { padding: 12px; background: var(--color-lime-200); color: var(--color-text); }
 .dash-account-amount { font-family: var(--font-heading); font-size: 22px; margin: 4px 0 2px; }
 
 .dash-kicker-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -122,7 +184,7 @@
 /* ── payments ────────────────────────────────────────────── */
 .dash-screen-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
 .dash-pending-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.dash-pending-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--radius-lg); background: var(--color-surface); }
+.dash-pending-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--radius-lg); background: var(--color-lime-200); color: var(--color-text); }
 .dash-filters-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
 
 /* ── portfolio ───────────────────────────────────────────── */
@@ -130,6 +192,7 @@
 .dash-portfolio-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .dash-progress { height: 9px; border-radius: 999px; overflow: hidden; background: var(--color-bg); border: 1px solid var(--color-border); }
 .dash-progress > span { display: block; height: 100%; background: var(--color-lime-600); }
+.dash-progress-negative > span { background: var(--color-negative); }
 .dash-invest-row { display: grid; grid-template-columns: 1.6fr 1fr; gap: 20px; align-items: center; margin-top: 20px; }
 .dash-donut { width: 150px; height: 150px; flex: none; border-radius: 50%; }
 .dash-donut-row { display: flex; gap: 20px; align-items: center; }
@@ -143,7 +206,8 @@
 .dash-card-tile {
   all: unset; box-sizing: border-box; cursor: pointer; display: block;
   aspect-ratio: 1.6; padding: 16px; display: flex; flex-direction: column; justify-content: space-between;
-  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+  background: var(--color-lime-200); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+  color: var(--color-text);
 }
 .dash-card-tile:hover { background: color-mix(in srgb, var(--color-primary) 10%, transparent); }
 .dash-card-tile:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
@@ -153,9 +217,23 @@
 .dash-card-date { font-family: var(--font-mono); font-size: 10px; opacity: 0.55; margin-top: 4px; }
 .dash-settings-list { display: flex; flex-direction: column; gap: 8px; }
 .dash-settings-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.dash-quick-settings-panel { background: var(--color-lime-200); color: var(--color-text); }
 
 /* ── card flip (Show details → CVV on the back) ─────────────── */
-.dash-card-flip { aspect-ratio: 1.6; perspective: 1200px; }
+.dash-card-flip {
+  all: unset;
+  box-sizing: border-box;
+  display: block;
+  cursor: pointer;
+  aspect-ratio: 1.6;
+  perspective: 1200px;
+  background: var(--color-bg);
+}
+.dash-card-flip:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+  border-radius: var(--radius-lg);
+}
 .dash-card-flip-inner {
   position: relative; width: 100%; height: 100%;
   transition: transform 0.6s ease; transform-style: preserve-3d;
@@ -210,7 +288,7 @@
 .dash-chat-hint { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em; opacity: 0.45; margin-top: 8px; }
 .dash-chat-side { border-left: 1px solid var(--color-border); padding-left: 18px; display: flex; flex-direction: column; gap: 16px; }
 .dash-chat-log { font-family: var(--font-mono); font-size: 10px; line-height: 1.9; opacity: 0.6; }
-.dash-tx-card { margin-top: 12px; padding: 16px; max-width: 420px; background: var(--color-surface); }
+.dash-tx-card { margin-top: 12px; padding: 16px; max-width: 420px; background: var(--color-lime-200); color: var(--color-text); }
 .dash-tx-amount { font-family: var(--font-heading); font-size: 34px; margin: 8px 0 4px; color: var(--color-heading); }
 .dash-tx-grid { display: grid; grid-template-columns: auto 1fr; gap: 5px 16px; font-size: 13px; margin: 10px 0 14px; }
 .dash-table-card { margin-top: 12px; padding: 14px; max-width: 560px; }

@@ -63,9 +63,9 @@
     );
   };
 
-  DASH.ProgressBar = function ProgressBar({ pct, label }) {
+  DASH.ProgressBar = function ProgressBar({ pct, label, className }) {
     return (
-      <div className="dash-progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
+      <div className={UI.classNames("dash-progress", className)} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
         <span style={{ width: pct + "%" }} />
       </div>
     );

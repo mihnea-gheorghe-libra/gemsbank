@@ -10,6 +10,7 @@ from backend.accounts.account import Account, AccountKind, AccountStatus
 from backend.auth.credentials import (
     AuthUser,
     RecoveryCase,
+    RecoveryKind,
     RecoveryStatus,
     ResetChallenge,
     Session,
@@ -18,8 +19,8 @@ from backend.cards.card import Card, CardKind, CardState
 from backend.database.mongo import (
     accounts_collection,
     beneficiaries_collection,
-    journal_collection,
     cards_collection,
+    journal_collection,
     kyc_cases_collection,
     payments_collection,
     recovery_cases_collection,
@@ -157,6 +158,7 @@ class MongoUserRepository:
         username: str,
         email: str,
         phone: str,
+        full_name: str,
         password_hash: str,
         pin_hash: str,
         pin_encrypted: str,
@@ -168,6 +170,7 @@ class MongoUserRepository:
             "username": username,
             "email": email,
             "phone": phone,
+            "fullName": full_name,
             "passwordHash": password_hash,
             "pinHash": pin_hash,
             "pinEncrypted": pin_encrypted,
@@ -200,6 +203,8 @@ def _auth_user_from_bson(raw: dict[str, Any]) -> AuthUser:
         id=raw["_id"],
         username=raw["username"],
         email=raw["email"],
+        phone=raw.get("phone", ""),
+        full_name=raw.get("fullName", ""),
         password_hash=raw["passwordHash"],
         pin_hash=raw["pinHash"],
         pin_encrypted=raw.get("pinEncrypted"),
@@ -224,22 +229,31 @@ class MongoAuthUserRepository:
     async def save(
         self, user: AuthUser, session: AsyncIOMotorClientSession | None = None
     ) -> None:
-        await users_collection().update_one(
-            {"_id": user.id},
-            {
-                "$set": {
-                    "passwordHash": user.password_hash,
-                    "status": user.status,
-                    "pin": {"failures": user.pin_failures, "locked": user.pin_locked},
-                    "password": {
-                        "failures": user.password_failures,
-                        "lockoutStage": user.password_lockout_stage,
-                        "lockedUntil": user.password_locked_until,
-                    },
-                }
-            },
-            session=session,
-        )
+        try:
+            await users_collection().update_one(
+                {"_id": user.id},
+                {
+                    "$set": {
+                        "email": user.email,
+                        "phone": user.phone,
+                        "passwordHash": user.password_hash,
+                        "pinHash": user.pin_hash,
+                        "pinEncrypted": user.pin_encrypted,
+                        "status": user.status,
+                        "pin": {"failures": user.pin_failures, "locked": user.pin_locked},
+                        "password": {
+                            "failures": user.password_failures,
+                            "lockoutStage": user.password_lockout_stage,
+                            "lockedUntil": user.password_locked_until,
+                        },
+                    }
+                },
+                session=session,
+            )
+        except DuplicateKeyError as exc:
+            raise ConflictError(
+                "That email is already registered.", details={"field": "email"}
+            ) from exc
 
 
 def _challenge_to_bson(otp: ResetChallenge | None) -> dict[str, Any] | None:
@@ -268,9 +282,10 @@ def _recovery_to_bson(case: RecoveryCase) -> dict[str, Any]:
     return {
         "_id": case.id,
         "userId": case.user_id,
-        "kind": "password_reset",
+        "kind": case.kind.value,
         "status": case.status.value,
         "otp": _challenge_to_bson(case.otp),
+        "payload": case.payload,
         "createdAt": case.created_at,
         "updatedAt": case.updated_at,
     }
@@ -280,8 +295,10 @@ def _recovery_from_bson(raw: dict[str, Any]) -> RecoveryCase:
     return RecoveryCase(
         id=raw["_id"],
         user_id=raw["userId"],
+        kind=RecoveryKind(raw.get("kind", RecoveryKind.PASSWORD_RESET.value)),
         status=RecoveryStatus(raw["status"]),
         otp=_challenge_from_bson(raw.get("otp")),
+        payload=raw.get("payload") or {},
         created_at=raw["createdAt"],
         updated_at=raw["updatedAt"],
     )
@@ -315,6 +332,8 @@ def _session_to_bson(record: Session) -> dict[str, Any]:
         "issuedAt": record.issued_at,
         "expiresAt": record.expires_at,
         "revokedAt": record.revoked_at,
+        "userAgent": record.user_agent,
+        "ipAddress": record.ip_address,
     }
 
 
@@ -326,6 +345,8 @@ def _session_from_bson(raw: dict[str, Any]) -> Session:
         issued_at=raw["issuedAt"],
         expires_at=raw["expiresAt"],
         revoked_at=raw.get("revokedAt"),
+        user_agent=raw.get("userAgent"),
+        ip_address=raw.get("ipAddress"),
     )
 
 
@@ -335,9 +356,21 @@ class MongoSessionRepository:
     ) -> None:
         await sessions_collection().insert_one(_session_to_bson(record), session=session)
 
+    async def get(self, session_id: str) -> Session | None:
+        raw = await sessions_collection().find_one({"_id": session_id})
+        return _session_from_bson(raw) if raw else None
+
     async def get_by_token_hash(self, token_hash: str) -> Session | None:
         raw = await sessions_collection().find_one({"tokenHash": token_hash})
         return _session_from_bson(raw) if raw else None
+
+    async def list_live_for_user(self, user_id: str, now: datetime) -> list[Session]:
+        found = (
+            sessions_collection()
+            .find({"userId": user_id, "revokedAt": None, "expiresAt": {"$gt": now}})
+            .sort("issuedAt", DESCENDING)
+        )
+        return [_session_from_bson(raw) async for raw in found]
 
     async def revoke(
         self, record: Session, session: AsyncIOMotorClientSession | None = None

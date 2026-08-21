@@ -15,6 +15,16 @@
   --color-heading: #450C3F;
   --color-muted: color-mix(in srgb, #280725 55%, transparent);
 
+  /* Theme-invariant — for content that sits on a surface pinned to its light-mode
+     colour in both themes (card faces, tiles): the light-mode foreground, always,
+     so a light card never gets light-on-light text when the app is in dark mode. */
+  --color-on-light-text: #280725;
+  --color-on-light-heading: #450C3F;
+  --color-on-light-primary: #450C3F;
+  --color-on-light-muted: color-mix(in srgb, #280725 55%, transparent);
+  --color-on-light-border: color-mix(in srgb, #450C3F 18%, transparent);
+  --color-on-light-negative: #9F144B;
+
   /* ── brand ────────────────────────────────────────────────── */
   --color-primary: #450C3F;
   --color-on-primary: #FDFDF9;
@@ -92,9 +102,7 @@
    we express the same swap declaratively for both `system` and explicit choice. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --color-bg: #450C3F;
-    --color-surface: #852275;
-    --color-surface-muted: #58124D;
+    --color-bg: #1C0D30;
     --color-text: #F5FBDA;
     --color-heading: #B9D175;
     --color-muted: color-mix(in srgb, #F5FBDA 60%, transparent);
@@ -107,9 +115,7 @@
   }
 }
 :root[data-theme="dark"] {
-  --color-bg: #450C3F;
-  --color-surface: #852275;
-  --color-surface-muted: #58124D;
+  --color-bg: #1C0D30;
   --color-text: #F5FBDA;
   --color-heading: #B9D175;
   --color-muted: color-mix(in srgb, #F5FBDA 60%, transparent);
