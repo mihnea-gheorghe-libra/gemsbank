@@ -125,6 +125,11 @@
         "Nobody at GEMS will ever ask for this PIN. Close this screen when you are done.",
       pinUnavailable:
         "This account was created before PIN recovery existed, so the PIN cannot be shown. Your password has been changed.",
+      pinLockedNotice:
+        "You entered the wrong PIN too many times. Continue with your password instead.",
+      retryInLabel: "You can try again in",
+      permanentlyLocked: "Too many failed attempts. This account has been locked. Contact support.",
+      continueToDashboard: "Close and continue",
       welcomeKicker: "SIGNED IN",
       welcomeTitle: "Welcome, {username}",
       dashboardIncoming: "Dashboard incoming.",
@@ -142,6 +147,10 @@
         newPassword: {
           title: "Choose a new password",
           lede: "At least 10 characters, with a letter and a digit.",
+        },
+        pinReveal: {
+          title: "Here is your PIN",
+          lede: "Have a look, then close this screen to continue.",
         },
         welcome: { title: "Welcome to GEMS", lede: "You are signed in." },
       },
@@ -490,6 +499,12 @@
         "Nimeni de la GEMS nu îți va cere vreodată acest PIN. Închide ecranul când ai terminat.",
       pinUnavailable:
         "Acest cont a fost creat înainte să existe recuperarea PIN-ului, așa că PIN-ul nu poate fi afișat. Parola ta a fost schimbată.",
+      pinLockedNotice:
+        "Ai introdus PIN-ul greșit de prea multe ori. Continuă cu parola ta în schimb.",
+      retryInLabel: "Poți reîncerca peste",
+      permanentlyLocked:
+        "Prea multe încercări greșite. Acest cont a fost blocat. Contactează suportul.",
+      continueToDashboard: "Închide și continuă",
       welcomeKicker: "AUTENTIFICAT",
       welcomeTitle: "Bine ai venit, {username}",
       dashboardIncoming: "Dashboard-ul urmează.",
@@ -510,6 +525,10 @@
         newPassword: {
           title: "Alege o parolă nouă",
           lede: "Minimum 10 caractere, cu cel puțin o literă și o cifră.",
+        },
+        pinReveal: {
+          title: "Iată PIN-ul tău",
+          lede: "Aruncă o privire, apoi închide ecranul ca să continui.",
         },
         welcome: { title: "Bine ai venit în GEMS", lede: "Ești autentificat." },
       },

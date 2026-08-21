@@ -13,6 +13,7 @@
     PASSWORD: "password",
     RESET_CODE: "resetCode",
     NEW_PASSWORD: "newPassword",
+    PIN_REVEAL: "pinReveal",
     WELCOME: "welcome",
   };
 
@@ -22,6 +23,10 @@
     return { [error.details.field]: error.message };
   }
 
+  function normaliseUsername(value) {
+    return value.trim().toLowerCase();
+  }
+
   AUTH.SignInPage = function SignInPage({ onSwitchToRegister }) {
     const DASHBOARD = GEMS.dashboard;
     const [view, setView] = useState(VIEWS.SIGN_IN);
@@ -29,6 +34,7 @@
     const [pin, setPin] = useState(null);
     const [pinMissing, setPinMissing] = useState(false);
     const [recovery, setRecovery] = useState(null);
+    const [pinLockedUsername, setPinLockedUsername] = useState(null);
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(false);
     const [dashboardOpen, setDashboardOpen] = useState(false);
@@ -63,22 +69,34 @@
 
     const handleSignIn = (form) =>
       run(async () => {
-        const response = await api.login(form.username, form.pin);
-        setSession(response);
-        setPin(null);
-        setPinMissing(false);
-        setView(VIEWS.WELCOME);
-        // Plain sign-in has no PIN to reveal, so there is nothing the
-        // welcome screen needs to show first — go straight in.
-        setDashboardOpen(true);
+        if (pinLockedUsername && normaliseUsername(form.username) === pinLockedUsername) {
+          setView(VIEWS.PASSWORD);
+          return;
+        }
+        try {
+          const response = await api.login(form.username, form.pin);
+          setSession(response);
+          setPin(null);
+          setPinMissing(false);
+          setView(VIEWS.WELCOME);
+        } catch (err) {
+          if (err.details && err.details.pinLocked) {
+            setPinLockedUsername(normaliseUsername(form.username));
+            setView(VIEWS.PASSWORD);
+          }
+          throw err;
+        }
       });
 
     const handleReveal = (form) =>
       run(async () => {
         const response = await api.revealPin(form.username, form.password);
+        if (normaliseUsername(form.username) === pinLockedUsername) {
+          setPinLockedUsername(null);
+        }
         setSession(response);
         setPin(response.pin);
-        setView(VIEWS.WELCOME);
+        setView(VIEWS.PIN_REVEAL);
       });
 
     const handleForgotPassword = (username) =>
@@ -97,13 +115,27 @@
     const handleNewPassword = (form) =>
       run(async () => {
         const response = await api.completePasswordReset(recovery.recoveryCaseId, form);
+        setPinLockedUsername(null);
         setSession(response);
         setPin(response.pin || null);
         setPinMissing(!response.pin);
-        setView(VIEWS.WELCOME);
+        setView(VIEWS.PIN_REVEAL);
       });
 
+    const handleContinueToDashboard = useCallback(() => {
+      setPin(null);
+      setPinMissing(false);
+      setView(VIEWS.WELCOME);
+    }, []);
+
     const fieldErrors = toFieldErrors(error);
+    const lockout =
+      error && error.details && error.details.field === "password"
+        ? {
+            retryAfterSeconds: error.details.retryAfterSeconds || null,
+            permanentlyLocked: !!error.details.permanentlyLocked,
+          }
+        : null;
     const title = t("auth.views." + view + ".title", {
       username: (session && session.username) || "",
     });
@@ -143,6 +175,8 @@
             <AUTH.PasswordForm
               busy={busy}
               fieldErrors={fieldErrors}
+              lockout={lockout}
+              pinLockNotice={!!pinLockedUsername}
               onSubmit={handleReveal}
               onForgotPassword={handleForgotPassword}
               onBack={resetToSignIn}
@@ -166,20 +200,16 @@
             />
           ) : null}
 
+          {view === VIEWS.PIN_REVEAL ? (
+            <AUTH.PinRevealScreen
+              pin={pin}
+              pinMissing={pinMissing}
+              onContinue={handleContinueToDashboard}
+            />
+          ) : null}
+
           {view === VIEWS.WELCOME && session ? (
-            <React.Fragment>
-              <AUTH.Welcome
-                username={session.username}
-                pin={pin}
-                pinMissing={pinMissing}
-                onSignOut={resetToSignIn}
-              />
-              <div className="auth-actions">
-                <UI.Button type="button" variant="primary" onClick={() => setDashboardOpen(true)}>
-                  {t("auth.goToDashboard")}
-                </UI.Button>
-              </div>
-            </React.Fragment>
+            <AUTH.Welcome username={session.username} onSignOut={resetToSignIn} />
           ) : null}
 
           <UI.ErrorNote error={error} />

@@ -155,7 +155,8 @@ class MongoUserRepository:
             "pinEncrypted": pin_encrypted,
             "kycCaseId": kyc_case_id,
             "prefs": {"lang": "ro", "theme": "light", "tts": False, "hideBalances": True},
-            "signIn": {"failures": 0, "lockedUntil": None},
+            "pin": {"failures": 0, "locked": False},
+            "password": {"failures": 0, "lockoutStage": 0, "lockedUntil": None},
             "status": "active",
             "createdAt": datetime.now(timezone.utc),
         }
@@ -175,7 +176,8 @@ class MongoUserRepository:
 
 
 def _auth_user_from_bson(raw: dict[str, Any]) -> AuthUser:
-    sign_in = raw.get("signIn") or {}
+    pin = raw.get("pin") or {}
+    password = raw.get("password") or {}
     return AuthUser(
         id=raw["_id"],
         username=raw["username"],
@@ -184,8 +186,11 @@ def _auth_user_from_bson(raw: dict[str, Any]) -> AuthUser:
         pin_hash=raw["pinHash"],
         pin_encrypted=raw.get("pinEncrypted"),
         status=raw.get("status", "active"),
-        failures=sign_in.get("failures", 0),
-        locked_until=sign_in.get("lockedUntil"),
+        pin_failures=pin.get("failures", 0),
+        pin_locked=pin.get("locked", False),
+        password_failures=password.get("failures", 0),
+        password_lockout_stage=password.get("lockoutStage", 0),
+        password_locked_until=password.get("lockedUntil"),
     )
 
 
@@ -206,7 +211,13 @@ class MongoAuthUserRepository:
             {
                 "$set": {
                     "passwordHash": user.password_hash,
-                    "signIn": {"failures": user.failures, "lockedUntil": user.locked_until},
+                    "status": user.status,
+                    "pin": {"failures": user.pin_failures, "locked": user.pin_locked},
+                    "password": {
+                        "failures": user.password_failures,
+                        "lockoutStage": user.password_lockout_stage,
+                        "lockedUntil": user.password_locked_until,
+                    },
                 }
             },
             session=session,
