@@ -105,6 +105,7 @@ img { display: block; max-width: 100%; }
 .input:hover { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
 .input:focus-visible { border-color: var(--color-primary); outline-offset: 0; }
 .input::placeholder { color: var(--color-muted); }
+select.input { cursor: pointer; padding-right: 10px; }
 
 .tag {
   display: inline-flex;

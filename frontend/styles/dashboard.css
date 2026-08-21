@@ -66,8 +66,8 @@
 }
 .dash-topbar-title { font-family: var(--font-heading); font-size: 19px; line-height: 1.1; color: var(--color-heading); }
 .dash-topbar-tag { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; opacity: 0.5; }
-.dash-search { margin-left: auto; max-width: 340px; width: 100%; }
 .dash-avatar {
+  margin-left: auto;
   position: relative;
   width: 34px; height: 34px; border-radius: 50%; flex: none;
   background: var(--color-plum-900); color: var(--color-lime-100);
@@ -116,18 +116,82 @@
   padding: 7px 14px; font-size: 13px; background: transparent; color: var(--color-text);
   min-height: var(--target-min);
 }
+.dash-seg-full { display: flex; width: 100%; }
+.dash-seg-full .dash-seg-opt { flex: 1; text-align: center; }
 .dash-seg-opt + .dash-seg-opt { border-left: 1px solid var(--color-border); }
 .dash-seg-opt.is-active { background: var(--color-primary); color: var(--color-on-primary); }
 
 /* ── payments ────────────────────────────────────────────── */
 .dash-screen-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-.dash-pending-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.dash-pending-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--radius-lg); background: var(--color-surface); }
 .dash-filters-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+
+/* ── payment templates ───────────────────────────────────── */
+.dash-template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.dash-template-card { padding: 13px; background: var(--color-surface); display: flex; flex-direction: column; gap: 3px; }
+.dash-template-name { font-family: var(--font-heading); font-size: 17px; color: var(--color-heading); }
+.dash-template-iban { font-family: var(--font-mono); font-size: 11px; opacity: 0.55; margin-top: 2px; }
+.dash-template-actions { display: flex; gap: 6px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+
+.dash-template-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.dash-template-chip {
+  appearance: none; font: inherit; cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 7px 14px; border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text);
+  min-height: var(--target-min);
+}
+.dash-template-chip:hover { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
+.dash-template-chip:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.dash-template-chip-name { font-family: var(--font-heading); font-size: 14px; }
+.dash-template-chip-sub { font-size: 11px; color: var(--color-muted); }
+
+/* ── source-account balance line ─────────────────────────── */
+.dash-balance-line {
+  font-size: 12px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.dash-balance-line.is-short {
+  border-color: var(--color-negative);
+  background: color-mix(in srgb, var(--color-negative) 8%, transparent);
+  color: var(--color-negative);
+  font-weight: 600;
+}
+.input.is-invalid { border-color: var(--color-negative); color: var(--color-negative); }
+.input.is-invalid:hover { border-color: var(--color-negative); }
+
+.dash-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.dash-save-template { display: flex; flex-direction: column; gap: 8px; }
+
+/* ── split bill ──────────────────────────────────────────── */
+.dash-split-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.dash-split-people { display: flex; flex-direction: column; gap: 8px; }
+.dash-split-row { display: grid; grid-template-columns: auto 1fr 130px auto; gap: 8px; align-items: center; }
+.dash-split-num { font-family: var(--font-mono); font-size: 10px; color: var(--color-plum-700); }
+.dash-split-amount { text-align: right; }
+
+.dash-split-list { display: flex; flex-direction: column; gap: 14px; }
+.dash-split-card { padding: 14px; border-radius: var(--radius-lg); background: var(--color-surface); }
+.dash-split-card-head { display: flex; align-items: flex-start; gap: 14px; }
+.dash-split-shares { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.dash-split-shares li {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center;
+  padding: 7px 0; border-top: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+  font-size: 14px;
+}
+.dash-split-shares li[data-settled="true"] .dash-split-share-name { opacity: 0.55; text-decoration: line-through; }
+.dash-split-share-amount { font-family: var(--font-heading); font-size: 15px; }
 
 /* ── portfolio ───────────────────────────────────────────── */
 .dash-portfolio-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
 .dash-portfolio-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.dash-product-list { display: flex; flex-direction: column; gap: 12px; }
+.dash-product-row { padding: 12px 14px; border-radius: var(--radius-lg); background: var(--color-surface); }
+.dash-product-head { display: flex; align-items: flex-start; gap: 12px; }
+.dash-product-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .dash-progress { height: 9px; border-radius: 999px; overflow: hidden; background: var(--color-bg); border: 1px solid var(--color-border); }
 .dash-progress > span { display: block; height: 100%; background: var(--color-lime-600); }
 .dash-invest-row { display: grid; grid-template-columns: 1.6fr 1fr; gap: 20px; align-items: center; margin-top: 20px; }
@@ -247,8 +311,13 @@
   }
   .dash-balance-card { grid-row: auto; }
   .dash-accounts-card { grid-column: auto; }
-  .dash-accounts-tiles, .dash-portfolio-tiles, .dash-cards-grid, .dash-field-grid, .dash-pending-grid {
+  .dash-accounts-tiles, .dash-portfolio-tiles, .dash-cards-grid, .dash-field-grid {
     grid-template-columns: 1fr;
   }
   .dash-chat-side { border-left: 0; border-top: 1px solid var(--color-border); padding-left: 0; padding-top: 16px; }
+}
+
+@media (max-width: 700px) {
+  .dash-split-row { grid-template-columns: auto 1fr; }
+  .dash-split-amount { grid-column: 2; text-align: left; }
 }

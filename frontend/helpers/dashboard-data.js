@@ -18,48 +18,111 @@
     totalBalance: "128.470,55",
 
     accounts: [
-      { cur: "RON", typeKey: "current", amount: "42.180,55", iban: "RO49 •••• 4127" },
-      { cur: "EUR", typeKey: "savings", amount: "11.940,00", iban: "RO12 •••• 8802" },
-      { cur: "RON", typeKey: "deposit", amount: "55.410,00", iban: "RO88 •••• 6610" },
+      {
+        id: "acc-current-ron",
+        cur: "RON",
+        typeKey: "current",
+        minor: 4218055,
+        iban: "RO49 AAAA 1B31 0075 9384 4127",
+        ibanShort: "RO49 •••• 4127",
+      },
+      {
+        id: "acc-savings-eur",
+        cur: "EUR",
+        typeKey: "savings",
+        minor: 1194000,
+        iban: "RO12 BBBB 2C44 0011 2288 8802",
+        ibanShort: "RO12 •••• 8802",
+      },
+      {
+        id: "acc-deposit-ron",
+        cur: "RON",
+        typeKey: "deposit",
+        minor: 5541000,
+        iban: "RO88 CCCC 3D55 0099 4410 6610",
+        ibanShort: "RO88 •••• 6610",
+      },
+      {
+        id: "acc-invest-usd",
+        cur: "USD",
+        typeKey: "invest",
+        minor: 402010,
+        iban: "RO31 DDDD 4E66 0044 7712 2210",
+        ibanShort: "RO31 •••• 2210",
+      },
     ],
-    accountsFull: [
-      { cur: "RON", typeKey: "current", amount: "42.180,55", iban: "RO49 AAAA 1B31 0075 9384 4127" },
-      { cur: "EUR", typeKey: "savings", amount: "11.940,00", iban: "RO12 BBBB 2C44 0011 2288 8802" },
-      { cur: "RON", typeKey: "deposit", amount: "55.410,00", iban: "RO88 CCCC 3D55 0099 4410 6610" },
-      { cur: "USD", typeKey: "invest", amount: "4.020,10", iban: "RO31 DDDD 4E66 0044 7712 2210" },
+
+    templates: [
+      {
+        id: "tpl-rent",
+        name: "Chirie",
+        beneficiary: "Popescu Andrei",
+        iban: "RO21 BTRL 0000 1234 5678 9012",
+        cur: "RON",
+        reference: "Chirie luna curenta",
+      },
+      {
+        id: "tpl-mama",
+        name: "Mama",
+        beneficiary: "Ionescu Maria",
+        iban: "RO12 INGB 0099 8877 6655 4433",
+        cur: "RON",
+        reference: "Transfer",
+      },
+      {
+        id: "tpl-gym",
+        name: "Sala",
+        beneficiary: "World Class Romania SA",
+        iban: "RO77 RNCB 0044 1122 3344 5566",
+        cur: "RON",
+        reference: "Abonament",
+      },
     ],
 
     transactions: [
-      { date: "16.08.2026", who: "Kaufland Băneasa", ref: "POS 4127", categoryKey: "groceries", statusKey: "booked", amount: "214,80", direction: "out" },
-      { date: "15.08.2026", who: "Enel Energie", ref: "Direct debit", categoryKey: "utilities", statusKey: "booked", amount: "187,40", direction: "out" },
-      { date: "15.08.2026", who: "Salary — Nexo SRL", ref: "AUG 2026", categoryKey: "income", statusKey: "booked", amount: "9.400,00", direction: "in" },
-      { date: "14.08.2026", who: "Ionescu Maria", ref: "Split — dinner", categoryKey: "transfer", statusKey: "booked", amount: "120,00", direction: "out" },
-      { date: "13.08.2026", who: "Netflix", ref: "Subscription", categoryKey: "entertainment", statusKey: "booked", amount: "67,99", direction: "out" },
-      { date: "12.08.2026", who: "Revolut top-up", ref: "SEPA out", categoryKey: "transfer", statusKey: "pending", amount: "500,00", direction: "out" },
-      { date: "11.08.2026", who: "OMV Petrom", ref: "POS 4127", categoryKey: "transport", statusKey: "booked", amount: "320,15", direction: "out" },
-      { date: "10.08.2026", who: "Digi Communications", ref: "Direct debit", categoryKey: "utilities", statusKey: "booked", amount: "59,00", direction: "out" },
+      { date: "16.08.2026", who: "Kaufland Băneasa", ref: "POS 4127", categoryKey: "groceries", statusKey: "booked", minor: 21480, direction: "out", channel: "card", accountId: "acc-current-ron" },
+      { date: "15.08.2026", who: "Enel Energie", ref: "Direct debit", categoryKey: "utilities", statusKey: "booked", minor: 18740, direction: "out", channel: "transfer", accountId: "acc-current-ron" },
+      { date: "15.08.2026", who: "Salary — Nexo SRL", ref: "AUG 2026", categoryKey: "income", statusKey: "booked", minor: 940000, direction: "in", channel: "transfer", accountId: "acc-current-ron" },
+      { date: "14.08.2026", who: "Ionescu Maria", ref: "Split — dinner", categoryKey: "transfer", statusKey: "booked", minor: 12000, direction: "out", channel: "transfer", accountId: "acc-current-ron" },
+      { date: "13.08.2026", who: "Netflix", ref: "Subscription", categoryKey: "entertainment", statusKey: "booked", minor: 6799, direction: "out", channel: "card", accountId: "acc-current-ron" },
+      { date: "12.08.2026", who: "Revolut top-up", ref: "SEPA out", categoryKey: "transfer", statusKey: "pending", minor: 50000, direction: "out", channel: "transfer", accountId: "acc-current-ron" },
+      { date: "11.08.2026", who: "OMV Petrom", ref: "POS 4127", categoryKey: "transport", statusKey: "booked", minor: 32015, direction: "out", channel: "card", accountId: "acc-current-ron" },
+      { date: "10.08.2026", who: "Digi Communications", ref: "Direct debit", categoryKey: "utilities", statusKey: "booked", minor: 5900, direction: "out", channel: "transfer", accountId: "acc-current-ron" },
     ],
 
     pending: [
-      { num: "01", who: "Revolut top-up", noteKey: "revolut", amount: "500,00" },
-      { num: "02", who: "Chirie august", noteKey: "rent", amount: "2.400,00" },
+      { num: "01", who: "Revolut top-up", noteKey: "revolut", minor: 50000 },
+      { num: "02", who: "Chirie august", noteKey: "rent", minor: 240000 },
     ],
 
     deposits: [
-      { name: "Term deposit 12M", rate: "6,10%", due: "14.02.2027", value: "55.410,00" },
-      { name: "EUR savings", rate: "2,25%", due: "—", value: "11.940,00" },
-      { name: "Goal — apartment", rate: "3,00%", due: "01.06.2028", value: "8.200,00" },
+      { id: "dep-term-12m", kind: "term", name: "Term deposit 12M", rateBps: 610, matures: "2027-02-14", minor: 5541000, cur: "RON" },
+      { id: "dep-eur-savings", kind: "savings", name: "EUR savings", rateBps: 225, matures: null, minor: 1194000, cur: "EUR" },
+      { id: "dep-goal-apartment", kind: "goal", name: "Goal — apartment", rateBps: 300, matures: "2028-06-01", minor: 820000, targetMinor: 5000000, cur: "RON" },
     ],
+    depositTerms: [
+      { months: 3, rateBps: 480 },
+      { months: 6, rateBps: 540 },
+      { months: 12, rateBps: 610 },
+      { months: 24, rateBps: 665 },
+    ],
+
     credits: [
-      { name: "Personal loan · 24 of 60 months", left: "34.100 RON left", pct: 40 },
-      { name: "Card credit line", left: "1.200 of 6.000 used", pct: 20 },
+      { id: "cr-personal", kind: "loan", nameKey: "personal", termMonths: 60, paidMonths: 24, outstandingMinor: 3410000, cur: "RON", rateBps: 890 },
+      { id: "cr-line", kind: "line", nameKey: "line", limitMinor: 600000, usedMinor: 120000, cur: "RON", rateBps: 1890 },
     ],
+    creditProducts: [
+      { id: "personal", kind: "loan", rateBps: 890, maxMinor: 15000000, terms: [12, 24, 36, 48, 60] },
+      { id: "line", kind: "line", rateBps: 1890, maxMinor: 2000000, terms: [] },
+      { id: "mortgage", kind: "loan", rateBps: 590, maxMinor: 90000000, terms: [120, 180, 240, 300, 360] },
+    ],
+
     holdings: [
-      { name: "MSCI World ETF", qty: "12 units", value: "9.140,00" },
-      { name: "TLV — Banca Transilvania", qty: "320 shares", value: "6.720,20" },
-      { name: "BTC", qty: "0,014", value: "2.080,00" },
-      { name: "Cash to invest", qty: "—", value: "1.000,00" },
+      { id: "h-msci", name: "MSCI World ETF", unitKey: "units", units: 20, unitPriceMinor: 45700, cur: "RON" },
+      { id: "h-tlv", name: "TLV — Banca Transilvania", unitKey: "shares", units: 320, unitPriceMinor: 2100, cur: "RON" },
+      { id: "h-btc", name: "BTC", unitKey: "coins", units: 0.014, unitPriceMinor: 14857143, cur: "RON" },
     ],
+    investCashMinor: 100000,
 
     categories: [
       { key: "groceries", value: "1.180 RON · 32%" },

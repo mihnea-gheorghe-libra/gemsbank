@@ -3,9 +3,38 @@
   const DASH = (GEMS.dashboardUi = GEMS.dashboardUi || {});
   const UI = GEMS.ui;
 
-  DASH.SegmentedControl = function SegmentedControl({ options, value, onChange, label }) {
+  const MINOR_PER_MAJOR = 100;
+
+  const AMOUNT_FORMAT = new Intl.NumberFormat("ro-RO", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  DASH.formatMinor = function formatMinor(minor) {
+    return AMOUNT_FORMAT.format(Math.abs(minor) / MINOR_PER_MAJOR);
+  };
+
+  DASH.parseMinor = function parseMinor(text) {
+    const cleaned = String(text == null ? "" : text).trim().replace(/\s/g, "");
+    if (!cleaned) return null;
+    const normalised = cleaned.indexOf(",") >= 0
+      ? cleaned.replace(/\./g, "").replace(",", ".")
+      : cleaned;
+    if (!/^\d+(\.\d{1,2})?$/.test(normalised)) return null;
+    const [major, fraction = ""] = normalised.split(".");
+    return Number(major) * MINOR_PER_MAJOR + Number((fraction + "00").slice(0, 2));
+  };
+
+  DASH.splitEvenly = function splitEvenly(totalMinor, parts) {
+    if (parts <= 0) return [];
+    const base = Math.floor(totalMinor / parts);
+    const remainder = totalMinor - base * parts;
+    return Array.from({ length: parts }, (unused, index) => base + (index < remainder ? 1 : 0));
+  };
+
+  DASH.SegmentedControl = function SegmentedControl({ options, value, onChange, label, className }) {
     return (
-      <div className="dash-seg" role="radiogroup" aria-label={label}>
+      <div className={UI.classNames("dash-seg", className)} role="radiogroup" aria-label={label}>
         {options.map((option) => (
           <button
             key={option.value}
@@ -24,12 +53,12 @@
 
   // Amount with an explicit sign glyph — colour alone never carries the
   // debit/credit meaning (tokens.css §4.2 / WCAG 2.2 AA 1.4.1).
-  DASH.Amount = function Amount({ value, direction, currency = "RON", className }) {
+  DASH.Amount = function Amount({ minor, direction, currency = "RON", className }) {
     const sign = direction === "in" ? "+" : "−";
     const cls = direction === "in" ? "dash-amt-in" : "dash-amt-out";
     return (
       <span className={UI.classNames("dash-amt", cls, className)}>
-        {sign} {value} {currency}
+        {sign} {DASH.formatMinor(minor)} {currency}
       </span>
     );
   };

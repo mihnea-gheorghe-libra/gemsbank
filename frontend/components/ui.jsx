@@ -48,8 +48,16 @@
     );
   };
 
-  UI.TextInput = function TextInput({ id, ...rest }) {
-    return <input id={id} className="input" {...rest} />;
+  UI.TextInput = function TextInput({ id, className, ...rest }) {
+    return <input id={id} className={classNames("input", className)} {...rest} />;
+  };
+
+  UI.Select = function Select({ id, className, children, ...rest }) {
+    return (
+      <select id={id} className={classNames("input", "select", className)} {...rest}>
+        {children}
+      </select>
+    );
   };
 
   UI.Tag = function Tag({ variant = "accent", children }) {

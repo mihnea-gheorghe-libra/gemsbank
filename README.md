@@ -31,6 +31,45 @@ virtual card, freeze/unfreeze, reveal PIN, set ATM/online limits, block permanen
 Cards screen itself still renders from `dashboard-data.js`, not from these endpoints. See
 "Cards — a backend without a session" below before wiring it up.
 
+The mockup's **Payments** screen is interactive, but only against React state seeded from
+`dashboard-data.js` — nothing reaches the ledger, and a refresh resets everything:
+
+- **New payment** has two rails. *IBAN transfer* pays a third party; *Between my accounts* is a
+  dropdown of the customer's own accounts, restricted to targets in the same currency because
+  GEMS does not convert money. Both show the source account with its balance, and an amount the
+  account cannot cover turns the field red, names the shortfall and blocks the button.
+- **Templates** are saved payees under a name the customer chooses (Rent, Mum, Gym). They live on
+  the Payments screen — add, edit, delete, or *Pay* to open the dialog prefilled — and appear as
+  quick-pick chips inside the dialog. A payment can save its payee as a template on the way out.
+- **Split bill** is its own button and its own dialog, not a third rail of New payment: a total,
+  the account to collect into, a row per person, and *Split equally* which divides in minor units
+  and puts the remainder on the first share, so the parts always sum to the total. Open requests
+  land in a card on the Payments screen where each share can be marked paid.
+- **All / Income / Spending / Pending / Cards** and the filter box now actually filter the
+  movements table. `Cards` selects card-channel movements; the filter box matches counterparty,
+  reference or IBAN.
+
+The **Portfolio** screen is interactive on the same terms:
+
+- **Open new account** picks a type and currency, mints a demo `RO.. GEMS ....` IBAN, and
+  optionally funds the account from an existing one in the same currency. The new account shows
+  up everywhere accounts are listed, including the payment dropdowns.
+- **New deposit** opens a term deposit, a savings account, or a savings goal with a target. Term
+  rates come from `depositTerms`; the money leaves the funding account and the maturity date is
+  computed from the term. Every product can be topped up, withdrawn from, or closed — closing
+  returns the balance to an account in the same currency.
+- **Investments** buy and sell holdings at the stored unit price, spending *cash to invest*
+  before touching an account. Position value is derived from units times price, so the
+  INVESTMENTS header always equals the sum of what is listed under it.
+- **Apply for credit** records an application against a product from `creditProducts` (with its
+  rate and maximum) and leaves it in `review`. **Nothing is approved here.** The eligibility
+  decision is the seam left for a future agent that reads accounts and income; until that agent
+  exists, applications sit in review and say so on screen.
+
+Balances and amounts in the mockup are integer minor units, formatted for display, so the
+arithmetic above matches rule 1 even though no money is real. Interest rates are integer basis
+points for the same reason.
+
 ## Run it
 
 ```bash
@@ -122,11 +161,16 @@ frontend/            no build step; index.html script order is the module graph
   main/app.jsx       chooses sign in vs register, mounts the app
   main/signin.jsx    sign in, PIN recovery, password reset, welcome, hands off to the dashboard
   main/register.jsx  onboarding page state and flow orchestration
-  main/dashboard.jsx post-login dashboard mockup: screen state, chat state, mock-data wiring
+  main/dashboard.jsx post-login dashboard mockup: screen state, chat state, accounts,
+                     transactions, templates and split bills, mock-data wiring
   components/        ui.jsx (primitives) · rails.jsx (step rail, agent panel) · steps.jsx ·
                      auth.jsx (sign-in forms, PIN panel, welcome) ·
-                     dashboard-widgets.jsx (segmented control, bars, donut, progress, amount) ·
-                     dashboard-shell.jsx (sidebar, topbar, agent dock, new-payment dialog) ·
+                     dashboard-widgets.jsx (segmented control, bars, donut, progress, amount,
+                     minor-unit format/parse/split helpers) ·
+                     dashboard-shell.jsx (sidebar, topbar, agent dock, new-payment, split-bill
+                     and template dialogs) ·
+                     dashboard-portfolio.jsx (open-account, deposit, invest and credit dialogs,
+                     IBAN/rate/unit helpers) ·
                      dashboard-screens.jsx (home, payments, chat, portfolio, cards, analytics, settings)
   helpers/           api.js (the only fetch caller) · i18n.js · messages.js (en + ro) ·
                      dashboard-data.js (hand-authored demo data for the dashboard mockup)
