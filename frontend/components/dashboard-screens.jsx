@@ -584,11 +584,13 @@
     );
   };
 
-  SCR.SettingsScreen = function SettingsScreen({ lang, onLang, theme, onTheme, ttsOn, onToggleTts, onSignOut, onGoChat }) {
+  SCR.SettingsScreen = function SettingsScreen({ profile, lang, onLang, theme, onTheme, ttsOn, onToggleTts, onSignOut, onGoChat }) {
     const langs = [
       { value: "ro", label: "Română" },
       { value: "en", label: "English" },
     ];
+    const identity = (profile && profile.identity) || null;
+    const placeholder = "—";
     return (
       <div>
         <h3 style={{ margin: "0 0 18px" }}>{t("dashboard.nav.settings")}</h3>
@@ -597,18 +599,43 @@
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.settings.personalDetails")}</UI.Kicker>
             <div className="dash-field-grid">
               <UI.Field id="set-name" label={t("dashboard.settings.fullName")}>
-                <UI.TextInput id="set-name" defaultValue="Andrei-Mihai Pop" />
+                <UI.TextInput
+                  id="set-name"
+                  readOnly
+                  value={identity ? GEMS.people.fullName(identity.fullName) : placeholder}
+                />
+              </UI.Field>
+              <UI.Field id="set-birth" label={t("dashboard.settings.birthDate")}>
+                <UI.TextInput
+                  id="set-birth"
+                  readOnly
+                  value={identity ? GEMS.i18n.isoToDisplayDate(identity.birthDate) : placeholder}
+                />
+              </UI.Field>
+              <UI.Field id="set-cnp" label={t("dashboard.settings.cnp")}>
+                <UI.TextInput id="set-cnp" readOnly value={identity ? identity.cnpMasked : placeholder} />
+              </UI.Field>
+              <UI.Field id="set-document" label={t("dashboard.settings.document")}>
+                <UI.TextInput
+                  id="set-document"
+                  readOnly
+                  value={identity ? identity.documentNumberMasked : placeholder}
+                />
               </UI.Field>
               <UI.Field id="set-phone" label={t("dashboard.settings.phone")}>
-                <UI.TextInput id="set-phone" defaultValue="+40 7•• ••• 214" />
+                <UI.TextInput id="set-phone" readOnly value={(profile && profile.phone) || placeholder} />
               </UI.Field>
-              <div style={{ gridColumn: "span 2" }}>
-                <UI.Field id="set-email" label={t("dashboard.settings.email")}>
-                  <UI.TextInput id="set-email" defaultValue="andrei.pop@mail.ro" />
-                </UI.Field>
-              </div>
+              <UI.Field id="set-email" label={t("dashboard.settings.email")}>
+                <UI.TextInput id="set-email" readOnly value={(profile && profile.email) || placeholder} />
+              </UI.Field>
             </div>
-            <UI.Button type="button" variant="primary" style={{ marginTop: 14 }}>{t("dashboard.settings.save")}</UI.Button>
+            <div className="text-muted" style={{ fontSize: 12, marginTop: 14 }}>
+              {identity
+                ? t("dashboard.settings.identityNote", {
+                    expiry: GEMS.i18n.isoToDisplayDate(identity.documentExpiresOn),
+                  })
+                : t("dashboard.settings.identityMissing")}
+            </div>
           </UI.Plate>
 
           <UI.Plate className="elev-sm" style={{ padding: 18 }}>

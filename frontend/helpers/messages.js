@@ -306,8 +306,15 @@
       settings: {
         personalDetails: "PERSONAL DETAILS",
         fullName: "Full name",
+        birthDate: "Date of birth",
+        cnp: "Personal numeric code",
+        document: "ID document",
         phone: "Phone",
         email: "Email",
+        identityNote:
+          "Read from your ID document when you opened the account. The document is valid until {expiry}. To correct any of it, upload the document again through support.",
+        identityMissing:
+          "No ID document is on file for this account, so there are no personal details to show.",
         save: "Save changes",
         security: "SECURITY",
         changePin: "Change PIN",
@@ -795,8 +802,15 @@
       settings: {
         personalDetails: "DATE PERSONALE",
         fullName: "Nume complet",
+        birthDate: "Data nașterii",
+        cnp: "Cod numeric personal",
+        document: "Act de identitate",
         phone: "Telefon",
         email: "Email",
+        identityNote:
+          "Citite din actul tău de identitate la deschiderea contului. Actul este valabil până la {expiry}. Pentru orice corectură, încarcă din nou actul prin serviciul clienți.",
+        identityMissing:
+          "Nu există un act de identitate la dosarul acestui cont, deci nu avem date personale de afișat.",
         save: "Salvează modificările",
         security: "SECURITATE",
         changePin: "Schimbă PIN-ul",

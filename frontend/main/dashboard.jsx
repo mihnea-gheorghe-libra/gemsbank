@@ -53,11 +53,28 @@
     const [pinShown, setPinShown] = useState(false);
     const [cardCvv, setCardCvv] = useState(null);
     const [detailsShown, setDetailsShown] = useState(false);
+    const [profile, setProfile] = useState(null);
     const [micOn, setMicOn] = useState(false);
     const [draft, setDraft] = useState("");
     const [messages, setMessages] = useState([
       { role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) },
     ]);
+
+    useEffect(() => {
+      let cancelled = false;
+      api
+        .me()
+        .then((response) => {
+          if (!cancelled) setProfile(response);
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [username]);
+
+    const displayName = (profile && profile.identity && profile.identity.fullName) || username;
+    const firstName = GEMS.people.firstName(displayName) || username;
 
     const navigate = useCallback((key) => {
       if (SCREENS.indexOf(key) >= 0) setScreen(key);
@@ -263,7 +280,7 @@
         <DASH.Sidebar screen={screen} onNavigate={navigate} onSignOut={onSignOut} />
 
         <div className="dash-main">
-          <DASH.Topbar screen={screen} username={username} ttsOn={ttsOn} onToggleTts={() => setTtsOn((value) => !value)} />
+          <DASH.Topbar screen={screen} username={firstName} ttsOn={ttsOn} onToggleTts={() => setTtsOn((value) => !value)} />
 
           <main className="dash-content" aria-label={t("dashboard.tag." + screen)}>
             {screen === "home" ? (
@@ -283,7 +300,7 @@
                 onToggleMic={() => setMicOn((value) => !value)}
                 onPromptClick={onScreenPrompt}
                 onConfirmTx={confirmTx}
-                username={username}
+                username={firstName}
               />
             ) : null}
             {screen === "portfolio" ? <SCR.PortfolioScreen /> : null}
@@ -313,6 +330,7 @@
             {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} /> : null}
             {screen === "settings" ? (
               <SCR.SettingsScreen
+                profile={profile}
                 lang={lang}
                 onLang={onLang}
                 theme={theme}
@@ -329,7 +347,7 @@
         {screen !== "chat" ? (
           <DASH.AgentDock
             open={dockOpen}
-            username={username}
+            username={firstName}
             onOpen={() => setDockOpen(true)}
             onClose={() => setDockOpen(false)}
             onExpand={() => navigate("chat")}

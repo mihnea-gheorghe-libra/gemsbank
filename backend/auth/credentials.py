@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from enum import StrEnum
 from typing import Any
 
@@ -29,10 +29,29 @@ class ResetChallenge(BaseModel):
     attempts: int = 0
 
 
+class PersonalIdentity(BaseModel):
+    full_name: str
+    birth_date: date
+    cnp_masked: str
+    document_number_masked: str
+    document_expires_on: date
+
+    def public_view(self) -> dict[str, Any]:
+        return {
+            "fullName": self.full_name,
+            "birthDate": self.birth_date.isoformat(),
+            "cnpMasked": self.cnp_masked,
+            "documentNumberMasked": self.document_number_masked,
+            "documentExpiresOn": self.document_expires_on.isoformat(),
+        }
+
+
 class AuthUser(BaseModel):
     id: str
     username: str
     email: str
+    phone: str | None = None
+    identity: PersonalIdentity | None = None
     password_hash: str
     pin_hash: str
     pin_encrypted: str | None = None
@@ -141,8 +160,19 @@ class AuthUser(BaseModel):
         self._accept_password()
         self._accept_pin()
 
+    @property
+    def display_name(self) -> str:
+        return self.identity.full_name if self.identity else self.username.upper()
+
     def public_view(self) -> dict[str, Any]:
         return {"userId": self.id, "username": self.username, "prefs": self.prefs}
+
+    def profile_view(self) -> dict[str, Any]:
+        return self.public_view() | {
+            "email": self.email,
+            "phone": self.phone,
+            "identity": self.identity.public_view() if self.identity else None,
+        }
 
 
 class Session(BaseModel):

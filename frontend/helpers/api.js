@@ -114,6 +114,7 @@
       return response;
     },
     logout: () => send("/auth/logout", { method: "POST" }),
+    me: () => send("/me"),
     updatePreferences: (prefs) => send("/auth/preferences", { method: "PUT", json: { prefs } }),
 
     listAccounts: () => send("/accounts"),

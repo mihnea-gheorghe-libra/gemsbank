@@ -100,6 +100,7 @@ class UserRepository(Protocol):
         pin_hash: str,
         pin_encrypted: str,
         kyc_case_id: str,
+        extracted: ExtractedIdentity,
         prefs: dict[str, Any] | None = None,
         session: AsyncIOMotorClientSession | None = None,
     ) -> None: ...
@@ -388,6 +389,7 @@ class OnboardingService:
             raise ConflictError("That username is taken.", details={"field": "username"})
 
         assert case.contact is not None
+        assert case.document is not None
         user_id = new_id()
         case.complete(user_id)
 
@@ -400,12 +402,12 @@ class OnboardingService:
             pin_hash=self._hasher.hash(pin),
             pin_encrypted=self._cipher.encrypt(pin, user_id),
             kyc_case_id=case.id,
+            extracted=case.document.extracted,
             prefs=command.prefs,
             session=session,
         )
         await self._cases.save(case, session=session)
 
-        assert case.document is not None
         account_ids = await self._provisioning.provision_starter_accounts(
             user_id=user_id,
             holder_name=case.document.extracted.full_name,
