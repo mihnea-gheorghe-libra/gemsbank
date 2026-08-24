@@ -41,14 +41,11 @@
   DASHBOARD.Dashboard = function Dashboard({ username, theme, onTheme, lang, onLang, onSignOut }) {
     const [screen, setScreen] = useState("home");
     const [balanceHidden, setBalanceHidden] = useState(true);
-    const [theme, setTheme] = useState("light");
-    const [ttsOn, setTtsOn] = useState(false);
     const [dockOpen, setDockOpen] = useState(true);
     const [payOpen, setPayOpen] = useState(false);
     const [payType, setPayType] = useState("iban");
     const [filter, setFilter] = useState("all");
-    const [range, setRange] = useState("6"); // Păstrăm modificarea ta
-    const [lang, setLang] = useState(GEMS.i18n.locale); // Păstrăm adăugarea ta
+    const [range, setRange] = useState("6");
     const [cards, setCards] = useState([]);
     const [cardsLoaded, setCardsLoaded] = useState(false);
     const [cardsLoading, setCardsLoading] = useState(false);
@@ -73,11 +70,6 @@
 
     const navigate = useCallback((key) => {
       if (SCREENS.indexOf(key) >= 0) setScreen(key);
-    }, []);
-
-    const changeLang = useCallback((next) => {
-      GEMS.i18n.setLocale(next);
-      setLang(next);
     }, []);
 
     const toggleBalance = useCallback(() => {
@@ -325,11 +317,9 @@
             {screen === "settings" ? (
               <SCR.SettingsScreen
                 lang={lang}
-                onLang={changeLang}
+                onLang={onLang}
                 theme={theme}
-                onTheme={setTheme}
-                ttsOn={ttsOn}
-                onToggleTts={() => setTtsOn((value) => !value)}
+                onTheme={onTheme}
                 onSignOut={onSignOut}
                 onGoChat={() => navigate("chat")}
                 me={me}
