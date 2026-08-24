@@ -59,7 +59,7 @@ class AuthUser(BaseModel):
     email: str
     phone: str | None = None
     identity: PersonalIdentity | None = None
-    full_name: str
+    full_name: str = ""
     password_hash: str
     pin_hash: str
     pin_encrypted: str | None = None

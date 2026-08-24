@@ -247,12 +247,6 @@ class AuthService:
         await self._sessions.add(record, session=session)
         return {"sessionToken": token} | record.public_view()
 
-    async def profile(self, user_id: str) -> dict[str, Any]:
-        user = await self._users.get(user_id)
-        if user is None:
-            raise NotFoundError("That account no longer exists.")
-        return user.profile_view()
-
     async def resolve_actor(self, token: str) -> Actor:
         record = await self._sessions.get_by_token_hash(hash_token(token))
         if record is None:

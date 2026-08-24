@@ -96,6 +96,7 @@ class UserRepository(Protocol):
         username: str,
         email: str,
         phone: str,
+        full_name: str,
         password_hash: str,
         pin_hash: str,
         pin_encrypted: str,
@@ -393,7 +394,6 @@ class OnboardingService:
         user_id = new_id()
         case.complete(user_id)
 
-        assert case.document is not None
         await self._users.create(
             user_id=user_id,
             username=username,

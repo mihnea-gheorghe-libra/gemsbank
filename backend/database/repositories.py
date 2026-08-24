@@ -225,13 +225,14 @@ def _identity_from_bson(raw: dict[str, Any] | None) -> PersonalIdentity | None:
 def _auth_user_from_bson(raw: dict[str, Any]) -> AuthUser:
     pin = raw.get("pin") or {}
     password = raw.get("password") or {}
+    identity = _identity_from_bson(raw.get("identity"))
     return AuthUser(
         id=raw["_id"],
         username=raw["username"],
         email=raw["email"],
         phone=raw.get("phone"),
-        identity=_identity_from_bson(raw.get("identity")),
-        full_name=raw.get("fullName"),
+        identity=identity,
+        full_name=raw.get("fullName") or (identity.full_name if identity else ""),
         password_hash=raw["passwordHash"],
         pin_hash=raw["pinHash"],
         pin_encrypted=raw.get("pinEncrypted"),

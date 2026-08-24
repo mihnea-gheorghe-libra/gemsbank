@@ -979,7 +979,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
       { value: "ro", label: "Română" },
       { value: "en", label: "English" },
     ];
-    const identity = (profile && profile.identity) || null;
+    const identity = (me && me.identity) || null;
     const placeholder = "—";
 
     const [emailDraft, setEmailDraft] = useState("");

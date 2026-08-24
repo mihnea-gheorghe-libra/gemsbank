@@ -28,14 +28,12 @@
   DASHBOARD.Dashboard = function Dashboard({ username, theme, onTheme, lang, onLang, onSignOut }) {
     const [screen, setScreen] = useState("home");
     const [balanceHidden, setBalanceHidden] = useState(true);
-    const [theme, setTheme] = useState("light");
     const [ttsOn, setTtsOn] = useState(false);
     const [dockOpen, setDockOpen] = useState(true);
     const [payOpen, setPayOpen] = useState(false);
     const [payType, setPayType] = useState("iban");
     const [filter, setFilter] = useState("all");
-    const [range, setRange] = useState("6"); // Păstrăm modificarea ta
-    const [lang, setLang] = useState(GEMS.i18n.locale); // Păstrăm adăugarea ta
+    const [range, setRange] = useState("6");
     const [cards, setCards] = useState([]);
     const [cardsLoaded, setCardsLoaded] = useState(false);
     const [cardsLoading, setCardsLoading] = useState(false);
@@ -47,7 +45,6 @@
     const [pinShown, setPinShown] = useState(false);
     const [cardCvv, setCardCvv] = useState(null);
     const [detailsShown, setDetailsShown] = useState(false);
-    const [profile, setProfile] = useState(null);
     const [micOn, setMicOn] = useState(false);
     const [draft, setDraft] = useState("");
     const [messages, setMessages] = useState([
@@ -56,15 +53,11 @@
     const [me, setMe] = useState(null);
 
     useEffect(() => {
-      api.me().then(setMe).catch(() => {});
-    }, []);
-
-    useEffect(() => {
       let cancelled = false;
       api
         .me()
         .then((response) => {
-          if (!cancelled) setProfile(response);
+          if (!cancelled) setMe(response);
         })
         .catch(() => {});
       return () => {
@@ -72,16 +65,11 @@
       };
     }, [username]);
 
-    const displayName = (profile && profile.identity && profile.identity.fullName) || username;
+    const displayName = (me && me.identity && me.identity.fullName) || (me && me.fullName) || username;
     const firstName = GEMS.people.firstName(displayName) || username;
 
     const navigate = useCallback((key) => {
       if (SCREENS.indexOf(key) >= 0) setScreen(key);
-    }, []);
-
-    const changeLang = useCallback((next) => {
-      GEMS.i18n.setLocale(next);
-      setLang(next);
     }, []);
 
     const toggleBalance = useCallback(() => {
@@ -334,11 +322,10 @@
             {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} /> : null}
             {screen === "settings" ? (
               <SCR.SettingsScreen
-                profile={profile}
                 lang={lang}
-                onLang={changeLang}
+                onLang={onLang}
                 theme={theme}
-                onTheme={setTheme}
+                onTheme={onTheme}
                 ttsOn={ttsOn}
                 onToggleTts={() => setTtsOn((value) => !value)}
                 onSignOut={onSignOut}
