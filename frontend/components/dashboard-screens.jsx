@@ -91,7 +91,7 @@
     );
   }
 
-SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onSpeakBalance, onNavigate }) {
+SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onNavigate }) {
     return (
       <div className="dash-grid-home">
         <UI.Plate className="dash-balance-card elev-sm">
@@ -201,9 +201,6 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
         </div>
 
         <UI.Plate className="elev-sm" style={{ padding: 16, marginBottom: 18 }}>
-          <div className="dash-kicker-row">
-            <UI.Kicker>{t("dashboard.templates.title")}</UI.Kicker>
-            <UI.Button type="button" variant="ghost" onClick={onNewTemplate}>{t("dashboard.templates.new")}</UI.Button>
           <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.payments.pendingTitle")}</UI.Kicker>
           <div className="dash-pending-grid">
             {DATA.pending.map((row, index) => (
@@ -217,6 +214,13 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                 <UI.Button type="button" variant="secondary">{t("dashboard.payments.sign")}</UI.Button>
               </div>
             ))}
+          </div>
+        </UI.Plate>
+
+        <UI.Plate className="elev-sm" style={{ padding: 16, marginBottom: 18 }}>
+          <div className="dash-kicker-row">
+            <UI.Kicker>{t("dashboard.templates.title")}</UI.Kicker>
+            <UI.Button type="button" variant="ghost" onClick={onNewTemplate}>{t("dashboard.templates.new")}</UI.Button>
           </div>
           {templates.length ? (
             <div className="dash-template-grid">

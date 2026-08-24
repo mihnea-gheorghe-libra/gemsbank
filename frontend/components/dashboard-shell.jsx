@@ -4,7 +4,7 @@
   const UI = GEMS.ui;
   const t = GEMS.i18n.t;
   const DATA = GEMS.dashboardData;
-  const { useState, useEffect, useRef } = React;
+  const { useState, useEffect, useRef, useMemo } = React;
 
   function accountLabel(account) {
     return t("dashboard.accountType." + account.typeKey) + " · " + account.cur + " · " + account.ibanShort;

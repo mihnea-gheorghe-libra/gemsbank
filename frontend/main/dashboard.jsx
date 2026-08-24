@@ -56,7 +56,6 @@
     const [filter, setFilter] = useState("all");
     const [query, setQuery] = useState("");
     const [range, setRange] = useState("6");
-    const [lang, setLang] = useState(GEMS.i18n.locale);
     const [cards, setCards] = useState([]);
     const [cardsLoaded, setCardsLoaded] = useState(false);
     const [cardsLoading, setCardsLoading] = useState(false);
@@ -605,7 +604,6 @@
                 transactions={transactions} 
                 balanceHidden={balanceHidden} 
                 onToggleBalance={toggleBalance} 
-                onSpeakBalance={speakBalance} 
                 onNavigate={navigate} 
               />
             ) : null}
