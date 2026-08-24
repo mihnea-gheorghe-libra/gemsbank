@@ -15,7 +15,7 @@ Three working screens:
 Sign in mints a **session token** (`sessions` collection). The frontend holds it in memory and
 sends it as `Authorization: Bearer …`; a page refresh signs you out, which is the intended
 behaviour while there is no refresh-token rotation (`PROMPT.md` §6: never `localStorage`).
-After a successful sign in you land on a **dashboard mockup**: a static, frontend-only prototype
+After a successful sign in you land on a **dashboard mockup**: a mostly frontend-only prototype
 (`frontend/main/dashboard.jsx` and `frontend/components/dashboard-*.jsx`) covering Dashboard,
 Payments, AI Assistant, Portfolio, Cards, Analytics and Settings. It is a deliberate, explicitly
 approved deviation from `PROMPT.md` §4 — cards, investments, analytics and the chatbot are listed
@@ -399,13 +399,19 @@ the Settings screen says so instead of showing blanks.
 
 ## Cards — a backend without a session
 
-`backend/cards/` implements the six actions on the dashboard's Cards mockup, through the same one
+`backend/cards/` implements the actions behind the dashboard's Cards screen, through the same one
 write path as everything else (`bus.execute` → policy-free for now, audit, outbox, idempotency):
 
 - `POST /cards/virtual` — issue a virtual Mastercard for a user
+- `POST /cards/physical` — issue a physical Visa debit card for a user; same handler shape as
+  virtual (`CardsService._issue`), only `kind` and validity period differ (3 years virtual, 5
+  physical). The frontend's "Issue card" button opens a dialog to choose between the two.
 - `POST /cards/{id}/freeze` / `/unfreeze` — reversible pause
 - `POST /cards/{id}/block` — terminal; every other action on that card then fails with
-  `illegal_transition`
+  `illegal_transition`. The frontend labels this **"Delete card"** and, once blocked, drops the
+  card from the visible grid — its masked number moves to a "History" dialog instead. Nothing is
+  deleted from Mongo; this is a UI relabelling of the existing terminal transition, chosen over
+  adding a second terminal state, consistent with the rest of the app never hard-deleting state.
 - `POST /cards/{id}/pin/reveal` — same `CommandResult.sensitive` channel as `auth.reveal_pin`, so a
   replayed `Idempotency-Key` does not re-reveal
 - `POST /cards/{id}/details/reveal` — same `sensitive` channel, returns the CVV; the frontend's
@@ -417,8 +423,17 @@ write path as everything else (`bus.execute` → policy-free for now, audit, out
 - `GET /cards?username=` — read model, bypasses the bus like `GET /onboarding/{id}` does
 
 "Monthly online spend" has no backend — it stays a static number on the mock, unchanged, as asked.
-The date printed on the front of each card is client-side only (the browser's local clock via
-`Intl.DateTimeFormat`), not persisted or served by the backend.
+
+The card **back face** (`SCR.CardsScreen` in `dashboard-screens.jsx`) shows the number, expiry and
+CVV stacked, same font/size, nothing else. The number shown there is a **client-side-only cosmetic
+mock** (`mockFullNumber`, deterministic from the card id) — never sent to or stored by the backend,
+which still never generates or keeps a full PAN (`cards/adapters.py`, unchanged, see below). A
+frozen card gets a translucent blue veil over the whole tile, front or back
+(`--color-info`, added to `frontend/styles/tokens.css` for this — the extracted design archive has
+no blue; `PROMPT.md` §3's fidelity rule says structure wins where the archive and the brief
+disagree, logged here per that rule). A Mastercard-kind card's front shows a small two-circle
+network mark bottom-right, drawn in the app's own plum/lime tokens rather than the real trademarked
+mark (colours, shape and IP are Mastercard's, not ours to reproduce).
 
 There is no session token (see above), so every card endpoint takes `username` in the request body
 instead of a bearer token, resolves it to a user id, and checks the card belongs to that user

@@ -99,6 +99,7 @@
       GEMS.session.set(response.sessionToken);
       return response;
     },
+    verifyPin: (username, pin) => send("/auth/pin/verify", { method: "POST", json: { username, pin } }),
     revealPin: async (username, password) => {
       const response = await send("/auth/pin/reveal", { method: "POST", json: { username, password } });
       GEMS.session.set(response.sessionToken);
@@ -149,6 +150,8 @@
     listCards: (username) => send("/cards?username=" + encodeURIComponent(username)),
     issueVirtualCard: (username) =>
       send("/cards/virtual", { method: "POST", json: { username } }),
+    issuePhysicalCard: (username) =>
+      send("/cards/physical", { method: "POST", json: { username } }),
     freezeCard: (username, cardId) =>
       send("/cards/" + cardId + "/freeze", { method: "POST", json: { username } }),
     unfreezeCard: (username, cardId) =>

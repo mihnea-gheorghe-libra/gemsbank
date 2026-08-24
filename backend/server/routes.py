@@ -16,6 +16,7 @@ from backend.auth.service import (
     RevokeSession,
     SignIn,
     SignOut,
+    VerifyPin,
     UpdatePreferences,
     VerifyResetCode,
     VerifySecureChange,
@@ -25,6 +26,7 @@ from backend.cards.service import (
     BlockCardPermanently,
     CardsService,
     FreezeCard,
+    IssuePhysicalCard,
     IssueVirtualCard,
     RevealCardDetails,
     RevealCardPin,
@@ -320,6 +322,14 @@ async def login(
     return await bus.execute(command, _auth_actor(), idempotency_key, ip=ip, user_agent=user_agent)
 
 
+@auth_router.post("/pin/verify")
+async def verify_pin(
+    payload: SignInRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = VerifyPin(username=payload.username, pin=payload.pin.strip())
+    return await bus.execute(command, _auth_actor(), idempotency_key)
+
+
 @auth_router.post("/pin/reveal")
 async def reveal_pin(
     payload: RevealPinRequest,
@@ -539,6 +549,14 @@ async def issue_virtual_card(
     payload: UsernameRequest, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
     command = IssueVirtualCard(username=payload.username)
+    return await bus.execute(command, _cards_actor(), idempotency_key)
+
+
+@cards_router.post("/physical", status_code=201)
+async def issue_physical_card(
+    payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = IssuePhysicalCard(username=payload.username)
     return await bus.execute(command, _cards_actor(), idempotency_key)
 
 

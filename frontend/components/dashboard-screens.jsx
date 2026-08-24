@@ -2,6 +2,7 @@
   const GEMS = (window.GEMS = window.GEMS || {});
   const SCR = (GEMS.dashboardScreens = GEMS.dashboardScreens || {});
   const UI = GEMS.ui;
+  const AUTH = GEMS.auth;
   const DASH = GEMS.dashboardUi;
   const t = GEMS.i18n.t;
   const DATA = GEMS.dashboardData;
@@ -44,18 +45,27 @@
     return month + "/" + year.slice(2);
   }
 
-  function useLiveDate() {
-    const [now, setNow] = useState(() => new Date());
-    useEffect(() => {
-      const id = setInterval(() => setNow(new Date()), 60000);
-      return () => clearInterval(id);
-    }, []);
-    return now;
+  // Cosmetic only — derived client-side from the card id, never sent to or
+  // stored by the backend, which never generates or keeps a full PAN
+  // (backend/cards/adapters.py — only a random last-4 exists, anywhere).
+  function mockFullNumber(cardId, last4, kind) {
+    let hash = 0;
+    for (let i = 0; i < cardId.length; i++) {
+      hash = (hash * 31 + cardId.charCodeAt(i)) >>> 0;
+    }
+    const filler = String(hash % 100000000).padStart(8, "0");
+    const bin = kind === "virtual_mastercard" || kind === "physical_debit" ? "5412" : "4532";
+    return bin + " " + filler.slice(0, 4) + " " + filler.slice(4, 8) + " " + last4;
   }
 
-  function formatCardDate(date) {
-    const locale = GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB";
-    return new Intl.DateTimeFormat(locale, { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+  function MastercardMark() {
+    return (
+      <svg className="dash-card-logo" viewBox="0 0 152 108" aria-hidden="true">
+        <circle cx="46" cy="54" r="42" fill="#EB001B" />
+        <circle cx="106" cy="54" r="42" fill="#F79E1B" />
+        <path fill="#FF5F00" d="M76,24.61 A42,42 0 0,1 76,83.39 A42,42 0 0,1 76,24.61 Z" />
+      </svg>
+    );
   }
 
   function TxTable({ rows, compact }) {
@@ -711,29 +721,80 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     );
   }
 
+  function CardPinDialog({ busy, error, onDismiss, onSubmit }) {
+    const [pin, setPin] = useState("");
+
+    return (
+      <UI.Dialog labelledBy="card-pin-title" onDismiss={onDismiss}>
+        <h2 id="card-pin-title" className="dialog-title">
+          {t("dashboard.cards.pinDialog.title")}
+        </h2>
+        <p className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
+          {t("dashboard.cards.pinDialog.hint")}
+        </p>
+
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit(pin);
+          }}
+        >
+          <div className="field">
+            <AUTH.DigitGroup
+              label={t("dashboard.cards.pinDialog.title")}
+              length={6}
+              value={pin}
+              onChange={setPin}
+              autoFocus
+            />
+            {error ? (
+              <div style={{ fontSize: 11, marginTop: 4, color: "var(--color-negative)" }}>
+                {error.message}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="dialog-actions">
+            <UI.Button type="button" onClick={onDismiss}>
+              {t("dashboard.cards.pinDialog.cancel")}
+            </UI.Button>
+            <UI.Button type="submit" variant="primary" disabled={busy || pin.length !== 6}>
+              {busy ? t("dashboard.cards.pinDialog.confirming") : t("dashboard.cards.pinDialog.confirm")}
+            </UI.Button>
+          </div>
+        </form>
+      </UI.Dialog>
+    );
+  }
+
   SCR.CardsScreen = function CardsScreen({
     cards,
     loading,
     error,
     selectedCardId,
     onSelect,
-    onIssue,
-    issuing,
+    onOpenIssue,
+    onOpenHistory,
     busy,
     onFreeze,
     onUnfreeze,
-    onBlock,
+    onDelete,
     pin,
     pinShown,
     onTogglePin,
     cvv,
     detailsShown,
     onToggleDetails,
+    pinPromptOpen,
+    pinPromptBusy,
+    pinPromptError,
+    onConfirmLoginPin,
+    onCancelLoginPin,
     onSetAtmLimit,
     onSetOnlineLimit,
   }) {
     const [editingLimit, setEditingLimit] = useState(null);
-    const now = useLiveDate();
     const card = cards.find((row) => row.cardId === selectedCardId) || null;
     const disabled = busy || !card || card.state === "blocked";
 
@@ -754,9 +815,14 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
       <div>
         <div className="dash-screen-head">
           <h3 style={{ margin: 0 }}>{t("dashboard.cards.title")}</h3>
-          <UI.Button type="button" variant="secondary" disabled={issuing} onClick={onIssue}>
-            {issuing ? t("dashboard.cards.issuing") : t("dashboard.cards.issue")}
-          </UI.Button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <UI.Button type="button" variant="secondary" onClick={onOpenIssue}>
+              {t("dashboard.cards.issue")}
+            </UI.Button>
+            <UI.Button type="button" variant="secondary" onClick={onOpenHistory}>
+              {t("dashboard.cards.history")}
+            </UI.Button>
+          </div>
         </div>
 
         <UI.ErrorNote error={error} />
@@ -780,12 +846,11 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                     <div>
                       <div className="dash-card-num">{row.numberMasked}</div>
                       <div className="dash-card-meta text-muted">
-                        <span>{row.owner}</span><span>{formatExpiry(row.expiresOn)}</span>
-                      </div>
-                      <div className="dash-card-date" aria-label={t("dashboard.cards.todayAria")}>
-                        {formatCardDate(now)}
+                        <span>{row.owner}</span>
+                        <span>{formatExpiry(row.expiresOn)}</span>
                       </div>
                     </div>
+                    <MastercardMark />
                   </div>
                 );
 
@@ -794,17 +859,26 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                     <button
                       key={row.cardId}
                       type="button"
-                      className={"dash-card-flip" + (flipped ? " is-flipped" : "")}
+                      className={UI.classNames(
+                        "dash-card-flip",
+                        flipped && "is-flipped",
+                        row.state === "frozen" && "is-frozen"
+                      )}
                       onClick={() => onSelect(row.cardId)}
                       aria-pressed={isSelected}
                     >
                       <div className="dash-card-flip-inner">
                         <div className="dash-card-face-front">{front}</div>
                         <div className="dash-card-face-back">
-                          <div className="dash-card-kind">{t("dashboard.cards.showDetails")}</div>
-                          <div className="dash-card-cvv">
+                          <span className="dash-card-back-line">
+                            {mockFullNumber(row.cardId, row.numberMasked.slice(-4), row.kind)}
+                          </span>
+                          <span className="dash-card-back-line">
+                            {t("dashboard.cards.expLabel", { exp: formatExpiry(row.expiresOn) })}
+                          </span>
+                          <span className="dash-card-back-line">
                             {cvv ? t("dashboard.cards.cvvLabel", { cvv }) : "•••"}
-                          </div>
+                          </span>
                         </div>
                       </div>
                     </button>
@@ -815,7 +889,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                   <button
                     key={row.cardId}
                     type="button"
-                    className="dash-card-tile"
+                    className={UI.classNames("dash-card-tile", row.state === "frozen" && "is-frozen")}
                     onClick={() => onSelect(row.cardId)}
                     aria-pressed={isSelected}
                   >
@@ -826,12 +900,11 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                     <div>
                       <div className="dash-card-num">{row.numberMasked}</div>
                       <div className="dash-card-meta text-muted">
-                        <span>{row.owner}</span><span>{formatExpiry(row.expiresOn)}</span>
-                      </div>
-                      <div className="dash-card-date" aria-label={t("dashboard.cards.todayAria")}>
-                        {formatCardDate(now)}
+                        <span>{row.owner}</span>
+                        <span>{formatExpiry(row.expiresOn)}</span>
                       </div>
                     </div>
+                    <MastercardMark />
                   </button>
                 );
               })}
@@ -896,9 +969,9 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                     variant="secondary"
                     style={{ justifyContent: "space-between", color: "var(--color-negative)" }}
                     disabled={disabled}
-                    onClick={onBlock}
+                    onClick={onDelete}
                   >
-                    {t("dashboard.cards.blockPermanently")}
+                    {t("dashboard.cards.deleteCard")}
                   </UI.Button>
                 </div>
                 <div className="hr" />
@@ -908,6 +981,15 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
             ) : null}
           </div>
         )}
+
+        {pinPromptOpen ? (
+          <CardPinDialog
+            busy={pinPromptBusy}
+            error={pinPromptError}
+            onDismiss={onCancelLoginPin}
+            onSubmit={onConfirmLoginPin}
+          />
+        ) : null}
       </div>
     );
   };

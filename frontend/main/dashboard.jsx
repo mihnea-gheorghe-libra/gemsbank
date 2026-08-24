@@ -61,12 +61,19 @@
     const [cardsLoading, setCardsLoading] = useState(false);
     const [cardsError, setCardsError] = useState(null);
     const [cardIssuing, setCardIssuing] = useState(false);
+    const [issueOpen, setIssueOpen] = useState(false);
+    const [issueKind, setIssueKind] = useState("virtual");
+    const [historyOpen, setHistoryOpen] = useState(false);
     const [cardBusy, setCardBusy] = useState(false);
     const [selectedCardId, setSelectedCardId] = useState(null);
     const [cardPin, setCardPin] = useState(null);
     const [pinShown, setPinShown] = useState(false);
     const [cardCvv, setCardCvv] = useState(null);
     const [detailsShown, setDetailsShown] = useState(false);
+    const [pinPromptOpen, setPinPromptOpen] = useState(false);
+    const [pinPromptBusy, setPinPromptBusy] = useState(false);
+    const [pinPromptError, setPinPromptError] = useState(null);
+    const [pinPromptTarget, setPinPromptTarget] = useState(null);
     const [micOn, setMicOn] = useState(false);
     const [draft, setDraft] = useState("");
     const [messages, setMessages] = useState([
@@ -183,19 +190,27 @@
       setCardCvv(null);
     }, []);
 
-    const issueCard = useCallback(async () => {
+    const openIssueDialog = useCallback(() => {
+      setIssueKind("virtual");
+      setIssueOpen(true);
+    }, []);
+
+    const createCard = useCallback(async () => {
       setCardIssuing(true);
       setCardsError(null);
       try {
-        const card = await api.issueVirtualCard(username);
+        const card = issueKind === "physical"
+          ? await api.issuePhysicalCard(username)
+          : await api.issueVirtualCard(username);
         setCards((list) => list.concat([card]));
         selectCard(card.cardId);
+        setIssueOpen(false);
       } catch (err) {
         setCardsError(err);
       } finally {
         setCardIssuing(false);
       }
-    }, [username, selectCard]);
+    }, [username, issueKind, selectCard]);
 
     const freezeCard = useCallback(async () => {
       if (!selectedCardId) return;
@@ -223,26 +238,25 @@
       }
     }, [username, selectedCardId, applyCard]);
 
-    const blockCard = useCallback(async () => {
+    const deleteCard = useCallback(async () => {
       if (!selectedCardId) return;
-      if (!window.confirm(t("dashboard.cards.confirmBlock"))) return;
+      if (!window.confirm(t("dashboard.cards.confirmDelete"))) return;
       setCardBusy(true);
       setCardsError(null);
       try {
-        applyCard(await api.blockCard(username, selectedCardId));
+        const updated = await api.blockCard(username, selectedCardId);
+        applyCard(updated);
+        const next = cards.find((row) => row.cardId !== updated.cardId && row.state !== "blocked");
+        selectCard(next ? next.cardId : null);
       } catch (err) {
         setCardsError(err);
       } finally {
         setCardBusy(false);
       }
-    }, [username, selectedCardId, applyCard]);
+    }, [username, selectedCardId, applyCard, cards, selectCard]);
 
-    const toggleCardPin = useCallback(async () => {
+    const revealCardPin = useCallback(async () => {
       if (!selectedCardId) return;
-      if (pinShown) {
-        setPinShown(false);
-        return;
-      }
       setCardBusy(true);
       setCardsError(null);
       try {
@@ -254,14 +268,21 @@
       } finally {
         setCardBusy(false);
       }
-    }, [username, selectedCardId, pinShown]);
+    }, [username, selectedCardId]);
 
-    const toggleCardDetails = useCallback(async () => {
+    const toggleCardPin = useCallback(() => {
       if (!selectedCardId) return;
-      if (detailsShown) {
-        setDetailsShown(false);
+      if (pinShown) {
+        setPinShown(false);
         return;
       }
+      setPinPromptError(null);
+      setPinPromptTarget("cardPin");
+      setPinPromptOpen(true);
+    }, [selectedCardId, pinShown]);
+
+    const revealCardDetails = useCallback(async () => {
+      if (!selectedCardId) return;
       setCardBusy(true);
       setCardsError(null);
       try {
@@ -273,7 +294,38 @@
       } finally {
         setCardBusy(false);
       }
-    }, [username, selectedCardId, detailsShown]);
+    }, [username, selectedCardId]);
+
+    const toggleCardDetails = useCallback(() => {
+      if (!selectedCardId) return;
+      if (detailsShown) {
+        setDetailsShown(false);
+        return;
+      }
+      setPinPromptError(null);
+      setPinPromptTarget("details");
+      setPinPromptOpen(true);
+    }, [selectedCardId, detailsShown]);
+
+    const confirmLoginPin = useCallback(async (pin) => {
+      setPinPromptBusy(true);
+      setPinPromptError(null);
+      try {
+        await api.verifyPin(username, pin);
+        setPinPromptOpen(false);
+        if (pinPromptTarget === "cardPin") await revealCardPin();
+        else if (pinPromptTarget === "details") await revealCardDetails();
+      } catch (err) {
+        setPinPromptError(err);
+      } finally {
+        setPinPromptBusy(false);
+      }
+    }, [username, pinPromptTarget, revealCardPin, revealCardDetails]);
+
+    const cancelLoginPin = useCallback(() => {
+      setPinPromptOpen(false);
+      setPinPromptError(null);
+    }, []);
 
     const setCardAtmLimit = useCallback(async (minor) => {
       if (!selectedCardId) return;
@@ -301,6 +353,8 @@
       }
     }, [username, selectedCardId, applyCard]);
 
+    const visibleCards = cards.filter((row) => row.state !== "blocked");
+    const deletedCards = cards.filter((row) => row.state === "blocked");
     const today = useCallback(
       () =>
         new Intl.DateTimeFormat("ro-RO", { day: "2-digit", month: "2-digit", year: "numeric" })
@@ -664,23 +718,28 @@
             ) : null}
             {screen === "cards" ? (
               <SCR.CardsScreen
-                cards={cards}
+                cards={visibleCards}
                 loading={cardsLoading && !cardsLoaded}
                 error={cardsError}
                 selectedCardId={selectedCardId}
                 onSelect={selectCard}
-                onIssue={issueCard}
-                issuing={cardIssuing}
+                onOpenIssue={openIssueDialog}
+                onOpenHistory={() => setHistoryOpen(true)}
                 busy={cardBusy}
                 onFreeze={freezeCard}
                 onUnfreeze={unfreezeCard}
-                onBlock={blockCard}
+                onDelete={deleteCard}
                 pin={cardPin}
                 pinShown={pinShown}
                 onTogglePin={toggleCardPin}
                 cvv={cardCvv}
                 detailsShown={detailsShown}
                 onToggleDetails={toggleCardDetails}
+                pinPromptOpen={pinPromptOpen}
+                pinPromptBusy={pinPromptBusy}
+                pinPromptError={pinPromptError}
+                onConfirmLoginPin={confirmLoginPin}
+                onCancelLoginPin={cancelLoginPin}
                 onSetAtmLimit={setCardAtmLimit}
                 onSetOnlineLimit={setCardOnlineLimit}
               />
@@ -783,6 +842,20 @@
             onClose={() => { setTemplateOpen(false); setTemplateDraft(null); }}
             onSubmit={saveTemplate}
           />
+        ) : null}
+
+        {issueOpen ? (
+          <DASH.IssueCardDialog
+            kind={issueKind}
+            onKind={setIssueKind}
+            onClose={() => setIssueOpen(false)}
+            onCreate={createCard}
+            creating={cardIssuing}
+          />
+        ) : null}
+
+        {historyOpen ? (
+          <DASH.CardHistoryDialog cards={deletedCards} onClose={() => setHistoryOpen(false)} />
         ) : null}
       </div>
     );

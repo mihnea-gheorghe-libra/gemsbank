@@ -23,10 +23,17 @@ from backend.helpers.errors import NotFoundError
 DEFAULT_ATM_LIMIT_MINOR = 200_000  # RON 2 000,00
 DEFAULT_ONLINE_LIMIT_MINOR = 400_000  # RON 4 000,00 — matches the mock's starter cap
 VIRTUAL_CARD_VALIDITY_YEARS = 3
+PHYSICAL_CARD_VALIDITY_YEARS = 5
 
 
 class IssueVirtualCard(Command):
     command_name: ClassVar[str] = "cards.issue_virtual"
+
+    username: str
+
+
+class IssuePhysicalCard(Command):
+    command_name: ClassVar[str] = "cards.issue_physical"
 
     username: str
 
@@ -156,7 +163,8 @@ class CardsService:
         self._config = config
 
     def register(self, command_bus: CommandBus) -> None:
-        command_bus.register(IssueVirtualCard, self._handle_issue)
+        command_bus.register(IssueVirtualCard, self._handle_issue_virtual)
+        command_bus.register(IssuePhysicalCard, self._handle_issue_physical)
         command_bus.register(FreezeCard, self._handle_freeze)
         command_bus.register(UnfreezeCard, self._handle_unfreeze)
         command_bus.register(BlockCardPermanently, self._handle_block)
@@ -187,11 +195,14 @@ class CardsService:
             )
         return user, card
 
-    async def _handle_issue(
-        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    async def _issue(
+        self,
+        username: str,
+        kind: CardKind,
+        validity_years: int,
+        session: AsyncIOMotorClientSession,
     ) -> CommandResult:
-        assert isinstance(command, IssueVirtualCard)
-        user = await self._require_user(command.username)
+        user = await self._require_user(username)
 
         card_id = new_id()
         pin = self._pins.generate()
@@ -199,10 +210,10 @@ class CardsService:
         card = Card(
             id=card_id,
             user_id=user.id,
-            kind=CardKind.VIRTUAL_MASTERCARD,
+            kind=kind,
             last4=self._numbers.last4(),
-            owner_name=user.display_name,
-            expires_on=_years_from_now(self._clock.now(), VIRTUAL_CARD_VALIDITY_YEARS),
+            owner_name=user.username.upper(),
+            expires_on=_years_from_now(self._clock.now(), validity_years),
             pin_encrypted=self._cipher.encrypt(pin, associated_data=card_id),
             cvv_encrypted=self._cipher.encrypt(cvv, associated_data=card_id + ":cvv"),
             atm_limit_minor=DEFAULT_ATM_LIMIT_MINOR,
@@ -226,6 +237,22 @@ class CardsService:
                     payload={"userId": user.id},
                 )
             ],
+        )
+
+    async def _handle_issue_virtual(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, IssueVirtualCard)
+        return await self._issue(
+            command.username, CardKind.VIRTUAL_MASTERCARD, VIRTUAL_CARD_VALIDITY_YEARS, session
+        )
+
+    async def _handle_issue_physical(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, IssuePhysicalCard)
+        return await self._issue(
+            command.username, CardKind.PHYSICAL_DEBIT, PHYSICAL_CARD_VALIDITY_YEARS, session
         )
 
     async def _handle_freeze(
