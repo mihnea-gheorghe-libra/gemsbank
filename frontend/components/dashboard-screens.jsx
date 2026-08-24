@@ -767,7 +767,7 @@
     );
   };
 
-  function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
+function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     const [code, setCode] = useState("");
     return (
       <UI.Dialog labelledBy={titleId} onDismiss={onDismiss}>
@@ -974,11 +974,13 @@
     );
   }
 
-  SCR.SettingsScreen = function SettingsScreen({ lang, onLang, theme, onTheme, onSignOut, onGoChat, me, onMeChange }) {
+  SCR.SettingsScreen = function SettingsScreen({ lang, onLang, theme, onTheme, ttsOn, onToggleTts, onSignOut, onGoChat, me, onMeChange }) {
     const langs = [
       { value: "ro", label: "Română" },
       { value: "en", label: "English" },
     ];
+    const identity = (profile && profile.identity) || null;
+    const placeholder = "—";
 
     const [emailDraft, setEmailDraft] = useState("");
     const [phoneDraft, setPhoneDraft] = useState("");
@@ -1108,7 +1110,28 @@
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.settings.personalDetails")}</UI.Kicker>
             <div className="dash-field-grid">
               <UI.Field id="set-name" label={t("dashboard.settings.fullName")}>
-                <UI.TextInput id="set-name" value={me ? me.fullName : ""} disabled />
+<UI.TextInput
+                  id="set-name"
+                  readOnly
+                  value={identity ? GEMS.people.fullName(identity.fullName) : (me ? me.fullName : placeholder)}
+                />
+              </UI.Field>
+              <UI.Field id="set-birth" label={t("dashboard.settings.birthDate")}>
+                <UI.TextInput
+                  id="set-birth"
+                  readOnly
+                  value={identity ? GEMS.i18n.isoToDisplayDate(identity.birthDate) : placeholder}
+                />
+              </UI.Field>
+              <UI.Field id="set-cnp" label={t("dashboard.settings.cnp")}>
+                <UI.TextInput id="set-cnp" readOnly value={identity ? identity.cnpMasked : placeholder} />
+              </UI.Field>
+              <UI.Field id="set-document" label={t("dashboard.settings.document")}>
+                <UI.TextInput
+                  id="set-document"
+                  readOnly
+                  value={identity ? identity.documentNumberMasked : placeholder}
+                />
               </UI.Field>
               <UI.Field id="set-phone" label={t("dashboard.settings.phone")}>
                 <UI.TextInput id="set-phone" value={phoneDraft} onChange={(event) => setPhoneDraft(event.target.value)} disabled={!me} />
@@ -1117,6 +1140,15 @@
                 <UI.TextInput id="set-email" value={emailDraft} onChange={(event) => setEmailDraft(event.target.value)} disabled={!me} />
               </UI.Field>
             </div>
+            
+            <div className="text-muted" style={{ fontSize: 12, marginTop: 14, marginBottom: 14 }}>
+              {identity
+                ? t("dashboard.settings.identityNote", {
+                    expiry: GEMS.i18n.isoToDisplayDate(identity.documentExpiresOn),
+                  })
+                : t("dashboard.settings.identityMissing")}
+            </div>
+
             <UI.ErrorNote error={contactError} />
             {contactNotice ? <p className="text-muted" style={{ fontSize: 12 }}>{contactNotice}</p> : null}
             <UI.Button type="button" variant="primary" style={{ marginTop: 14 }} disabled={!me || savingContact} onClick={saveContact}>

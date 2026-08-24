@@ -47,6 +47,7 @@
     const [pinShown, setPinShown] = useState(false);
     const [cardCvv, setCardCvv] = useState(null);
     const [detailsShown, setDetailsShown] = useState(false);
+    const [profile, setProfile] = useState(null);
     const [micOn, setMicOn] = useState(false);
     const [draft, setDraft] = useState("");
     const [messages, setMessages] = useState([
@@ -57,6 +58,22 @@
     useEffect(() => {
       api.me().then(setMe).catch(() => {});
     }, []);
+
+    useEffect(() => {
+      let cancelled = false;
+      api
+        .me()
+        .then((response) => {
+          if (!cancelled) setProfile(response);
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [username]);
+
+    const displayName = (profile && profile.identity && profile.identity.fullName) || username;
+    const firstName = GEMS.people.firstName(displayName) || username;
 
     const navigate = useCallback((key) => {
       if (SCREENS.indexOf(key) >= 0) setScreen(key);
@@ -261,8 +278,10 @@
         <div className="dash-main">
           <DASH.Topbar
             screen={screen}
-            username={username}
+            username={firstName}
             me={me}
+            ttsOn={ttsOn}
+            onToggleTts={() => setTtsOn((value) => !value)}
             onOpenSettings={() => navigate("settings")}
             onSignOut={onSignOut}
           />
@@ -285,7 +304,7 @@
                 onToggleMic={() => setMicOn((value) => !value)}
                 onPromptClick={onScreenPrompt}
                 onConfirmTx={confirmTx}
-                username={username}
+                username={firstName}
               />
             ) : null}
             {screen === "portfolio" ? <SCR.PortfolioScreen /> : null}
@@ -315,6 +334,7 @@
             {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} /> : null}
             {screen === "settings" ? (
               <SCR.SettingsScreen
+                profile={profile}
                 lang={lang}
                 onLang={changeLang}
                 theme={theme}
@@ -333,7 +353,7 @@
         {screen !== "chat" ? (
           <DASH.AgentDock
             open={dockOpen}
-            username={username}
+            username={firstName}
             onOpen={() => setDockOpen(true)}
             onClose={() => setDockOpen(false)}
             onExpand={() => navigate("chat")}

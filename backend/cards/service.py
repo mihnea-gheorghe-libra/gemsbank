@@ -86,6 +86,9 @@ class ResolvedUser(Protocol):
     id: str
     username: str
 
+    @property
+    def display_name(self) -> str: ...
+
 
 class UserDirectory(Protocol):
     async def get_by_username(self, username: str) -> ResolvedUser | None: ...
@@ -198,7 +201,7 @@ class CardsService:
             user_id=user.id,
             kind=CardKind.VIRTUAL_MASTERCARD,
             last4=self._numbers.last4(),
-            owner_name=user.username.upper(),
+            owner_name=user.display_name,
             expires_on=_years_from_now(self._clock.now(), VIRTUAL_CARD_VALIDITY_YEARS),
             pin_encrypted=self._cipher.encrypt(pin, associated_data=card_id),
             cvv_encrypted=self._cipher.encrypt(cvv, associated_data=card_id + ":cvv"),

@@ -9,6 +9,7 @@ from pymongo.errors import DuplicateKeyError
 from backend.accounts.account import Account, AccountKind, AccountStatus
 from backend.auth.credentials import (
     AuthUser,
+    PersonalIdentity,
     RecoveryCase,
     RecoveryKind,
     RecoveryStatus,
@@ -163,6 +164,7 @@ class MongoUserRepository:
         pin_hash: str,
         pin_encrypted: str,
         kyc_case_id: str,
+        extracted: ExtractedIdentity,
         prefs: dict[str, Any] | None = None,
         session: AsyncIOMotorClientSession | None = None,
     ) -> None:
@@ -176,6 +178,7 @@ class MongoUserRepository:
             "pinHash": pin_hash,
             "pinEncrypted": pin_encrypted,
             "kycCaseId": kyc_case_id,
+            "identity": _identity_to_bson(extracted),
             "prefs": {"lang": "ro", "theme": "light", "tts": False, "hideBalances": True} | (prefs or {}),
             "pin": {"failures": 0, "locked": False},
             "password": {"failures": 0, "lockoutStage": 0, "lockedUntil": None},
@@ -197,6 +200,28 @@ class MongoUserRepository:
         return await users_collection().count_documents({"email": email}, limit=1) > 0
 
 
+def _identity_to_bson(extracted: ExtractedIdentity) -> dict[str, Any]:
+    return {
+        "fullName": extracted.full_name,
+        "birthDate": extracted.birth_date.isoformat(),
+        "cnpMasked": extracted.cnp_masked,
+        "documentNumberMasked": extracted.document_number_masked,
+        "documentExpiresOn": extracted.expires_on.isoformat(),
+    }
+
+
+def _identity_from_bson(raw: dict[str, Any] | None) -> PersonalIdentity | None:
+    if not raw:
+        return None
+    return PersonalIdentity(
+        full_name=raw["fullName"],
+        birth_date=date.fromisoformat(raw["birthDate"]),
+        cnp_masked=raw["cnpMasked"],
+        document_number_masked=raw["documentNumberMasked"],
+        document_expires_on=date.fromisoformat(raw["documentExpiresOn"]),
+    )
+
+
 def _auth_user_from_bson(raw: dict[str, Any]) -> AuthUser:
     pin = raw.get("pin") or {}
     password = raw.get("password") or {}
@@ -204,8 +229,9 @@ def _auth_user_from_bson(raw: dict[str, Any]) -> AuthUser:
         id=raw["_id"],
         username=raw["username"],
         email=raw["email"],
-        phone=raw.get("phone", ""),
-        full_name=raw.get("fullName", ""),
+        phone=raw.get("phone"),
+        identity=_identity_from_bson(raw.get("identity")),
+        full_name=raw.get("fullName"),
         password_hash=raw["passwordHash"],
         pin_hash=raw["pinHash"],
         pin_encrypted=raw.get("pinEncrypted"),

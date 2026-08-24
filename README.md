@@ -93,7 +93,7 @@ backend/
     validation.py    username, password, PIN, email, phone rules
     adapters.py      clock, document extractor, OTP email
   auth/
-    service.py       commands, ports, handlers
+    service.py       commands, ports, handlers, the /me profile read model
     credentials.py   the AuthUser, Session and RecoveryCase aggregates and their transitions
     validation.py    username, PIN shape, new-password rules
     adapters.py      clock, reset-code email
@@ -129,6 +129,7 @@ frontend/            no build step; index.html script order is the module graph
                      dashboard-shell.jsx (sidebar, topbar, agent dock, new-payment dialog) ·
                      dashboard-screens.jsx (home, payments, chat, portfolio, cards, analytics, settings)
   helpers/           api.js (the only fetch caller) · i18n.js · messages.js (en + ro) ·
+                     people.js (name formatting for display) ·
                      dashboard-data.js (hand-authored demo data for the dashboard mockup)
   styles/            tokens.css (the only place a hex value may appear) · app.css · dashboard.css
 
@@ -280,6 +281,30 @@ Other tradeoffs worth knowing:
     self-service recovery, by design. A correct password at any stage before that resets the
     track to zero.
 
+## Personal details come from the ID document
+
+Everything the app shows about who you are is read once, by OCR, from the ID document you upload
+in step 1 of onboarding — never typed by hand and never invented. `identity.onboarding.complete`
+copies the extracted identity onto the user record as an `identity` sub-document (full name, birth
+date, masked CNP, masked document number, document expiry), so the rest of the system has one
+source for it:
+
+- **`GET /me`** returns it, alongside the username, email and phone from the contact step. It is
+  the read model behind the dashboard's Settings screen, which renders those fields **read-only** —
+  a customer cannot retype their own legal name, and there is no endpoint that would let them.
+- **The dashboard greeting, the agent dock and the chat** address the customer by the given name
+  from the document, not by their username.
+- **Accounts** already carried `holderName` from the same extraction; **cards** now emboss it too,
+  instead of the uppercased username.
+
+Only the **masked** CNP is copied onto the user record. The raw CNP stays where the OCR put it and
+is not spread any further — see the note below about `GET /onboarding/{id}`.
+
+`ops/006_user_identity.js` backfills `identity` for accounts created before this existed, reading
+each user's own KYC case, and re-stamps `holderName`/`ownerName` on their accounts and cards. Users
+whose KYC case has no extracted document keep `identity: null`; `GET /me` returns null for them and
+the Settings screen says so instead of showing blanks.
+
 ## Cards — a backend without a session
 
 `backend/cards/` implements the six actions on the dashboard's Cards mockup, through the same one
@@ -310,6 +335,9 @@ before doing anything. The `Actor` on each command is `Actor.public_cards()` —
 `userId` lands in the audit `after`/event `payload` instead. This is a real gap (anyone who knows a
 username can manage that user's cards) and not a new one — it is the same gap every existing
 endpoint already has. Close it once for all of them when sessions arrive, not per-feature.
+
+Card issuance now embosses the cardholder's name from the ID document (`AuthUser.display_name`,
+falling back to the uppercased username for a user with no extracted identity).
 
 The card PIN is 4 digits, generated at issuance and stored only as `pinEncrypted`
 (`AesGcmPinCipher`, same key as the account PIN, associated data = card id so a blob cannot move

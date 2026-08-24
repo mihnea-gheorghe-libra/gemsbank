@@ -231,6 +231,11 @@ async def system_status() -> dict[str, Any]:
     }
 
 
+@api_router.get("/me", tags=["auth"])
+async def me(actor: CurrentActor, auth: AuthDep) -> dict[str, Any]:
+    return await auth.profile(actor.id)
+
+
 @api_router.get("/capabilities", tags=["platform"])
 async def capabilities() -> dict[str, Any]:
     return {"commands": bus.registered_commands()}
