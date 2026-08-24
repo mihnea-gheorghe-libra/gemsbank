@@ -6,20 +6,15 @@
   const DATA = GEMS.dashboardData;
   const { useState, useEffect, useRef } = React;
 
-  function deriveDisplayId(fullName, userId) {
-    const parts = (fullName || "").trim().split(/\s+/).filter(Boolean);
-    const surname = (parts[0] || "").toUpperCase();
-    const given = (parts[1] || "").split("-")[0].toUpperCase();
-    const initials = (surname.slice(0, 2) + given.slice(0, 2)).padEnd(4, "X");
-    const seed = String(userId || "");
-    let hash = 0;
-    for (let i = 0; i < seed.length; i++) {
-      hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-    }
-    const digits = String(hash % 1000000).padStart(6, "0");
-    return initials + digits;
-  }
-  DASH.deriveDisplayId = deriveDisplayId;
+  const NAV_ICONS = {
+    home: "LayoutGrid",
+    payments: "ArrowLeftRight",
+    chat: "MessageCircle",
+    portfolio: "PieChart",
+    cards: "CreditCard",
+    analytics: "BarChart3",
+    settings: "Settings",
+  };
 
   DASH.Sidebar = function Sidebar({ screen, onNavigate, onSignOut }) {
     return (
@@ -36,7 +31,7 @@
               aria-current={active ? "page" : undefined}
               onClick={() => onNavigate(item.key)}
             >
-              <span className="dash-nav-num" aria-hidden="true">{item.num}</span>
+              <UI.Icon name={NAV_ICONS[item.key]} size={17} />
               <span>{t("dashboard.nav." + item.key)}</span>
               {active ? <span className="dash-nav-dot" aria-hidden="true" /> : null}
             </button>
@@ -49,7 +44,8 @@
             <UI.Kicker style={{ marginBottom: 4 }}>{t("dashboard.agentsOnline.title")}</UI.Kicker>
             <div className="text-muted" style={{ fontSize: 12 }}>{t("dashboard.agentsOnline.note")}</div>
           </UI.Plate>
-          <UI.Button type="button" variant="ghost" style={{ alignSelf: "flex-start", padding: 0 }} onClick={onSignOut}>
+          <UI.Button type="button" variant="ghost" style={{ alignSelf: "flex-start", padding: 0, gap: 6 }} onClick={onSignOut}>
+            <UI.Icon name="LogOut" size={15} />
             {t("dashboard.signOut")}
           </UI.Button>
         </div>
@@ -86,12 +82,15 @@
           <div className="dash-topbar-tag">{t("dashboard.tag." + screen)}</div>
         </div>
 
-        <UI.TextInput
-          className="input dash-search"
-          type="search"
-          aria-label={t("dashboard.searchPlaceholder")}
-          placeholder={t("dashboard.searchPlaceholder")}
-        />
+        <div className="dash-search-wrap">
+          <UI.Icon name="Search" size={16} />
+          <UI.TextInput
+            className="input dash-search"
+            type="search"
+            aria-label={t("dashboard.searchPlaceholder")}
+            placeholder={t("dashboard.searchPlaceholder")}
+          />
+        </div>
 
         <div className="dash-profile" ref={containerRef}>
           <button
@@ -109,26 +108,25 @@
           {menuOpen ? (
             <div className="dash-profile-menu elev-md plate" role="menu">
               <div className="dash-profile-name">{me ? me.fullName : ""}</div>
-              <div className="dash-profile-id">
-                {t("dashboard.profileMenu.idPrefix")}: {me ? deriveDisplayId(me.fullName, me.userId) : "…"}
-              </div>
               <div className="hr" />
               <UI.Button
                 type="button"
                 variant="secondary"
                 role="menuitem"
-                style={{ justifyContent: "flex-start" }}
+                style={{ justifyContent: "flex-start", gap: 8 }}
                 onClick={() => { setMenuOpen(false); onOpenSettings(); }}
               >
+                <UI.Icon name="Settings" size={15} />
                 {t("dashboard.profileMenu.settings")}
               </UI.Button>
               <UI.Button
                 type="button"
                 variant="secondary"
                 role="menuitem"
-                style={{ justifyContent: "flex-start" }}
+                style={{ justifyContent: "flex-start", gap: 8 }}
                 onClick={() => { setMenuOpen(false); onSignOut(); }}
               >
+                <UI.Icon name="LogOut" size={15} />
                 {t("dashboard.signOut")}
               </UI.Button>
             </div>
@@ -141,7 +139,8 @@
   DASH.AgentDock = function AgentDock({ open, username, onOpen, onClose, onExpand, onPrompt }) {
     if (!open) {
       return (
-        <UI.Button type="button" variant="primary" className="dash-dock-fab elev-md" onClick={onOpen}>
+        <UI.Button type="button" variant="primary" className="dash-dock-fab elev-md" style={{ gap: 8 }} onClick={onOpen}>
+          <UI.Icon name="Sparkles" size={16} />
           {t("dashboard.chat.askGems")}
         </UI.Button>
       );
@@ -152,10 +151,11 @@
           <span className="dash-agent-dot" aria-hidden="true" />
           <span className="kicker">{t("dashboard.nav.chat")}</span>
           <UI.Button type="button" variant="ghost" style={{ marginLeft: "auto" }} onClick={onExpand}>
+            <UI.Icon name="Maximize2" size={14} />
             {t("dashboard.chat.dockExpand")}
           </UI.Button>
           <UI.Button type="button" variant="ghost" aria-label={t("dashboard.chat.dockCloseLabel")} onClick={onClose}>
-            {t("dashboard.chat.dockClose")}
+            <UI.Icon name="X" size={15} />
           </UI.Button>
         </div>
         <div style={{ padding: 14 }}>
@@ -163,10 +163,12 @@
             {t("dashboard.chat.dockGreeting", { username, balance: DATA.totalBalance })}
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 12 }}>
-            <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }} onClick={() => onPrompt("pay")}>
+            <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={() => onPrompt("pay")}>
+              <UI.Icon name="Send" size={14} />
               {t("dashboard.chat.promptPay")}
             </UI.Button>
-            <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }} onClick={() => onPrompt("recurring")}>
+            <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={() => onPrompt("recurring")}>
+              <UI.Icon name="Repeat" size={14} />
               {t("dashboard.chat.promptRecurring")}
             </UI.Button>
           </div>

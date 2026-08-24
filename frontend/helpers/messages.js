@@ -176,7 +176,6 @@
       profileMenu: {
         trigger: "Account menu",
         settings: "Settings",
-        idPrefix: "ID",
       },
       agentsOnline: { title: "AGENTS ONLINE", note: "Payments · Insights · Support" },
       home: {
@@ -290,20 +289,21 @@
       },
       analytics: {
         title: "Analytics & statistics",
-        rangeMonth: "Month",
-        rangeQuarter: "Quarter",
-        rangeYear: "Year",
+        period3: "Last 3 months",
+        period6: "Last 6 months",
+        period12: "Last 12 months",
         spendByCategory: "SPEND BY CATEGORY",
-        incomeVsSpend: "INCOME VS SPEND — 12 MONTHS",
+        incomeVsSpend: "INCOME VS SPEND",
+        spend: "Spend",
+        loading: "Loading your activity…",
+        empty: "No transactions yet for this period.",
         agentNote:
           "Entertainment is up 28% this quarter, driven by three new subscriptions. Capping it at 400 RON/month would put you back on the 2026 savings plan.",
-        setCap: "Set a 400 RON cap",
-        discuss: "Discuss with agent",
+        aiDisclaimer: "AI-generated insight — always double-check before acting on it.",
       },
       settings: {
         personalDetails: "PERSONAL DETAILS",
         fullName: "Full name",
-        userId: "User ID",
         phone: "Phone",
         email: "Email",
         save: "Save changes",
@@ -698,7 +698,6 @@
       profileMenu: {
         trigger: "Meniu cont",
         settings: "Setări",
-        idPrefix: "ID",
       },
       agentsOnline: { title: "AGENȚI ACTIVI", note: "Plăți · Analize · Suport" },
       home: {
@@ -812,20 +811,21 @@
       },
       analytics: {
         title: "Analize și statistici",
-        rangeMonth: "Lună",
-        rangeQuarter: "Trimestru",
-        rangeYear: "An",
+        period3: "Ultimele 3 luni",
+        period6: "Ultimele 6 luni",
+        period12: "Ultimele 12 luni",
         spendByCategory: "CHELTUIELI PE CATEGORII",
-        incomeVsSpend: "VENITURI VS. CHELTUIELI — 12 LUNI",
+        incomeVsSpend: "VENITURI VS. CHELTUIELI",
+        spend: "Cheltuieli",
+        loading: "Se încarcă activitatea…",
+        empty: "Nicio tranzacție încă pentru această perioadă.",
         agentNote:
           "Divertismentul a crescut cu 28% în acest trimestru, din cauza a trei abonamente noi. Plafonarea la 400 RON/lună te-ar readuce pe planul de economii 2026.",
-        setCap: "Setează un plafon de 400 RON",
-        discuss: "Discută cu agentul",
+        aiDisclaimer: "Informație generată de AI — verifică întotdeauna înainte de a acționa.",
       },
       settings: {
         personalDetails: "DATE PERSONALE",
         fullName: "Nume complet",
-        userId: "ID utilizator",
         phone: "Telefon",
         email: "Email",
         save: "Salvează modificările",

@@ -33,7 +33,7 @@
     const [payOpen, setPayOpen] = useState(false);
     const [payType, setPayType] = useState("iban");
     const [filter, setFilter] = useState("all");
-    const [range, setRange] = useState("quarter");
+    const [range, setRange] = useState("6");
     const [lang, setLang] = useState(GEMS.i18n.locale);
     const [cards, setCards] = useState([]);
     const [cardsLoaded, setCardsLoaded] = useState(false);

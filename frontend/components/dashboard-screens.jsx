@@ -9,10 +9,10 @@
   const { useState, useEffect } = React;
 
   const QUICK_ACTIONS = [
-    { num: "01", key: "transact", go: "payments" },
-    { num: "02", key: "addFunds", go: "portfolio" },
-    { num: "03", key: "exchange", go: "portfolio" },
-    { num: "04", key: "scanQr", go: "payments" },
+    { icon: "Send", key: "transact", go: "payments" },
+    { icon: "Plus", key: "addFunds", go: "portfolio" },
+    { icon: "ArrowLeftRight", key: "exchange", go: "portfolio" },
+    { icon: "QrCode", key: "scanQr", go: "payments" },
   ];
 
   const MONEY_FORMAT = new Intl.NumberFormat("ro-RO", {
@@ -87,7 +87,8 @@
         <UI.Plate className="dash-balance-card elev-sm">
           <div className="dash-kicker-row">
             <UI.Kicker>{t("dashboard.home.totalBalance")}</UI.Kicker>
-            <UI.Button type="button" variant="ghost" onClick={onToggleBalance}>
+            <UI.Button type="button" variant="ghost" style={{ gap: 6 }} onClick={onToggleBalance}>
+              <UI.Icon name={balanceHidden ? "Eye" : "EyeOff"} size={15} />
               {balanceHidden ? t("dashboard.home.reveal") : t("dashboard.home.hide")}
             </UI.Button>
           </div>
@@ -103,7 +104,7 @@
           <div className="dash-quick-grid">
             {QUICK_ACTIONS.map((action) => (
               <UI.Button key={action.key} type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 10, minHeight: 46 }} onClick={() => onNavigate(action.go)}>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--color-plum-700)" }}>{action.num}</span>
+                <UI.Icon name={action.icon} size={16} style={{ color: "var(--color-primary)" }} />
                 {t("dashboard.home.quick." + action.key)}
               </UI.Button>
             ))}
@@ -175,7 +176,7 @@
           <div className="dash-pending-grid">
             {DATA.pending.map((row, index) => (
               <div className="dash-pending-row" key={index}>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--color-plum-700)" }}>{row.num}</span>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--color-primary)" }}>{row.num}</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>{row.who}</div>
                   <div className="text-muted" style={{ fontSize: 11 }}>{t("dashboard.payments.note." + row.noteKey)}</div>
@@ -528,55 +529,237 @@
     );
   };
 
+  const CATEGORY_COLORS = {
+    groceries: "var(--color-plum-600)",
+    utilities: "var(--color-lime-600)",
+    transport: "var(--color-plum-400)",
+    entertainment: "var(--color-lime-400)",
+    transfer: "var(--color-plum-700)",
+    income: "var(--color-lime-700)",
+    other: "var(--color-neutral-600)",
+  };
+
+  const CHART_SERIES_LABEL = {
+    income: "dashboard.category.income",
+    spend: "dashboard.analytics.spend",
+  };
+
+  function monthBucketKey(date) {
+    return date.getFullYear() * 12 + date.getMonth();
+  }
+
+  function buildMonthBuckets(count, locale) {
+    const formatter = new Intl.DateTimeFormat(locale, { month: "short" });
+    const now = new Date();
+    const buckets = [];
+    for (let offset = count - 1; offset >= 0; offset--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+      buckets.push({ key: monthBucketKey(date), label: formatter.format(date), income: 0, spend: 0 });
+    }
+    return buckets;
+  }
+
+  function pickPrimaryCurrency(rows) {
+    const counts = {};
+    rows.forEach((row) => {
+      const currency = row.amount.currency;
+      counts[currency] = (counts[currency] || 0) + 1;
+    });
+    const known = Object.keys(counts);
+    if (!known.length) return "RON";
+    return known.sort((a, b) => counts[b] - counts[a])[0];
+  }
+
+  function useAnalyticsData(months) {
+    const [rows, setRows] = useState(null);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+      let cancelled = false;
+      setRows(null);
+      setError(null);
+      api
+        .listTransactions({ limit: 100 })
+        .then((response) => {
+          if (!cancelled) setRows(response.transactions || []);
+        })
+        .catch((err) => {
+          if (!cancelled) setError(err);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []);
+
+    const locale = GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB";
+    const loading = rows === null && !error;
+    const currency = pickPrimaryCurrency(rows || []);
+    const buckets = buildMonthBuckets(months, locale);
+    const bucketByKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+    const oldestKey = buckets.length ? buckets[0].key : monthBucketKey(new Date());
+    const categoryTotals = {};
+
+    (rows || []).forEach((row) => {
+      if (row.amount.currency !== currency) return;
+      const posted = new Date(row.postedAt);
+      const key = monthBucketKey(posted);
+      if (key < oldestKey) return;
+      const bucket = bucketByKey.get(key);
+      const minor = row.amount.minorUnits;
+      if (row.direction === "credit" && minor > 0) {
+        if (bucket) bucket.income += minor;
+      } else if (row.direction === "debit" && minor < 0) {
+        const spend = -minor;
+        if (bucket) bucket.spend += spend;
+        categoryTotals[row.category] = (categoryTotals[row.category] || 0) + spend;
+      }
+    });
+
+    const totalSpend = Object.values(categoryTotals).reduce((sum, value) => sum + value, 0);
+    const categories = Object.keys(categoryTotals)
+      .map((category) => ({
+        category,
+        minorUnits: categoryTotals[category],
+        pct: totalSpend ? Math.round((categoryTotals[category] / totalSpend) * 100) : 0,
+      }))
+      .sort((a, b) => b.minorUnits - a.minorUnits);
+
+    const hasActivity = buckets.some((bucket) => bucket.income || bucket.spend);
+
+    return { loading, error, currency, buckets, categories, totalSpend, hasActivity };
+  }
+
+  function ChartTooltip({ active, payload, label, currency }) {
+    if (!active || !payload || !payload.length) return null;
+    return (
+      <div className="dash-chart-tooltip">
+        {label ? <div className="dash-chart-tooltip-label">{label}</div> : null}
+        {payload.map((entry) => (
+          <div key={entry.dataKey} style={{ color: entry.color }}>
+            {t(CHART_SERIES_LABEL[entry.dataKey] || entry.name)}: {UI.formatMoney(entry.value, currency)}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  function CategoryTooltip({ active, payload, currency }) {
+    if (!active || !payload || !payload.length) return null;
+    const point = payload[0];
+    return (
+      <div className="dash-chart-tooltip">
+        <div className="dash-chart-tooltip-label">{point.name}</div>
+        <div style={{ color: point.payload.fill }}>
+          {UI.formatMoney(point.value, currency)} · {point.payload.pct}%
+        </div>
+      </div>
+    );
+  }
+
   SCR.AnalyticsScreen = function AnalyticsScreen({ range, onRange }) {
-    const ranges = [
-      { value: "month", label: t("dashboard.analytics.rangeMonth") },
-      { value: "quarter", label: t("dashboard.analytics.rangeQuarter") },
-      { value: "year", label: t("dashboard.analytics.rangeYear") },
+    const RC = window.Recharts;
+    const months = range === "3" ? 3 : range === "12" ? 12 : 6;
+    const periods = [
+      { value: "3", label: t("dashboard.analytics.period3") },
+      { value: "6", label: t("dashboard.analytics.period6") },
+      { value: "12", label: t("dashboard.analytics.period12") },
     ];
-    const slices = [
-      { color: "var(--color-plum-900)", pct: 32 },
-      { color: "var(--color-plum-600)", pct: 23 },
-      { color: "var(--color-lime-700)", pct: 19 },
-      { color: "var(--color-lime-500)", pct: 14 },
-      { color: "var(--color-neutral-300)", pct: 12 },
-    ];
+    const { loading, error, currency, buckets, categories, hasActivity } = useAnalyticsData(months);
+
+    const categoryData = categories.map((row) => ({
+      name: t("dashboard.category." + row.category),
+      value: row.minorUnits,
+      pct: row.pct,
+      fill: CATEGORY_COLORS[row.category] || "var(--color-neutral-400)",
+    }));
+
     return (
       <div>
         <div className="dash-screen-head">
           <h3 style={{ margin: 0 }}>{t("dashboard.analytics.title")}</h3>
-          <DASH.SegmentedControl options={ranges} value={range} onChange={onRange} label={t("dashboard.analytics.title")} />
+          <DASH.PeriodPicker options={periods} value={range} onChange={onRange} label={t("dashboard.analytics.title")} />
         </div>
 
         <div className="dash-analytics-cols">
           <UI.Plate className="elev-sm" style={{ padding: 18 }}>
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.analytics.spendByCategory")}</UI.Kicker>
-            <div className="dash-donut-row">
-              <DASH.Donut slices={slices} label={t("dashboard.analytics.spendByCategory")} />
-              <div className="dash-donut-legend">
-                {DATA.categories.map((row) => (
-                  <div className="dash-donut-legend-row" key={row.key}>
-                    <span>{t("dashboard.category." + row.key)}</span>
-                    <span className="text-muted">{row.value}</span>
-                  </div>
-                ))}
+            {loading ? (
+              <div className="dash-chart-empty">{t("dashboard.analytics.loading")}</div>
+            ) : !categoryData.length ? (
+              <div className="dash-chart-empty">{t("dashboard.analytics.empty")}</div>
+            ) : (
+              <div className="dash-donut-row">
+                <RC.ResponsiveContainer width={150} height={150}>
+                  <RC.PieChart>
+                    <RC.Pie
+                      data={categoryData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={44}
+                      outerRadius={72}
+                      paddingAngle={2}
+                      stroke="none"
+                    >
+                      {categoryData.map((entry) => (
+                        <RC.Cell key={entry.name} fill={entry.fill} />
+                      ))}
+                    </RC.Pie>
+                    <RC.Tooltip content={<CategoryTooltip currency={currency} />} />
+                  </RC.PieChart>
+                </RC.ResponsiveContainer>
+                <div className="dash-donut-legend">
+                  {categoryData.map((row) => (
+                    <div className="dash-donut-legend-row" key={row.name}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: row.fill, flex: "none" }} />
+                        {row.name}
+                      </span>
+                      <span className="text-muted">
+                        {UI.formatMoney(row.value, currency)} · {row.pct}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </UI.Plate>
 
           <UI.Plate className="elev-sm" style={{ padding: 18 }}>
-            <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.analytics.incomeVsSpend")}</UI.Kicker>
-            <DASH.BigBars items={DATA.yearBars} incomeLabel={t("dashboard.category.income")} spendLabel={t("dashboard.table.amount")} />
+            <UI.Kicker style={{ marginBottom: 14 }}>
+              {t("dashboard.analytics.incomeVsSpend")} — <span style={{ textTransform: "uppercase" }}>{t("dashboard.analytics.period" + months)}</span>
+            </UI.Kicker>
+            {loading ? (
+              <div className="dash-chart-empty">{t("dashboard.analytics.loading")}</div>
+            ) : !hasActivity ? (
+              <div className="dash-chart-empty">{t("dashboard.analytics.empty")}</div>
+            ) : (
+              <RC.ResponsiveContainer width="100%" height={220}>
+                <RC.BarChart data={buckets} barGap={4}>
+                  <RC.CartesianGrid stroke="var(--color-border)" vertical={false} />
+                  <RC.XAxis dataKey="label" tick={{ fill: "var(--color-muted)", fontSize: 11 }} axisLine={{ stroke: "var(--color-border)" }} tickLine={false} />
+                  <RC.YAxis tick={{ fill: "var(--color-muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={36} tickFormatter={(value) => Math.round(value / 100)} />
+                  <RC.Tooltip cursor={{ fill: "color-mix(in srgb, var(--color-primary) 6%, transparent)" }} content={<ChartTooltip currency={currency} />} />
+                  <RC.Legend
+                    formatter={(value) => t(CHART_SERIES_LABEL[value] || value)}
+                    wrapperStyle={{ fontSize: 12, color: "var(--color-muted)" }}
+                  />
+                  <RC.Bar dataKey="income" name="income" fill="var(--color-lime-500)" radius={[6, 6, 0, 0]} />
+                  <RC.Bar dataKey="spend" name="spend" fill="var(--color-plum-900)" radius={[6, 6, 0, 0]} />
+                </RC.BarChart>
+              </RC.ResponsiveContainer>
+            )}
           </UI.Plate>
         </div>
+
+        <UI.ErrorNote error={error} />
 
         <UI.Plate className="dash-agent-note elev-sm">
           <span className="dash-agent-dot" aria-hidden="true" style={{ marginTop: 6, flex: "none" }} />
           <div style={{ fontSize: 14, lineHeight: 1.6, flex: 1 }}>
             {t("dashboard.analytics.agentNote")}
-            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-              <UI.Button type="button" variant="secondary">{t("dashboard.analytics.setCap")}</UI.Button>
-              <UI.Button type="button" variant="ghost">{t("dashboard.analytics.discuss")}</UI.Button>
+            <div className="dash-ai-disclaimer">
+              <UI.Icon name="Sparkles" size={13} />
+              {t("dashboard.analytics.aiDisclaimer")}
             </div>
           </div>
         </UI.Plate>
@@ -927,9 +1110,6 @@
               <UI.Field id="set-name" label={t("dashboard.settings.fullName")}>
                 <UI.TextInput id="set-name" value={me ? me.fullName : ""} disabled />
               </UI.Field>
-              <UI.Field id="set-id" label={t("dashboard.settings.userId")}>
-                <UI.TextInput id="set-id" value={me ? DASH.deriveDisplayId(me.fullName, me.userId) : ""} disabled />
-              </UI.Field>
               <UI.Field id="set-phone" label={t("dashboard.settings.phone")}>
                 <UI.TextInput id="set-phone" value={phoneDraft} onChange={(event) => setPhoneDraft(event.target.value)} disabled={!me} />
               </UI.Field>
@@ -947,10 +1127,10 @@
           <UI.Plate className="elev-sm" style={{ padding: 18 }}>
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.settings.security")}</UI.Kicker>
             <div className="dash-settings-list">
-              <div className="dash-settings-row"><span>{t("dashboard.settings.changePin")}</span><UI.Button type="button" variant="secondary" onClick={() => { setPinError(null); setPinDialogOpen(true); }}>{t("dashboard.settings.update")}</UI.Button></div>
-              <div className="dash-settings-row"><span>{t("dashboard.settings.twoFactor")}</span><UI.Tag variant="accent">{t("dashboard.settings.authenticator")}</UI.Tag></div>
-              <div className="dash-settings-row"><span>{t("dashboard.settings.passkeys")}</span><UI.Tag variant="accent">{t("dashboard.settings.passkeysCount")}</UI.Tag></div>
-              <div className="dash-settings-row"><span>{t("dashboard.settings.sessions")}</span><UI.Button type="button" variant="secondary" onClick={() => setSessionsOpen(true)}>{t("dashboard.settings.review")}</UI.Button></div>
+              <div className="dash-settings-row"><span className="dash-settings-label"><UI.Icon name="KeyRound" size={15} />{t("dashboard.settings.changePin")}</span><UI.Button type="button" variant="secondary" onClick={() => { setPinError(null); setPinDialogOpen(true); }}>{t("dashboard.settings.update")}</UI.Button></div>
+              <div className="dash-settings-row"><span className="dash-settings-label"><UI.Icon name="ShieldCheck" size={15} />{t("dashboard.settings.twoFactor")}</span><UI.Tag variant="accent">{t("dashboard.settings.authenticator")}</UI.Tag></div>
+              <div className="dash-settings-row"><span className="dash-settings-label"><UI.Icon name="Fingerprint" size={15} />{t("dashboard.settings.passkeys")}</span><UI.Tag variant="accent">{t("dashboard.settings.passkeysCount")}</UI.Tag></div>
+              <div className="dash-settings-row"><span className="dash-settings-label"><UI.Icon name="Smartphone" size={15} />{t("dashboard.settings.sessions")}</span><UI.Button type="button" variant="secondary" onClick={() => setSessionsOpen(true)}>{t("dashboard.settings.review")}</UI.Button></div>
             </div>
             {pinNotice ? <p className="text-muted" style={{ fontSize: 12, marginTop: 10 }}>{pinNotice}</p> : null}
           </UI.Plate>
@@ -965,8 +1145,8 @@
               <div>
                 <div style={{ fontSize: 13, marginBottom: 6 }}>{t("dashboard.settings.theme")}</div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <UI.Button type="button" variant={theme === "light" ? "primary" : "secondary"} onClick={() => onTheme("light")}>{t("dashboard.settings.light")}</UI.Button>
-                  <UI.Button type="button" variant={theme === "dark" ? "primary" : "secondary"} onClick={() => onTheme("dark")}>{t("dashboard.settings.dark")}</UI.Button>
+                  <UI.Button type="button" variant={theme === "light" ? "primary" : "secondary"} style={{ gap: 6 }} onClick={() => onTheme("light")}><UI.Icon name="Sun" size={15} />{t("dashboard.settings.light")}</UI.Button>
+                  <UI.Button type="button" variant={theme === "dark" ? "primary" : "secondary"} style={{ gap: 6 }} onClick={() => onTheme("dark")}><UI.Icon name="Moon" size={15} />{t("dashboard.settings.dark")}</UI.Button>
                 </div>
               </div>
             </div>
@@ -975,20 +1155,21 @@
           <UI.Plate className="elev-sm" style={{ padding: 18 }}>
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.settings.support")}</UI.Kicker>
             <div className="dash-settings-list">
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }} onClick={onGoChat}>{t("dashboard.settings.chatSupport")}</UI.Button>
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }} onClick={() => setContactDialogOpen(true)}>{t("dashboard.settings.customerService")}</UI.Button>
+              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={onGoChat}><UI.Icon name="MessageCircle" size={15} />{t("dashboard.settings.chatSupport")}</UI.Button>
+              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={() => setContactDialogOpen(true)}><UI.Icon name="Headset" size={15} />{t("dashboard.settings.customerService")}</UI.Button>
               <UI.Button
                 type="button"
                 variant="secondary"
-                style={{ justifyContent: "flex-start" }}
+                style={{ justifyContent: "flex-start", gap: 8 }}
                 onClick={() => window.open("./help.html", "_blank", "noopener,noreferrer")}
               >
+                <UI.Icon name="CircleHelp" size={15} />
                 {t("dashboard.settings.faq")}
               </UI.Button>
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }}>{t("dashboard.settings.agentInstructions")}</UI.Button>
+              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }}><UI.Icon name="Bot" size={15} />{t("dashboard.settings.agentInstructions")}</UI.Button>
               <div className="hr" style={{ margin: "4px 0" }} />
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start" }} onClick={onSignOut}>{t("dashboard.signOut")}</UI.Button>
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", color: "var(--color-negative)" }} onClick={() => setCloseAccountOpen(true)}>{t("dashboard.settings.closeAccount")}</UI.Button>
+              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={onSignOut}><UI.Icon name="LogOut" size={15} />{t("dashboard.signOut")}</UI.Button>
+              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8, color: "var(--color-negative)" }} onClick={() => setCloseAccountOpen(true)}><UI.Icon name="TriangleAlert" size={15} />{t("dashboard.settings.closeAccount")}</UI.Button>
             </div>
           </UI.Plate>
         </div>

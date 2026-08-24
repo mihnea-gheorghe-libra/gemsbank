@@ -102,14 +102,7 @@
       <div className="onb-shell">
         <header className="onb-topbar">
           <span className="onb-wordmark">{t("brand")}</span>
-          <span
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "var(--text-kicker)",
-              letterSpacing: "0.2em",
-              color: "var(--color-plum-700)",
-            }}
-          >
+          <span className="auth-screen-tag">
             {t("screenTag")}
           </span>
           <div style={{ marginLeft: "auto" }}>
