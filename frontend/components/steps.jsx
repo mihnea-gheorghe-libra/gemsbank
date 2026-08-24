@@ -70,65 +70,127 @@
     );
   }
 
-  ONB.DocumentStep = function DocumentStep({ extracted, busy, onExtract, onNext }) {
+  ONB.DocumentStep = function DocumentStep({ extracted, busy, onExtract, onReset, onNext }) {
     const [front, setFront] = useState(null);
     const [back, setBack] = useState(null);
 
+    function handleReset() {
+      setFront(null);
+      setBack(null);
+      if (onReset) onReset();
+    }
+
     return (
       <div className="onb-fade">
-        <div className="onb-two-col">
-          <DropZone
-            id="id-front"
-            label={t("document.front")}
-            required
-            file={front}
-            onFile={setFront}
-          />
-          <DropZone id="id-back" label={t("document.back")} file={back} onFile={setBack} />
-        </div>
-
-        {extracted ? (
-          <UI.Plate style={{ padding: 14, marginTop: 20, maxWidth: 660 }}>
-            <UI.Kicker style={{ marginBottom: 8 }}>{t("document.extractedBy")}</UI.Kicker>
-            <dl className="onb-extract-grid" style={{ margin: 0 }}>
-              <dt className="text-muted">{t("document.name")}</dt>
-              <dd style={{ margin: 0 }}>{extracted.fullName}</dd>
-              <dt className="text-muted">{t("document.birthDate")}</dt>
-              <dd style={{ margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-                <span>{formatDate(extracted.birthDate)}</span>
-                <UI.Tag>{t("document.ageOk", { age: extracted.ageYears })}</UI.Tag>
-              </dd>
-              <dt className="text-muted">{t("document.cnp")}</dt>
-              <dd style={{ margin: 0 }}>{extracted.cnpMasked}</dd>
-              <dt className="text-muted">{t("document.docNumber")}</dt>
-              <dd style={{ margin: 0 }}>{extracted.documentNumberMasked}</dd>
-              <dt className="text-muted">{t("document.expiry")}</dt>
-              <dd style={{ margin: 0 }}>{formatDate(extracted.expiresOn)}</dd>
-            </dl>
-            <div className="text-muted" style={{ fontSize: 11, marginTop: 10 }}>
-              {t("document.syntheticNote")}
+        {!extracted ? (
+          <div>
+            <div className="onb-two-col">
+              <DropZone
+                id="id-front"
+                label={t("document.front")}
+                required
+                file={front}
+                onFile={setFront}
+              />
+              <DropZone id="id-back" label={t("document.back")} file={back} onFile={setBack} />
             </div>
-          </UI.Plate>
-        ) : null}
 
-        <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
-          <UI.Button
-            type="button"
-            variant={extracted ? "secondary" : "primary"}
-            disabled={!front || busy}
-            onClick={() => onExtract(front)}
-          >
-            {busy ? t("document.reading") : t("document.read")}
-          </UI.Button>
-          {extracted ? (
-            <UI.Button type="button" variant="primary" onClick={onNext}>
-              {t("document.cta")}
-            </UI.Button>
-          ) : null}
-        </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+              <UI.Button
+                type="button"
+                variant="primary"
+                disabled={!front || busy}
+                onClick={() => onExtract(front)}
+              >
+                {busy ? t("document.reading") : t("document.read")}
+              </UI.Button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <UI.Plate style={{ padding: 18, maxWidth: 660 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 12,
+                }}
+              >
+                <UI.Kicker>{t("document.extractedBy")}</UI.Kicker>
+                <UI.Tag>{t("document.ageOk", { age: extracted.ageYears })}</UI.Tag>
+              </div>
+
+              <p className="text-muted" style={{ fontSize: 13, marginTop: 0, marginBottom: 16 }}>
+                {t("document.reviewInstructions")}
+              </p>
+
+              <div className="onb-two-col" style={{ gap: 14 }}>
+                <UI.Field id="extracted-name" label={t("document.name")}>
+                  <UI.TextInput
+                    id="extracted-name"
+                    readOnly
+                    value={extracted.fullName}
+                    style={{ background: "var(--color-surface-2)" }}
+                  />
+                </UI.Field>
+
+                <UI.Field id="extracted-cnp" label={t("document.cnp")}>
+                  <UI.TextInput
+                    id="extracted-cnp"
+                    readOnly
+                    value={extracted.cnp || extracted.cnpMasked}
+                    style={{ fontFamily: "var(--font-mono)", background: "var(--color-surface-2)" }}
+                  />
+                </UI.Field>
+
+                <UI.Field id="extracted-birth" label={t("document.birthDate")}>
+                  <UI.TextInput
+                    id="extracted-birth"
+                    readOnly
+                    value={formatDate(extracted.birthDate)}
+                    style={{ background: "var(--color-surface-2)" }}
+                  />
+                </UI.Field>
+
+                <UI.Field id="extracted-expiry" label={t("document.expiry")}>
+                  <UI.TextInput
+                    id="extracted-expiry"
+                    readOnly
+                    value={formatDate(extracted.expiresOn)}
+                    style={{ background: "var(--color-surface-2)" }}
+                  />
+                </UI.Field>
+
+                <UI.Field id="extracted-docno" label={t("document.docNumber")}>
+                  <UI.TextInput
+                    id="extracted-docno"
+                    readOnly
+                    value={extracted.documentNumberMasked}
+                    style={{ fontFamily: "var(--font-mono)", background: "var(--color-surface-2)" }}
+                  />
+                </UI.Field>
+              </div>
+
+              <div className="text-muted" style={{ fontSize: 11, marginTop: 14 }}>
+                {t("document.syntheticNote")}
+              </div>
+            </UI.Plate>
+
+            <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+              <UI.Button type="button" variant="primary" onClick={onNext}>
+                {t("document.cta")}
+              </UI.Button>
+              <UI.Button type="button" variant="secondary" onClick={handleReset}>
+                {t("document.reupload")}
+              </UI.Button>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
+
 
   ONB.ContactStep = function ContactStep({ busy, fieldErrors, onSubmit }) {
     const [phone, setPhone] = useState("");

@@ -18,8 +18,8 @@ from backend.cards.card import Card, CardKind, CardState
 from backend.database.mongo import (
     accounts_collection,
     beneficiaries_collection,
-    journal_collection,
     cards_collection,
+    journal_collection,
     kyc_cases_collection,
     payments_collection,
     recovery_cases_collection,
