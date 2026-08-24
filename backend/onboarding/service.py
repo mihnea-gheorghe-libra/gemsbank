@@ -15,7 +15,7 @@ from backend.helpers.crypto import AesGcmPinCipher, Argon2idHasher
 from backend.helpers.errors import ConflictError, DomainError, NotFoundError
 from backend.onboarding import validation
 from backend.onboarding.adapters import (
-    DemoDocumentExtractor,
+    AzureDocIntelDocumentExtractor,
     ResendOtpSender,
     SystemClock,
 )
@@ -444,7 +444,12 @@ def get_onboarding_service() -> OnboardingService:
         hasher=Argon2idHasher(),
         cipher=AesGcmPinCipher(settings.pin_encryption_key),
         otp_sender=ResendOtpSender(settings),
-        extractor=DemoDocumentExtractor(),
+        extractor=AzureDocIntelDocumentExtractor(
+            endpoint=settings.azure_docintel_endpoint,
+            key=settings.azure_docintel_key,
+            min_confidence=settings.ocr_min_confidence
+        ),
+
         clock=SystemClock(),
         config=settings,
     )

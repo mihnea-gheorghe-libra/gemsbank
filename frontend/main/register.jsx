@@ -136,9 +136,14 @@
                 extracted={extracted}
                 busy={busy}
                 onExtract={handleExtract}
+                onReset={() => {
+                  setExtracted(null);
+                  setError(null);
+                }}
                 onNext={() => setStep(2)}
               />
             ) : null}
+
 
             {caseId && step === 2 ? (
               <ONB.ContactStep busy={busy} fieldErrors={fieldErrors} onSubmit={handleContact} />
