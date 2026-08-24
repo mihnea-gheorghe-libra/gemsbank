@@ -136,7 +136,7 @@
     );
   };
 
-  DASH.AgentDock = function AgentDock({ open, username, onOpen, onClose, onExpand, onPrompt }) {
+  DASH.AgentDock = function AgentDock({ open, username, screen, onOpen, onClose, onExpand, onPrompt }) {
     if (!open) {
       return (
         <UI.Button type="button" variant="primary" className="dash-dock-fab elev-md" style={{ gap: 8 }} onClick={onOpen}>
@@ -145,6 +145,8 @@
         </UI.Button>
       );
     }
+    const promptKeys = DATA.screenPrompts[screen] || DATA.screenPrompts.home;
+    const greetingKey = DATA.screenGreetings[screen] || DATA.screenGreetings.home;
     return (
       <UI.Plate className="dash-dock elev-lg" aria-label={t("dashboard.chat.askGems")}>
         <div className="dash-dock-head">
@@ -160,17 +162,26 @@
         </div>
         <div style={{ padding: 14 }}>
           <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
-            {t("dashboard.chat.dockGreeting", { username, balance: DATA.totalBalance })}
+            {t("dashboard.chat." + greetingKey, { username, balance: DATA.totalBalance })}
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 12 }}>
-            <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={() => onPrompt("pay")}>
-              <UI.Icon name="Send" size={14} />
-              {t("dashboard.chat.promptPay")}
-            </UI.Button>
-            <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={() => onPrompt("recurring")}>
-              <UI.Icon name="Repeat" size={14} />
-              {t("dashboard.chat.promptRecurring")}
-            </UI.Button>
+          <div className="kicker" style={{ marginTop: 14, marginBottom: 7 }}>{t("dashboard.chat.suggestedTitle")}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {promptKeys.map((key) => {
+              const prompt = DATA.chatPrompts[key];
+              if (!prompt) return null;
+              return (
+                <UI.Button
+                  key={key}
+                  type="button"
+                  variant="secondary"
+                  style={{ justifyContent: "flex-start", gap: 8 }}
+                  onClick={() => onPrompt(key)}
+                >
+                  <UI.Icon name={prompt.icon} size={14} />
+                  {t("dashboard.chat." + prompt.labelKey)}
+                </UI.Button>
+              );
+            })}
           </div>
         </div>
       </UI.Plate>

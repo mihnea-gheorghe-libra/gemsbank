@@ -77,5 +77,38 @@
       { name: "Gym — World Class", next: "01.09.2026", amount: "199,00" },
       { name: "iCloud 200GB", next: "21.08.2026", amount: "41,99" },
     ],
+
+    // Ask-GEMS suggested prompts: which ones show up in the floating dock
+    // depends on the screen the user has open (dashboard.jsx picks the list,
+    // AgentDock renders it).
+    chatPrompts: {
+      pay: { icon: "Send", labelKey: "promptPay" },
+      recurring: { icon: "Repeat", labelKey: "promptRecurring" },
+      pendingSign: { icon: "FileSignature", labelKey: "promptPendingSign" },
+      portfolioGrowth: { icon: "TrendingUp", labelKey: "promptPortfolioGrowth" },
+      portfolioMove: { icon: "PiggyBank", labelKey: "promptPortfolioMove" },
+      cardFreeze: { icon: "Snowflake", labelKey: "promptCardFreeze" },
+      cardLimit: { icon: "Gauge", labelKey: "promptCardLimit" },
+      groceries: { icon: "ShoppingCart", labelKey: "promptGroceries" },
+      spendingTrend: { icon: "TrendingDown", labelKey: "promptSpendingTrend" },
+      settingsPin: { icon: "KeyRound", labelKey: "promptSettingsPin" },
+      settings2fa: { icon: "ShieldCheck", labelKey: "promptSettings2fa" },
+    },
+    screenPrompts: {
+      home: ["pay", "recurring"],
+      payments: ["pendingSign", "recurring"],
+      portfolio: ["portfolioGrowth", "portfolioMove"],
+      cards: ["cardFreeze", "cardLimit"],
+      analytics: ["groceries", "spendingTrend"],
+      settings: ["settingsPin", "settings2fa"],
+    },
+    screenGreetings: {
+      home: "dockGreeting",
+      payments: "dockGreetingPayments",
+      portfolio: "dockGreetingPortfolio",
+      cards: "dockGreetingCards",
+      analytics: "dockGreetingAnalytics",
+      settings: "dockGreetingSettings",
+    },
   };
 })();
