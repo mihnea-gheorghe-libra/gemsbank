@@ -38,7 +38,9 @@ def normalise_phone(raw: str) -> str:
     return candidate
 
 
-def validate_password(raw: str) -> str:
+def validate_password(raw: str, confirmation: str) -> str:
+    if raw != confirmation:
+        raise ValidationError("Passwords do not match.", details={"field": "passwordConfirm"})
     if len(raw) < MIN_PASSWORD_LENGTH:
         raise ValidationError(
             f"Password must be at least {MIN_PASSWORD_LENGTH} characters.",
@@ -83,3 +85,41 @@ def mask_phone(value: str) -> str:
     if len(digits) < 4:
         return "•" * len(digits)
     return f"{value[:6].strip()} ••• {digits[-3:]}"
+
+
+CNP_PATTERN = re.compile(r"^[1-8]\d{12}$")
+CNP_WEIGHTS = (2, 7, 9, 1, 4, 6, 3, 5, 8, 2, 7, 9)
+
+
+def validate_romanian_cnp(raw: str) -> tuple[bool, str | None, str | None]:
+    from datetime import date
+
+    candidate = raw.strip()
+    if not CNP_PATTERN.match(candidate):
+        return False, None, None
+    digits = [int(d) for d in candidate]
+    checksum = sum(d * w for d, w in zip(digits[:12], CNP_WEIGHTS)) % 11
+    control = 1 if checksum == 10 else checksum
+    if digits[12] != control:
+        return False, None, None
+
+    century_code = digits[0]
+    year_prefix = 1900 if century_code in (1, 2, 7, 8) else 2000 if century_code in (5, 6) else 1800
+    year = year_prefix + int(candidate[1:3])
+    month = int(candidate[3:5])
+    day = int(candidate[5:7])
+    try:
+        birth_date = date(year, month, day)
+    except ValueError:
+        return False, None, None
+
+    gender = "M" if century_code in (1, 3, 5, 7) else "F"
+    return True, birth_date.isoformat(), gender
+
+
+def mask_cnp(value: str) -> str:
+    cleaned = re.sub(r"\D", "", value)
+    if len(cleaned) != 13:
+        return "•••••••••••••"
+    return f"{cleaned[:5]}{'•' * 8}"
+

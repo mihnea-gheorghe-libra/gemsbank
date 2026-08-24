@@ -31,6 +31,13 @@
     );
   }
 
+  function tError(message) {
+    if (!message) return message;
+    const value = dictionary.serverErrors && dictionary.serverErrors[message];
+    if (typeof value === "string") return value;
+    return message;
+  }
+
   function isoToDisplayDate(iso) {
     if (typeof iso !== "string") return "";
     const parts = iso.split("-");
@@ -38,7 +45,7 @@
     return parts[2] + "." + parts[1] + "." + parts[0];
   }
 
-  function setLocale(next) {
+function setLocale(next) {
     if (!GEMS.messages[next] || next === state.locale) return;
     state.locale = next;
     state.dictionary = GEMS.messages[next];
@@ -48,6 +55,13 @@
     window.localStorage.setItem("gems.lang", next);
   }
 
-  GEMS.i18n = { locale: state.locale, t, dictionary: state.dictionary, isoToDisplayDate, setLocale };
+  GEMS.i18n = { 
+    locale: state.locale, 
+    t, 
+    tError, // Păstrat de pe branch-ul main
+    dictionary: state.dictionary, 
+    isoToDisplayDate, 
+    setLocale // Păstrat de pe branch-ul tău
+  };
   document.documentElement.lang = state.locale;
 })();

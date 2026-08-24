@@ -1,4 +1,8 @@
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, AsyncIOMotorDatabase
+from motor.motor_asyncio import (
+    AsyncIOMotorClient,
+    AsyncIOMotorCollection,
+    AsyncIOMotorDatabase,
+)
 from pymongo import ASCENDING, DESCENDING
 
 from backend.config import settings
