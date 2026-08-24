@@ -77,6 +77,13 @@ class SignOut(Command):
     session_token: str
 
 
+class UpdatePreferences(Command):
+    command_name: ClassVar[str] = "auth.update_preferences"
+    
+    user_id: str
+    prefs: dict[str, Any]
+
+
 class SessionRepository(Protocol):
     async def add(
         self, record: Session, session: AsyncIOMotorClientSession | None = None
@@ -157,6 +164,7 @@ class AuthService:
         command_bus.register(VerifyResetCode, self._handle_reset_verify)
         command_bus.register(ResetPassword, self._handle_reset_complete)
         command_bus.register(SignOut, self._handle_sign_out)
+        command_bus.register(UpdatePreferences, self._handle_update_preferences)
 
     async def _issue_session(
         self, user: AuthUser, session: AsyncIOMotorClientSession
@@ -210,10 +218,32 @@ class AuthService:
             ],
         )
 
+    async def _handle_update_preferences(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, UpdatePreferences)
+        if context.actor.id != command.user_id:
+            raise AuthenticationError("Unauthorized")
+        user = await self._users.get(command.user_id)
+        if not user:
+            raise NotFoundError("User not found")
+        user.prefs.update(command.prefs)
+        await self._users.save(user, session=session)
+        
+        return CommandResult(
+            data={"prefs": user.prefs},
+            audit=AuditRecord(
+                action="auth.preferences_updated",
+                entity_type="user",
+                entity_id=user.id,
+                after={"prefs": user.prefs},
+            ),
+        )
+
     async def _load_user(self, username: str, rejection: str) -> AuthUser:
         user = await self._users.get_by_username(username)
         if user is None:
-            raise AuthenticationError(rejection)
+            raise AuthenticationError("No account exists with that username.")
         return user
 
     async def _load_case(self, case_id: str) -> RecoveryCase:

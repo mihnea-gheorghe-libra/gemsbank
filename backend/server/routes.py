@@ -11,6 +11,7 @@ from backend.auth.service import (
     RevealPin,
     SignIn,
     SignOut,
+    UpdatePreferences,
     VerifyResetCode,
     get_auth_service,
 )
@@ -61,8 +62,10 @@ class VerifyCodeRequest(BaseModel):
 class CredentialsRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     password: str = Field(min_length=1, max_length=200)
+    password_confirmation: str = Field(min_length=1, max_length=200, alias="passwordConfirmation")
     pin: str = Field(min_length=4, max_length=8)
     pin_confirmation: str = Field(min_length=4, max_length=8, alias="pinConfirmation")
+    prefs: dict[str, Any] | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -115,6 +118,9 @@ class BeneficiaryRequest(BaseModel):
 
 class UsernameRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32)
+
+class PreferencesRequest(BaseModel):
+    prefs: dict[str, Any]
 
 
 class LimitRequest(BaseModel):
@@ -249,8 +255,10 @@ async def complete(
         kyc_case_id=kyc_case_id,
         username=payload.username,
         password=payload.password,
+        password_confirmation=payload.password_confirmation,
         pin=payload.pin,
         pin_confirmation=payload.pin_confirmation,
+        prefs=payload.prefs,
     )
     return await bus.execute(command, _actor(), idempotency_key)
 
@@ -308,6 +316,16 @@ async def logout(
     token: SessionToken, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
     return await bus.execute(SignOut(session_token=token), _auth_actor(), idempotency_key)
+
+
+@auth_router.put("/preferences")
+async def update_preferences(
+    actor: CurrentActor,
+    payload: PreferencesRequest,
+    idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = UpdatePreferences(user_id=actor.id, prefs=payload.prefs)
+    return await bus.execute(command, actor, idempotency_key)
 
 
 @accounts_router.get("")
