@@ -138,19 +138,28 @@
 .dash-spark { height: 180px; padding: 10px; background: linear-gradient(to top, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent); }
 
 /* ── cards ───────────────────────────────────────────────── */
-.dash-cards-layout { display: grid; grid-template-columns: 1fr 300px; gap: 22px; }
-.dash-cards-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.dash-cards-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 22px; }
+.dash-cards-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; min-width: 0; }
 .dash-card-tile {
-  all: unset; box-sizing: border-box; cursor: pointer; display: block;
+  all: unset; box-sizing: border-box; cursor: pointer; display: block; position: relative;
   aspect-ratio: 1.6; padding: 16px; display: flex; flex-direction: column; justify-content: space-between;
   background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
 }
 .dash-card-tile:hover { background: color-mix(in srgb, var(--color-primary) 10%, transparent); }
 .dash-card-tile:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+
+/* ── frozen state: a blue veil over the card, front or back ── */
+.dash-card-tile.is-frozen::after,
+.dash-card-flip.is-frozen .dash-card-face-front::after,
+.dash-card-flip.is-frozen .dash-card-face-back::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: color-mix(in srgb, var(--color-info) 42%, transparent);
+  border-radius: var(--radius-lg);
+}
 .dash-card-kind { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.16em; }
 .dash-card-num { font-family: var(--font-mono); font-size: 15px; letter-spacing: 0.18em; }
 .dash-card-meta { display: flex; justify-content: space-between; font-size: 11px; margin-top: 8px; }
-.dash-card-date { font-family: var(--font-mono); font-size: 10px; opacity: 0.55; margin-top: 4px; }
+.dash-card-logo { position: absolute; right: 14px; bottom: 14px; width: 34px; height: auto; }
 .dash-settings-list { display: flex; flex-direction: column; gap: 8px; }
 .dash-settings-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 
@@ -168,11 +177,18 @@
 .dash-card-face-front { margin: 0; }
 .dash-card-face-back {
   transform: rotateY(180deg);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-  background: var(--color-plum-900); color: var(--color-lime-100);
-  border-radius: var(--radius-lg);
+  box-sizing: border-box; padding: 16px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: var(--color-surface); color: var(--color-text);
+  border: 1px solid var(--color-border); border-radius: var(--radius-lg);
 }
-.dash-card-cvv { font-family: var(--font-mono); font-size: 22px; letter-spacing: 0.3em; }
+.dash-card-back-line { font-family: var(--font-mono); font-size: 15px; letter-spacing: 0.14em; }
+.dash-history-list { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; }
+.dash-history-row {
+  font-family: var(--font-mono); font-size: 14px; letter-spacing: 0.14em;
+  padding: 8px 0; border-bottom: 1px solid var(--color-border);
+}
+.dash-history-row:last-child { border-bottom: none; }
 
 /* ── analytics ───────────────────────────────────────────── */
 .dash-analytics-cols { display: grid; grid-template-columns: 1fr 1.3fr; gap: 20px; }

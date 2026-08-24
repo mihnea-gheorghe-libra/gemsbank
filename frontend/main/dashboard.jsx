@@ -49,6 +49,9 @@
     const [cardsLoading, setCardsLoading] = useState(false);
     const [cardsError, setCardsError] = useState(null);
     const [cardIssuing, setCardIssuing] = useState(false);
+    const [issueOpen, setIssueOpen] = useState(false);
+    const [issueKind, setIssueKind] = useState("virtual");
+    const [historyOpen, setHistoryOpen] = useState(false);
     const [cardBusy, setCardBusy] = useState(false);
     const [selectedCardId, setSelectedCardId] = useState(null);
     const [cardPin, setCardPin] = useState(null);
@@ -148,19 +151,27 @@
       setCardCvv(null);
     }, []);
 
-    const issueCard = useCallback(async () => {
+    const openIssueDialog = useCallback(() => {
+      setIssueKind("virtual");
+      setIssueOpen(true);
+    }, []);
+
+    const createCard = useCallback(async () => {
       setCardIssuing(true);
       setCardsError(null);
       try {
-        const card = await api.issueVirtualCard(username);
+        const card = issueKind === "physical"
+          ? await api.issuePhysicalCard(username)
+          : await api.issueVirtualCard(username);
         setCards((list) => list.concat([card]));
         selectCard(card.cardId);
+        setIssueOpen(false);
       } catch (err) {
         setCardsError(err);
       } finally {
         setCardIssuing(false);
       }
-    }, [username, selectCard]);
+    }, [username, issueKind, selectCard]);
 
     const freezeCard = useCallback(async () => {
       if (!selectedCardId) return;
@@ -188,19 +199,22 @@
       }
     }, [username, selectedCardId, applyCard]);
 
-    const blockCard = useCallback(async () => {
+    const deleteCard = useCallback(async () => {
       if (!selectedCardId) return;
-      if (!window.confirm(t("dashboard.cards.confirmBlock"))) return;
+      if (!window.confirm(t("dashboard.cards.confirmDelete"))) return;
       setCardBusy(true);
       setCardsError(null);
       try {
-        applyCard(await api.blockCard(username, selectedCardId));
+        const updated = await api.blockCard(username, selectedCardId);
+        applyCard(updated);
+        const next = cards.find((row) => row.cardId !== updated.cardId && row.state !== "blocked");
+        selectCard(next ? next.cardId : null);
       } catch (err) {
         setCardsError(err);
       } finally {
         setCardBusy(false);
       }
-    }, [username, selectedCardId, applyCard]);
+    }, [username, selectedCardId, applyCard, cards, selectCard]);
 
     const toggleCardPin = useCallback(async () => {
       if (!selectedCardId) return;
@@ -266,6 +280,9 @@
       }
     }, [username, selectedCardId, applyCard]);
 
+    const visibleCards = cards.filter((row) => row.state !== "blocked");
+    const deletedCards = cards.filter((row) => row.state === "blocked");
+
     return (
       <div className="dash-shell">
         <DASH.Sidebar screen={screen} onNavigate={navigate} onSignOut={onSignOut} />
@@ -297,17 +314,17 @@
             {screen === "portfolio" ? <SCR.PortfolioScreen /> : null}
             {screen === "cards" ? (
               <SCR.CardsScreen
-                cards={cards}
+                cards={visibleCards}
                 loading={cardsLoading && !cardsLoaded}
                 error={cardsError}
                 selectedCardId={selectedCardId}
                 onSelect={selectCard}
-                onIssue={issueCard}
-                issuing={cardIssuing}
+                onOpenIssue={openIssueDialog}
+                onOpenHistory={() => setHistoryOpen(true)}
                 busy={cardBusy}
                 onFreeze={freezeCard}
                 onUnfreeze={unfreezeCard}
-                onBlock={blockCard}
+                onDelete={deleteCard}
                 pin={cardPin}
                 pinShown={pinShown}
                 onTogglePin={toggleCardPin}
@@ -352,6 +369,20 @@
             onClose={() => setPayOpen(false)}
             onContinue={() => setPayOpen(false)}
           />
+        ) : null}
+
+        {issueOpen ? (
+          <DASH.IssueCardDialog
+            kind={issueKind}
+            onKind={setIssueKind}
+            onClose={() => setIssueOpen(false)}
+            onCreate={createCard}
+            creating={cardIssuing}
+          />
+        ) : null}
+
+        {historyOpen ? (
+          <DASH.CardHistoryDialog cards={deletedCards} onClose={() => setHistoryOpen(false)} />
         ) : null}
       </div>
     );

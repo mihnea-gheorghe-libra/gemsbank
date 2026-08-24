@@ -28,6 +28,7 @@
   --color-positive: #2F6B3F;   /* credit / money in   — 6.25:1 on bg */
   --color-negative: #A3232B;   /* debit  / money out  — 7.27:1 on bg */
   --color-warning:  #8A5A00;   /* pending, VoP close_match — 5.81:1 on bg */
+  --color-info:     #1D4ED8;   /* card frozen indicator — 6.57:1 on bg */
 
   /* ── ramps ────────────────────────────────────────────────── */
   --color-neutral-100: #FDFDF9; --color-neutral-200: #F3F1E9;
@@ -104,6 +105,7 @@
     --color-positive: #9ED9A8;
     --color-negative: #FFB3B8;
     --color-warning: #F0C26B;
+    --color-info: #93C5FD;
   }
 }
 :root[data-theme="dark"] {
@@ -119,6 +121,7 @@
   --color-positive: #9ED9A8;
   --color-negative: #FFB3B8;
   --color-warning: #F0C26B;
+  --color-info: #93C5FD;
 }
 
 /* Tailwind v4 — expose the tokens as utilities. Tailwind reads --color-*,
@@ -137,6 +140,7 @@
   --color-positive: var(--color-positive);
   --color-negative: var(--color-negative);
   --color-warning: var(--color-warning);
+  --color-info: var(--color-info);
 
   --font-heading: var(--font-heading);
   --font-body: var(--font-body);

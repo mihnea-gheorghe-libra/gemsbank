@@ -18,6 +18,7 @@ from backend.cards.service import (
     BlockCardPermanently,
     CardsService,
     FreezeCard,
+    IssuePhysicalCard,
     IssueVirtualCard,
     RevealCardDetails,
     RevealCardPin,
@@ -392,6 +393,14 @@ async def issue_virtual_card(
     payload: UsernameRequest, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
     command = IssueVirtualCard(username=payload.username)
+    return await bus.execute(command, _cards_actor(), idempotency_key)
+
+
+@cards_router.post("/physical", status_code=201)
+async def issue_physical_card(
+    payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = IssuePhysicalCard(username=payload.username)
     return await bus.execute(command, _cards_actor(), idempotency_key)
 
 

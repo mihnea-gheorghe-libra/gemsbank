@@ -147,4 +147,66 @@
       </div>
     );
   };
+
+  DASH.IssueCardDialog = function IssueCardDialog({ kind, onKind, onClose, onCreate, creating }) {
+    const options = [
+      { value: "virtual", label: t("dashboard.cards.issueDialog.virtual") },
+      { value: "physical", label: t("dashboard.cards.issueDialog.physical") },
+    ];
+    return (
+      <div className="dash-dialog-backdrop" onClick={onClose}>
+        <UI.Plate
+          className="dash-dialog elev-lg"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="issue-card-dialog-title"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <h2 id="issue-card-dialog-title" style={{ margin: 0 }}>{t("dashboard.cards.issueDialog.title")}</h2>
+          <DASH.SegmentedControl options={options} value={kind} onChange={onKind} label={t("dashboard.cards.issueDialog.title")} />
+
+          <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
+            {kind === "physical" ? t("dashboard.cards.issueDialog.physicalNote") : t("dashboard.cards.issueDialog.virtualNote")}
+          </p>
+
+          <div className="dash-dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onClose}>{t("dashboard.cards.cancel")}</UI.Button>
+            <UI.Button type="button" variant="primary" disabled={creating} onClick={onCreate}>
+              {creating ? t("dashboard.cards.issuing") : t("dashboard.cards.issueDialog.create")}
+            </UI.Button>
+          </div>
+        </UI.Plate>
+      </div>
+    );
+  };
+
+  DASH.CardHistoryDialog = function CardHistoryDialog({ cards, onClose }) {
+    return (
+      <div className="dash-dialog-backdrop" onClick={onClose}>
+        <UI.Plate
+          className="dash-dialog elev-lg"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="card-history-dialog-title"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <h2 id="card-history-dialog-title" style={{ margin: 0 }}>{t("dashboard.cards.historyDialog.title")}</h2>
+
+          {cards.length === 0 ? (
+            <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>{t("dashboard.cards.historyDialog.empty")}</p>
+          ) : (
+            <div className="dash-history-list">
+              {cards.map((card) => (
+                <div key={card.cardId} className="dash-history-row">{card.numberMasked}</div>
+              ))}
+            </div>
+          )}
+
+          <div className="dash-dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onClose}>{t("dashboard.cards.historyDialog.close")}</UI.Button>
+          </div>
+        </UI.Plate>
+      </div>
+    );
+  };
 })();

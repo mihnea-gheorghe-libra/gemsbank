@@ -15,21 +15,24 @@ Three working screens:
 Sign in mints a **session token** (`sessions` collection). The frontend holds it in memory and
 sends it as `Authorization: Bearer …`; a page refresh signs you out, which is the intended
 behaviour while there is no refresh-token rotation (`PROMPT.md` §6: never `localStorage`).
-After a successful sign in you land on a **dashboard mockup**: a static, frontend-only prototype
+After a successful sign in you land on a **dashboard mockup**: a mostly frontend-only prototype
 (`frontend/main/dashboard.jsx` and `frontend/components/dashboard-*.jsx`) covering Dashboard,
 Payments, AI Assistant, Portfolio, Cards, Analytics and Settings. It is a deliberate, explicitly
 approved deviation from `PROMPT.md` §4 — cards, investments, analytics and the chatbot are listed
 there as *not in v0* — kept as UI only, with hand-authored demo data
-(`frontend/helpers/dashboard-data.js`). The PIN-reveal screen (`AUTH.PinRevealScreen`) still runs
-first whenever a flow surfaces the PIN (forgot-PIN, password reset); its "Close and continue"
-action opens the dashboard mockup. Plain PIN sign-in opens it directly, since it has no PIN to
-show — there is no separate "welcome" screen any more. There is still no session token: the real
-dashboard and the `sessions` collection arrive together, later.
+(`frontend/helpers/dashboard-data.js`), except the **Cards** screen (below), which is wired to a
+real backend. The PIN-reveal screen (`AUTH.PinRevealScreen`) still runs first whenever a flow
+surfaces the PIN (forgot-PIN, password reset); its "Close and continue" action opens the dashboard
+mockup. Plain PIN sign-in opens it directly, since it has no PIN to show — there is no separate
+"welcome" screen any more. There is still no session token for the dashboard itself: the real
+dashboard and the `sessions` collection arrive together, later. (`auth` already mints a session
+token for other purposes — see "How a write works" below — the dashboard mockup just doesn't
+consume it yet.)
 
-The **Cards** screen is the one exception: it has a real backend (`backend/cards/`) — issue a
-virtual card, freeze/unfreeze, reveal PIN, set ATM/online limits, block permanently — but the
-Cards screen itself still renders from `dashboard-data.js`, not from these endpoints. See
-"Cards — a backend without a session" below before wiring it up.
+The **Cards** screen is the one exception to "mockup, not wired": it has a real backend
+(`backend/cards/`) and the frontend calls it directly — issue a virtual or physical card,
+freeze/unfreeze, reveal PIN, reveal CVV (flips the card to its back), set ATM/online limits,
+delete (a relabelled `block`, see below). See "Cards — a backend without a session" below.
 
 ## Run it
 
@@ -122,11 +125,13 @@ frontend/            no build step; index.html script order is the module graph
   main/app.jsx       chooses sign in vs register, mounts the app
   main/signin.jsx    sign in, PIN recovery, password reset, welcome, hands off to the dashboard
   main/register.jsx  onboarding page state and flow orchestration
-  main/dashboard.jsx post-login dashboard mockup: screen state, chat state, mock-data wiring
+  main/dashboard.jsx post-login dashboard mockup: screen state, chat state, mock-data wiring,
+                     plus the real fetch calls behind the Cards screen
   components/        ui.jsx (primitives) · rails.jsx (step rail, agent panel) · steps.jsx ·
                      auth.jsx (sign-in forms, PIN panel, welcome) ·
                      dashboard-widgets.jsx (segmented control, bars, donut, progress, amount) ·
-                     dashboard-shell.jsx (sidebar, topbar, agent dock, new-payment dialog) ·
+                     dashboard-shell.jsx (sidebar, topbar, agent dock, new-payment/issue-card/
+                     card-history dialogs) ·
                      dashboard-screens.jsx (home, payments, chat, portfolio, cards, analytics, settings)
   helpers/           api.js (the only fetch caller) · i18n.js · messages.js (en + ro) ·
                      dashboard-data.js (hand-authored demo data for the dashboard mockup)
@@ -282,13 +287,19 @@ Other tradeoffs worth knowing:
 
 ## Cards — a backend without a session
 
-`backend/cards/` implements the six actions on the dashboard's Cards mockup, through the same one
+`backend/cards/` implements the actions behind the dashboard's Cards screen, through the same one
 write path as everything else (`bus.execute` → policy-free for now, audit, outbox, idempotency):
 
 - `POST /cards/virtual` — issue a virtual Mastercard for a user
+- `POST /cards/physical` — issue a physical Visa debit card for a user; same handler shape as
+  virtual (`CardsService._issue`), only `kind` and validity period differ (3 years virtual, 5
+  physical). The frontend's "Issue card" button opens a dialog to choose between the two.
 - `POST /cards/{id}/freeze` / `/unfreeze` — reversible pause
 - `POST /cards/{id}/block` — terminal; every other action on that card then fails with
-  `illegal_transition`
+  `illegal_transition`. The frontend labels this **"Delete card"** and, once blocked, drops the
+  card from the visible grid — its masked number moves to a "History" dialog instead. Nothing is
+  deleted from Mongo; this is a UI relabelling of the existing terminal transition, chosen over
+  adding a second terminal state, consistent with the rest of the app never hard-deleting state.
 - `POST /cards/{id}/pin/reveal` — same `CommandResult.sensitive` channel as `auth.reveal_pin`, so a
   replayed `Idempotency-Key` does not re-reveal
 - `POST /cards/{id}/details/reveal` — same `sensitive` channel, returns the CVV; the frontend's
@@ -300,8 +311,17 @@ write path as everything else (`bus.execute` → policy-free for now, audit, out
 - `GET /cards?username=` — read model, bypasses the bus like `GET /onboarding/{id}` does
 
 "Monthly online spend" has no backend — it stays a static number on the mock, unchanged, as asked.
-The date printed on the front of each card is client-side only (the browser's local clock via
-`Intl.DateTimeFormat`), not persisted or served by the backend.
+
+The card **back face** (`SCR.CardsScreen` in `dashboard-screens.jsx`) shows the number, expiry and
+CVV stacked, same font/size, nothing else. The number shown there is a **client-side-only cosmetic
+mock** (`mockFullNumber`, deterministic from the card id) — never sent to or stored by the backend,
+which still never generates or keeps a full PAN (`cards/adapters.py`, unchanged, see below). A
+frozen card gets a translucent blue veil over the whole tile, front or back
+(`--color-info`, added to `frontend/styles/tokens.css` for this — the extracted design archive has
+no blue; `PROMPT.md` §3's fidelity rule says structure wins where the archive and the brief
+disagree, logged here per that rule). A Mastercard-kind card's front shows a small two-circle
+network mark bottom-right, drawn in the app's own plum/lime tokens rather than the real trademarked
+mark (colours, shape and IP are Mastercard's, not ours to reproduce).
 
 There is no session token (see above), so every card endpoint takes `username` in the request body
 instead of a bearer token, resolves it to a user id, and checks the card belongs to that user
