@@ -51,6 +51,7 @@ class AuthUser(BaseModel):
     password_failures: int = 0
     password_lockout_stage: int = 0
     password_locked_until: datetime | None = None
+    prefs: dict[str, Any] = Field(default_factory=dict)
 
     def guard_usable(self, now: datetime) -> None:
         if self.status != "active":
@@ -166,7 +167,7 @@ class AuthUser(BaseModel):
             raise AuthenticationError(GENERIC_REJECTION, details={"field": "pin"})
 
     def public_view(self) -> dict[str, Any]:
-        return {"userId": self.id, "username": self.username}
+        return {"userId": self.id, "username": self.username, "prefs": self.prefs}
 
     def me_view(self) -> dict[str, Any]:
         return {

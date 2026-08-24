@@ -38,16 +38,17 @@
     return answerFor(null);
   }
 
-  DASHBOARD.Dashboard = function Dashboard({ username, onSignOut }) {
+  DASHBOARD.Dashboard = function Dashboard({ username, theme, onTheme, lang, onLang, onSignOut }) {
     const [screen, setScreen] = useState("home");
     const [balanceHidden, setBalanceHidden] = useState(true);
     const [theme, setTheme] = useState("light");
+    const [ttsOn, setTtsOn] = useState(false);
     const [dockOpen, setDockOpen] = useState(true);
     const [payOpen, setPayOpen] = useState(false);
     const [payType, setPayType] = useState("iban");
     const [filter, setFilter] = useState("all");
-    const [range, setRange] = useState("6");
-    const [lang, setLang] = useState(GEMS.i18n.locale);
+    const [range, setRange] = useState("6"); // Păstrăm modificarea ta
+    const [lang, setLang] = useState(GEMS.i18n.locale); // Păstrăm adăugarea ta
     const [cards, setCards] = useState([]);
     const [cardsLoaded, setCardsLoaded] = useState(false);
     const [cardsLoading, setCardsLoading] = useState(false);
@@ -69,12 +70,6 @@
     useEffect(() => {
       api.me().then(setMe).catch(() => {});
     }, []);
-
-    useEffect(() => {
-      if (theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
-      else document.documentElement.setAttribute("data-theme", "light");
-      return () => document.documentElement.removeAttribute("data-theme");
-    }, [theme]);
 
     const navigate = useCallback((key) => {
       if (SCREENS.indexOf(key) >= 0) setScreen(key);
@@ -333,6 +328,8 @@
                 onLang={changeLang}
                 theme={theme}
                 onTheme={setTheme}
+                ttsOn={ttsOn}
+                onToggleTts={() => setTtsOn((value) => !value)}
                 onSignOut={onSignOut}
                 onGoChat={() => navigate("chat")}
                 me={me}

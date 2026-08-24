@@ -87,7 +87,7 @@
     if (!error) return null;
     return (
       <div className="onb-error" role="alert">
-        {error.message}
+        {GEMS.i18n.tError(error.message)}
       </div>
     );
   };
