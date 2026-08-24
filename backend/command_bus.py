@@ -51,6 +51,8 @@ class CommandBus:
         command: Command,
         actor: Actor,
         idempotency_key: str | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
     ) -> dict[str, Any]:
         name = type(command).command_name
         handler = self._handlers.get(name)
@@ -62,7 +64,9 @@ class CommandBus:
             if replayed is not None:
                 return replayed
 
-        context = ActorContext(actor=actor, correlation_id=get_correlation_id())
+        context = ActorContext(
+            actor=actor, correlation_id=get_correlation_id(), ip=ip, user_agent=user_agent
+        )
 
         async with (
             await get_client().start_session() as session,

@@ -10,14 +10,6 @@
 
   const SCREENS = ["home", "payments", "chat", "portfolio", "cards", "analytics", "settings"];
 
-  function speak(text) {
-    if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB";
-    window.speechSynthesis.speak(utterance);
-  }
-
   function answerFor(promptKey) {
     if (promptKey === "pay") return { role: "ai", kind: "tx", text: t("dashboard.chat.answerPay") };
     if (promptKey === "recurring") return { role: "ai", kind: "table", text: t("dashboard.chat.answerRecurring") };
@@ -36,12 +28,14 @@
   DASHBOARD.Dashboard = function Dashboard({ username, theme, onTheme, lang, onLang, onSignOut }) {
     const [screen, setScreen] = useState("home");
     const [balanceHidden, setBalanceHidden] = useState(true);
+    const [theme, setTheme] = useState("light");
     const [ttsOn, setTtsOn] = useState(false);
     const [dockOpen, setDockOpen] = useState(true);
     const [payOpen, setPayOpen] = useState(false);
     const [payType, setPayType] = useState("iban");
     const [filter, setFilter] = useState("all");
-    const [range, setRange] = useState("quarter");
+    const [range, setRange] = useState("6"); // Păstrăm modificarea ta
+    const [lang, setLang] = useState(GEMS.i18n.locale); // Păstrăm adăugarea ta
     const [cards, setCards] = useState([]);
     const [cardsLoaded, setCardsLoaded] = useState(false);
     const [cardsLoading, setCardsLoading] = useState(false);
@@ -58,27 +52,29 @@
     const [messages, setMessages] = useState([
       { role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) },
     ]);
+    const [me, setMe] = useState(null);
+
+    useEffect(() => {
+      api.me().then(setMe).catch(() => {});
+    }, []);
 
     const navigate = useCallback((key) => {
       if (SCREENS.indexOf(key) >= 0) setScreen(key);
     }, []);
 
-    const speakBalance = useCallback(() => {
-      speak(t("dashboard.chat.balanceSpoken", { balance: DATA.totalBalance }));
+    const changeLang = useCallback((next) => {
+      GEMS.i18n.setLocale(next);
+      setLang(next);
     }, []);
 
     const toggleBalance = useCallback(() => {
-      setBalanceHidden((hidden) => {
-        if (hidden && ttsOn) speakBalance();
-        return !hidden;
-      });
-    }, [ttsOn, speakBalance]);
+      setBalanceHidden((hidden) => !hidden);
+    }, []);
 
     const pushExchange = useCallback((userText, reply) => {
       setMessages((list) => list.concat([{ role: "user", kind: "text", text: userText }, reply]));
-      if (ttsOn && reply.text) speak(reply.text);
       setScreen("chat");
-    }, [ttsOn]);
+    }, []);
 
     const sendDraft = useCallback(() => {
       const text = draft.trim();
@@ -263,11 +259,17 @@
         <DASH.Sidebar screen={screen} onNavigate={navigate} onSignOut={onSignOut} />
 
         <div className="dash-main">
-          <DASH.Topbar screen={screen} username={username} ttsOn={ttsOn} onToggleTts={() => setTtsOn((value) => !value)} />
+          <DASH.Topbar
+            screen={screen}
+            username={username}
+            me={me}
+            onOpenSettings={() => navigate("settings")}
+            onSignOut={onSignOut}
+          />
 
           <main className="dash-content" aria-label={t("dashboard.tag." + screen)}>
             {screen === "home" ? (
-              <SCR.HomeScreen balanceHidden={balanceHidden} onToggleBalance={toggleBalance} onSpeakBalance={speakBalance} onNavigate={navigate} />
+              <SCR.HomeScreen balanceHidden={balanceHidden} onToggleBalance={toggleBalance} onNavigate={navigate} />
             ) : null}
             {screen === "payments" ? (
               <SCR.PaymentsScreen filter={filter} onFilter={setFilter} onOpenPay={() => setPayOpen(true)} />
@@ -314,13 +316,15 @@
             {screen === "settings" ? (
               <SCR.SettingsScreen
                 lang={lang}
-                onLang={onLang}
+                onLang={changeLang}
                 theme={theme}
-                onTheme={onTheme}
+                onTheme={setTheme}
                 ttsOn={ttsOn}
                 onToggleTts={() => setTtsOn((value) => !value)}
                 onSignOut={onSignOut}
                 onGoChat={() => navigate("chat")}
+                me={me}
+                onMeChange={setMe}
               />
             ) : null}
           </main>

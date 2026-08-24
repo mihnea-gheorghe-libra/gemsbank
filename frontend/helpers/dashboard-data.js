@@ -61,13 +61,6 @@
       { name: "Cash to invest", qty: "—", value: "1.000,00" },
     ],
 
-    categories: [
-      { key: "groceries", value: "1.180 RON · 32%" },
-      { key: "utilities", value: "840 RON · 23%" },
-      { key: "transport", value: "690 RON · 19%" },
-      { key: "entertainment", value: "510 RON · 14%" },
-      { key: "other", value: "430 RON · 12%" },
-    ],
     groceryBars: [
       { label: "MAR", pct: 68 },
       { label: "APR", pct: 82 },
@@ -75,20 +68,6 @@
       { label: "JUN", pct: 90 },
       { label: "JUL", pct: 80 },
       { label: "AUG", pct: 62 },
-    ],
-    yearBars: [
-      { label: "S", inc: 72, out: 48 },
-      { label: "O", inc: 68, out: 55 },
-      { label: "N", inc: 80, out: 62 },
-      { label: "D", inc: 92, out: 74 },
-      { label: "J", inc: 64, out: 40 },
-      { label: "F", inc: 70, out: 52 },
-      { label: "M", inc: 76, out: 58 },
-      { label: "A", inc: 74, out: 50 },
-      { label: "M", inc: 82, out: 66 },
-      { label: "J", inc: 78, out: 60 },
-      { label: "J", inc: 88, out: 71 },
-      { label: "A", inc: 84, out: 57 },
     ],
 
     recurring: [

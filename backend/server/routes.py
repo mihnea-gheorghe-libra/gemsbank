@@ -1,18 +1,24 @@
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, Form, Header, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from backend.accounts.service import AccountsService, get_accounts_service
 from backend.auth.service import (
     AuthService,
+    RequestAccountClosure,
+    RequestEmailChange,
     RequestPasswordReset,
+    RequestPhoneChange,
+    RequestPinChange,
     ResetPassword,
     RevealPin,
+    RevokeSession,
     SignIn,
     SignOut,
     UpdatePreferences,
     VerifyResetCode,
+    VerifySecureChange,
     get_auth_service,
 )
 from backend.cards.service import (
@@ -93,6 +99,30 @@ class NewPasswordRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class EmailChangeRequest(BaseModel):
+    new_email: str = Field(min_length=3, max_length=254, alias="newEmail")
+    model_config = {"populate_by_name": True}
+
+
+class PhoneChangeRequest(BaseModel):
+    new_phone: str = Field(min_length=6, max_length=25, alias="newPhone")
+    model_config = {"populate_by_name": True}
+
+
+class PinChangeRequest(BaseModel):
+    new_pin: str = Field(min_length=4, max_length=8, alias="newPin")
+    new_pin_confirmation: str = Field(min_length=4, max_length=8, alias="newPinConfirmation")
+    model_config = {"populate_by_name": True}
+
+
+class VerifySecureChangeRequest(BaseModel):
+    code: str = Field(min_length=4, max_length=8)
+
+
+class AccountClosureRequest(BaseModel):
+    pin: str = Field(min_length=4, max_length=8)
+
+
 class TransferRequest(BaseModel):
     source_account_id: str = Field(alias="sourceAccountId", min_length=1, max_length=64)
     target_account_id: str | None = Field(default=None, alias="targetAccountId", max_length=64)
@@ -160,6 +190,17 @@ def bearer_token(authorization: BearerToken = None) -> str:
     return token.strip()
 
 
+def client_ip(request: Request) -> str | None:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else None
+
+
+def client_user_agent(request: Request) -> str | None:
+    return request.headers.get("user-agent")
+
+
 async def current_actor(
     auth: AuthDep, token: Annotated[str, Depends(bearer_token)]
 ) -> Actor:
@@ -168,6 +209,8 @@ async def current_actor(
 
 CurrentActor = Annotated[Actor, Depends(current_actor)]
 SessionToken = Annotated[str, Depends(bearer_token)]
+ClientIp = Annotated[str | None, Depends(client_ip)]
+ClientUserAgent = Annotated[str | None, Depends(client_user_agent)]
 def _cards_actor() -> Actor:
     return Actor.public_cards()
 
@@ -265,18 +308,24 @@ async def complete(
 
 @auth_router.post("/login")
 async def login(
-    payload: SignInRequest, idempotency_key: IdempotencyKey = None
+    payload: SignInRequest,
+    ip: ClientIp,
+    user_agent: ClientUserAgent,
+    idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
     command = SignIn(username=payload.username, pin=payload.pin.strip())
-    return await bus.execute(command, _auth_actor(), idempotency_key)
+    return await bus.execute(command, _auth_actor(), idempotency_key, ip=ip, user_agent=user_agent)
 
 
 @auth_router.post("/pin/reveal")
 async def reveal_pin(
-    payload: RevealPinRequest, idempotency_key: IdempotencyKey = None
+    payload: RevealPinRequest,
+    ip: ClientIp,
+    user_agent: ClientUserAgent,
+    idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
     command = RevealPin(username=payload.username, password=payload.password)
-    return await bus.execute(command, _auth_actor(), idempotency_key)
+    return await bus.execute(command, _auth_actor(), idempotency_key, ip=ip, user_agent=user_agent)
 
 
 @auth_router.post("/password/reset", status_code=201)
@@ -301,6 +350,8 @@ async def verify_reset_code(
 async def complete_password_reset(
     recovery_case_id: str,
     payload: NewPasswordRequest,
+    ip: ClientIp,
+    user_agent: ClientUserAgent,
     idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
     command = ResetPassword(
@@ -308,7 +359,7 @@ async def complete_password_reset(
         password=payload.password,
         password_confirmation=payload.password_confirmation,
     )
-    return await bus.execute(command, _auth_actor(), idempotency_key)
+    return await bus.execute(command, _auth_actor(), idempotency_key, ip=ip, user_agent=user_agent)
 
 
 @auth_router.post("/logout")
@@ -316,6 +367,81 @@ async def logout(
     token: SessionToken, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
     return await bus.execute(SignOut(session_token=token), _auth_actor(), idempotency_key)
+
+
+@auth_router.get("/me")
+async def me(actor: CurrentActor, auth: AuthDep) -> dict[str, Any]:
+    return await auth.get_me(actor.id)
+
+
+@auth_router.get("/sessions")
+async def list_sessions(
+    actor: CurrentActor, auth: AuthDep, token: SessionToken
+) -> dict[str, Any]:
+    return await auth.list_sessions(actor.id, token)
+
+
+@auth_router.post("/sessions/{session_id}/revoke")
+async def revoke_session(
+    actor: CurrentActor,
+    session_id: str,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = RevokeSession(session_id=session_id)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@auth_router.post("/email/change", status_code=201)
+async def request_email_change(
+    actor: CurrentActor,
+    payload: EmailChangeRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = RequestEmailChange(new_email=payload.new_email)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@auth_router.post("/phone/change", status_code=201)
+async def request_phone_change(
+    actor: CurrentActor,
+    payload: PhoneChangeRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = RequestPhoneChange(new_phone=payload.new_phone)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@auth_router.post("/pin/change", status_code=201)
+async def request_pin_change(
+    actor: CurrentActor,
+    payload: PinChangeRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = RequestPinChange(
+        new_pin=payload.new_pin, new_pin_confirmation=payload.new_pin_confirmation
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@auth_router.post("/secure-change/{case_id}/verify")
+async def verify_secure_change(
+    actor: CurrentActor,
+    case_id: str,
+    payload: VerifySecureChangeRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = VerifySecureChange(case_id=case_id, code=payload.code.strip())
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@auth_router.post("/account/closure-request")
+async def request_account_closure(
+    actor: CurrentActor,
+    payload: AccountClosureRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = RequestAccountClosure(pin=payload.pin.strip())
+    return await bus.execute(command, actor, idempotency_key)
 
 
 @auth_router.put("/preferences")

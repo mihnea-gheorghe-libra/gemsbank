@@ -56,6 +56,9 @@
     }, []);
 
     const resetToSignIn = useCallback(() => {
+      if (GEMS.session.has()) {
+        api.logout().catch(() => {});
+      }
       GEMS.session.clear();
       setPin(null);
       setPinMissing(false);
@@ -73,6 +76,7 @@
         }
         try {
           const response = await api.login(form.username, form.pin);
+          GEMS.session.set(response.sessionToken);
           setSession(response);
           setPin(null);
           setPinMissing(false);
@@ -92,6 +96,7 @@
         if (normaliseUsername(form.username) === pinLockedUsername) {
           setPinLockedUsername(null);
         }
+        GEMS.session.set(response.sessionToken);
         setSession(response);
         setPin(response.pin);
         setView(VIEWS.PIN_REVEAL);
@@ -114,6 +119,7 @@
       run(async () => {
         const response = await api.completePasswordReset(recovery.recoveryCaseId, form);
         setPinLockedUsername(null);
+        GEMS.session.set(response.sessionToken);
         setSession(response);
         setPin(response.pin || null);
         setPinMissing(!response.pin);
