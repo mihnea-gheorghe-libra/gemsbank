@@ -11,21 +11,15 @@
     return DEFAULT_LOCALE;
   }
 
-  let locale = resolveLocale();
-  let dictionary = GEMS.messages[locale] || GEMS.messages[DEFAULT_LOCALE];
-
-  function setLocale(newLocale) {
-    if (!GEMS.messages[newLocale]) return;
-    locale = newLocale;
-    dictionary = GEMS.messages[locale];
-    GEMS.i18n.locale = locale;
-    GEMS.i18n.dictionary = dictionary;
-    document.documentElement.lang = locale;
-    window.localStorage.setItem("gems.lang", locale);
-  }
+  const state = {
+    locale: resolveLocale(),
+  };
+  state.dictionary = GEMS.messages[state.locale] || GEMS.messages[DEFAULT_LOCALE];
 
   function lookup(key) {
-    return key.split(".").reduce((node, part) => (node == null ? null : node[part]), dictionary);
+    return key
+      .split(".")
+      .reduce((node, part) => (node == null ? null : node[part]), state.dictionary);
   }
 
   function t(key, params) {
@@ -51,6 +45,23 @@
     return parts[2] + "." + parts[1] + "." + parts[0];
   }
 
-  GEMS.i18n = { locale, t, tError, dictionary, isoToDisplayDate, setLocale };
-  document.documentElement.lang = locale;
+function setLocale(next) {
+    if (!GEMS.messages[next] || next === state.locale) return;
+    state.locale = next;
+    state.dictionary = GEMS.messages[next];
+    GEMS.i18n.locale = next;
+    GEMS.i18n.dictionary = state.dictionary;
+    document.documentElement.lang = next;
+    window.localStorage.setItem("gems.lang", next);
+  }
+
+  GEMS.i18n = { 
+    locale: state.locale, 
+    t, 
+    tError, // Păstrat de pe branch-ul main
+    dictionary: state.dictionary, 
+    isoToDisplayDate, 
+    setLocale // Păstrat de pe branch-ul tău
+  };
+  document.documentElement.lang = state.locale;
 })();

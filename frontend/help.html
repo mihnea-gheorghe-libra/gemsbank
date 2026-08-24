@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GEMS — FAQ &amp; User Guide</title>
+
+  <link rel="stylesheet" href="./styles/tokens.css">
+  <link rel="stylesheet" href="./styles/app.css">
+
+  <style>
+    body { padding: 0; }
+    .help-shell { max-width: 860px; margin: 0 auto; padding: 32px 24px 64px; }
+    .help-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+    .help-wordmark { font-family: var(--font-heading); font-size: 22px; letter-spacing: 0.2em; color: var(--color-heading); }
+    .help-lang-toggle { display: inline-flex; border: 1px solid var(--color-border); border-radius: var(--radius-pill); overflow: hidden; }
+    .help-lang-toggle button {
+      appearance: none; border: 0; font: inherit; cursor: pointer;
+      padding: 7px 16px; font-size: 13px; background: transparent; color: var(--color-text);
+      min-height: var(--target-min);
+    }
+    .help-lang-toggle button + button { border-left: 1px solid var(--color-border); }
+    .help-lang-toggle button[aria-pressed="true"] { background: var(--color-primary); color: var(--color-on-primary); }
+    .help-banner { font-size: 11px; letter-spacing: 0.08em; color: var(--color-muted); margin-bottom: 28px; }
+    h1.help-title { font-size: var(--text-h3); margin: 0 0 6px; }
+    p.help-lede { color: var(--color-muted); margin: 0 0 28px; max-width: 60ch; }
+    .help-section { margin-bottom: 34px; }
+    .help-section h2 { font-size: var(--text-h5); margin: 0 0 14px; }
+    .help-guide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .help-card { padding: 16px; }
+    .help-card h3 { font-family: var(--font-heading); font-size: 15px; margin: 0 0 6px; color: var(--color-heading); }
+    .help-card p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--color-text); }
+    .help-faq details {
+      padding: 14px 16px; border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      margin-bottom: 10px; background: var(--color-surface);
+    }
+    .help-faq summary {
+      cursor: pointer; font-family: var(--font-heading); font-size: 14px; color: var(--color-heading);
+      list-style: none;
+    }
+    .help-faq summary::-webkit-details-marker { display: none; }
+    .help-faq summary::before { content: "+"; display: inline-block; width: 16px; color: var(--color-primary); }
+    .help-faq details[open] summary::before { content: "–"; }
+    .help-faq p { margin: 10px 0 0 16px; font-size: 13px; line-height: 1.55; color: var(--color-text); }
+    [data-lang="ro"] .lang-en { display: none; }
+    [data-lang="en"] .lang-ro { display: none; }
+    @media (max-width: 640px) { .help-guide-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="help-shell">
+    <div class="help-topbar">
+      <span class="help-wordmark">GEMS</span>
+      <div class="help-lang-toggle" role="radiogroup" aria-label="Language / Limbă">
+        <button type="button" id="lang-en" aria-pressed="true">English</button>
+        <button type="button" id="lang-ro" aria-pressed="false">Română</button>
+      </div>
+    </div>
+
+    <div class="help-banner">DEMO SYSTEM · NO LICENCE · NO REAL FUNDS · NO REAL CARD DATA</div>
+
+    <h1 class="help-title">
+      <span class="lang-en">FAQ &amp; User Guide</span>
+      <span class="lang-ro">Întrebări frecvente &amp; Ghid de utilizare</span>
+    </h1>
+    <p class="help-lede">
+      <span class="lang-en">Everything you need to find your way around GEMS — what each screen does, and answers to the questions we get asked most.</span>
+      <span class="lang-ro">Tot ce ai nevoie ca să te descurci în GEMS — ce face fiecare ecran și răspunsuri la cele mai frecvente întrebări.</span>
+    </p>
+
+    <section class="help-section">
+      <h2><span class="lang-en">User guide</span><span class="lang-ro">Ghid de utilizare</span></h2>
+      <div class="help-guide-grid">
+        <div class="plate help-card">
+          <h3><span class="lang-en">Home</span><span class="lang-ro">Acasă</span></h3>
+          <p>
+            <span class="lang-en">Your total balance across all accounts, with a show/hide toggle, plus quick actions and your most recent activity.</span>
+            <span class="lang-ro">Soldul tău total pe toate conturile, cu buton de arată/ascunde, plus acțiuni rapide și ultimele mișcări.</span>
+          </p>
+        </div>
+        <div class="plate help-card">
+          <h3><span class="lang-en">Payments</span><span class="lang-ro">Plăți</span></h3>
+          <p>
+            <span class="lang-en">Start a new payment, sign the ones awaiting your signature, and filter or search your transaction history.</span>
+            <span class="lang-ro">Inițiezi o plată nouă, semnezi cele care așteaptă semnătura ta și filtrezi sau cauți în istoricul de tranzacții.</span>
+          </p>
+        </div>
+        <div class="plate help-card">
+          <h3><span class="lang-en">Cards</span><span class="lang-ro">Carduri</span></h3>
+          <p>
+            <span class="lang-en">Issue a virtual card, freeze it instantly, reveal the PIN or full details, set ATM/online limits, or block it permanently.</span>
+            <span class="lang-ro">Emiți un card virtual, îl îngheți instant, îi arăți PIN-ul sau detaliile complete, setezi limite ATM/online sau îl blochezi definitiv.</span>
+          </p>
+        </div>
+        <div class="plate help-card">
+          <h3><span class="lang-en">Portfolio</span><span class="lang-ro">Conturi &amp; Portofoliu</span></h3>
+          <p>
+            <span class="lang-en">An overview of your accounts, deposits, credits and investments in one place.</span>
+            <span class="lang-ro">O privire de ansamblu asupra conturilor, depozitelor, creditelor și investițiilor, într-un singur loc.</span>
+          </p>
+        </div>
+        <div class="plate help-card">
+          <h3><span class="lang-en">Analytics</span><span class="lang-ro">Analize</span></h3>
+          <p>
+            <span class="lang-en">See what you spend on, by category, and how income compares to spending over time.</span>
+            <span class="lang-ro">Vezi pe ce cheltuiești, pe categorii, și cum se compară veniturile cu cheltuielile în timp.</span>
+          </p>
+        </div>
+        <div class="plate help-card">
+          <h3><span class="lang-en">AI agent</span><span class="lang-ro">Agent AI</span></h3>
+          <p>
+            <span class="lang-en">Ask it to draft a payment, list your recurring payments, or explain your spending. It never moves money without your explicit confirmation.</span>
+            <span class="lang-ro">Îi poți cere să pregătească o plată, să-ți listeze plățile recurente sau să-ți explice cheltuielile. Nu mișcă bani niciodată fără confirmarea ta explicită.</span>
+          </p>
+        </div>
+        <div class="plate help-card">
+          <h3><span class="lang-en">Settings</span><span class="lang-ro">Setări</span></h3>
+          <p>
+            <span class="lang-en">Update your phone or email (confirmed by an emailed code), change your PIN, review and revoke active sessions, switch language or theme, or request account closure.</span>
+            <span class="lang-ro">Îți actualizezi telefonul sau emailul (confirmat printr-un cod trimis pe email), schimbi PIN-ul, verifici și revoci sesiunile active, schimbi limba sau tema, sau ceri închiderea contului.</span>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="help-section help-faq">
+      <h2><span class="lang-en">Frequently asked questions</span><span class="lang-ro">Întrebări frecvente</span></h2>
+
+      <details>
+        <summary>
+          <span class="lang-en">Is this real money?</span>
+          <span class="lang-ro">Sunt bani reali?</span>
+        </summary>
+        <p>
+          <span class="lang-en">No. GEMS is a demo system — it holds no real funds, has no banking licence, and does not connect to any real payment network or card data.</span>
+          <span class="lang-ro">Nu. GEMS este un sistem demo — nu deține fonduri reale, nu are licență bancară și nu se conectează la nicio rețea de plăți sau date de card reale.</span>
+        </p>
+      </details>
+
+      <details>
+        <summary>
+          <span class="lang-en">How do I hide my balance?</span>
+          <span class="lang-ro">Cum îmi ascund soldul?</span>
+        </summary>
+        <p>
+          <span class="lang-en">On the Home screen, use the "Hide" / "Reveal" button above your total balance.</span>
+          <span class="lang-ro">Pe ecranul Acasă, folosește butonul „Ascunde” / „Arată” de deasupra soldului total.</span>
+        </p>
+      </details>
+
+      <details>
+        <summary>
+          <span class="lang-en">How do I change my PIN?</span>
+          <span class="lang-ro">Cum îmi schimb PIN-ul?</span>
+        </summary>
+        <p>
+          <span class="lang-en">Go to Settings → Security → Change PIN, enter the new PIN twice, then confirm it with the code we email you.</span>
+          <span class="lang-ro">Mergi la Setări → Securitate → Schimbă PIN-ul, introdu noul PIN de două ori, apoi confirmă cu codul primit pe email.</span>
+        </p>
+      </details>
+
+      <details>
+        <summary>
+          <span class="lang-en">Why do I need a code by email to change my email, phone or PIN?</span>
+          <span class="lang-ro">De ce am nevoie de un cod pe email ca să schimb emailul, telefonul sau PIN-ul?</span>
+        </summary>
+        <p>
+          <span class="lang-en">It proves the request is really coming from you, since your email is the one address we know is already yours — even when it's the phone or PIN being changed.</span>
+          <span class="lang-ro">Dovedește că cererea vine chiar de la tine, pentru că emailul este singura adresă despre care știm sigur că e a ta — chiar și atunci când se schimbă telefonul sau PIN-ul.</span>
+        </p>
+      </details>
+
+      <details>
+        <summary>
+          <span class="lang-en">How do I see or sign out other devices?</span>
+          <span class="lang-ro">Cum văd sau deloghez alte dispozitive?</span>
+        </summary>
+        <p>
+          <span class="lang-en">Settings → Security → Active sessions lists every signed-in device with its location and IP, and lets you revoke any session that isn't yours.</span>
+          <span class="lang-ro">Setări → Securitate → Sesiuni active listează fiecare dispozitiv autentificat, cu locație și IP, și îți permite să revoci orice sesiune care nu e a ta.</span>
+        </p>
+      </details>
+
+      <details>
+        <summary>
+          <span class="lang-en">How do I switch language or dark mode?</span>
+          <span class="lang-ro">Cum schimb limba sau modul întunecat?</span>
+        </summary>
+        <p>
+          <span class="lang-en">Settings → Preferences has both — language switches immediately, without signing you out.</span>
+          <span class="lang-ro">Setări → Preferințe le are pe amândouă — limba se schimbă instant, fără să te deloghezi.</span>
+        </p>
+      </details>
+
+      <details>
+        <summary>
+          <span class="lang-en">Can the AI agent move money on its own?</span>
+          <span class="lang-ro">Poate agentul AI să mute bani singur?</span>
+        </summary>
+        <p>
+          <span class="lang-en">No. It can only draft a payment for you to review — nothing is sent until you confirm and sign it yourself.</span>
+          <span class="lang-ro">Nu. Poate doar să pregătească o plată pentru tine — nimic nu se trimite până nu confirmi și semnezi chiar tu.</span>
+        </p>
+      </details>
+
+      <details>
+        <summary>
+          <span class="lang-en">How do I close my account?</span>
+          <span class="lang-ro">Cum îmi închid contul?</span>
+        </summary>
+        <p>
+          <span class="lang-en">Settings → Close account starts the request; after you confirm with your PIN, our call center will contact you about the next steps.</span>
+          <span class="lang-ro">Setări → Închide contul pornește cererea; după ce confirmi cu PIN-ul, vei fi contactat de call center-ul nostru pentru pașii următori.</span>
+        </p>
+      </details>
+
+      <details>
+        <summary>
+          <span class="lang-en">I forgot my PIN — what now?</span>
+          <span class="lang-ro">Mi-am uitat PIN-ul — ce fac?</span>
+        </summary>
+        <p>
+          <span class="lang-en">On the sign-in screen, choose the password option instead of the PIN — verifying your password will show you your PIN again.</span>
+          <span class="lang-ro">Pe ecranul de autentificare, alege varianta cu parolă în loc de PIN — verificarea parolei îți va arăta din nou PIN-ul.</span>
+        </p>
+      </details>
+
+      <details>
+        <summary>
+          <span class="lang-en">Who do I contact for help?</span>
+          <span class="lang-ro">Pe cine contactez pentru ajutor?</span>
+        </summary>
+        <p>
+          <span class="lang-en">Settings → Customer service has our phone number and email, or use the AI agent chat for a quick answer.</span>
+          <span class="lang-ro">Setări → Serviciul clienți are numărul de telefon și emailul nostru, sau folosește chatul cu agentul AI pentru un răspuns rapid.</span>
+        </p>
+      </details>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      var root = document.documentElement;
+      var buttons = { en: document.getElementById("lang-en"), ro: document.getElementById("lang-ro") };
+
+      function apply(lang) {
+        root.setAttribute("data-lang", lang);
+        root.lang = lang;
+        buttons.en.setAttribute("aria-pressed", String(lang === "en"));
+        buttons.ro.setAttribute("aria-pressed", String(lang === "ro"));
+      }
+
+      var stored = null;
+      try {
+        stored = window.localStorage.getItem("gems.lang");
+      } catch (err) {
+        stored = null;
+      }
+      apply(stored === "ro" ? "ro" : "en");
+
+      buttons.en.addEventListener("click", function () { apply("en"); });
+      buttons.ro.addEventListener("click", function () { apply("ro"); });
+    })();
+  </script>
+</body>
+</html>

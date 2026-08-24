@@ -22,6 +22,13 @@ class RecoveryStatus(StrEnum):
     COMPLETED = "completed"
 
 
+class RecoveryKind(StrEnum):
+    PASSWORD_RESET = "password_reset"
+    EMAIL_CHANGE = "email_change"
+    PHONE_CHANGE = "phone_change"
+    PIN_CHANGE = "pin_change"
+
+
 class ResetChallenge(BaseModel):
     code_hash: str
     expires_at: datetime
@@ -52,6 +59,7 @@ class AuthUser(BaseModel):
     email: str
     phone: str | None = None
     identity: PersonalIdentity | None = None
+    full_name: str
     password_hash: str
     pin_hash: str
     pin_encrypted: str | None = None
@@ -163,14 +171,30 @@ class AuthUser(BaseModel):
     @property
     def display_name(self) -> str:
         return self.identity.full_name if self.identity else self.username.upper()
+    def change_email(self, new_email: str) -> None:
+        self.email = new_email
+
+    def change_phone(self, new_phone: str) -> None:
+        self.phone = new_phone
+
+    def change_pin(self, pin_hash: str, pin_encrypted: str) -> None:
+        self.pin_hash = pin_hash
+        self.pin_encrypted = pin_encrypted
+        self._accept_pin()
+
+    def verify_pin_for_reauth(self, matches: bool) -> None:
+        self.guard_usable(datetime.now(timezone.utc))
+        if not matches:
+            raise AuthenticationError(GENERIC_REJECTION, details={"field": "pin"})
 
     def public_view(self) -> dict[str, Any]:
         return {"userId": self.id, "username": self.username, "prefs": self.prefs}
 
-    def profile_view(self) -> dict[str, Any]:
+    def me_view(self) -> dict[str, Any]:
         return self.public_view() | {
             "email": self.email,
             "phone": self.phone,
+            "fullName": self.full_name,
             "identity": self.identity.public_view() if self.identity else None,
         }
 
@@ -182,6 +206,8 @@ class Session(BaseModel):
     issued_at: datetime
     expires_at: datetime
     revoked_at: datetime | None = None
+    user_agent: str | None = None
+    ip_address: str | None = None
 
     def guard_live(self, now: datetime) -> None:
         if self.revoked_at is not None:
@@ -200,8 +226,10 @@ class Session(BaseModel):
 class RecoveryCase(BaseModel):
     id: str = Field(default_factory=new_id)
     user_id: str
+    kind: RecoveryKind = RecoveryKind.PASSWORD_RESET
     status: RecoveryStatus = RecoveryStatus.CODE_SENT
     otp: ResetChallenge | None = None
+    payload: dict[str, str] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

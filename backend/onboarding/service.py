@@ -393,11 +393,13 @@ class OnboardingService:
         user_id = new_id()
         case.complete(user_id)
 
+        assert case.document is not None
         await self._users.create(
             user_id=user_id,
             username=username,
             email=case.contact.email,
             phone=case.contact.phone,
+            full_name=case.document.extracted.full_name,
             password_hash=self._hasher.hash(password),
             pin_hash=self._hasher.hash(pin),
             pin_encrypted=self._cipher.encrypt(pin, user_id),
