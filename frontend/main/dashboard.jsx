@@ -58,6 +58,10 @@
     const [pinShown, setPinShown] = useState(false);
     const [cardCvv, setCardCvv] = useState(null);
     const [detailsShown, setDetailsShown] = useState(false);
+    const [pinPromptOpen, setPinPromptOpen] = useState(false);
+    const [pinPromptBusy, setPinPromptBusy] = useState(false);
+    const [pinPromptError, setPinPromptError] = useState(null);
+    const [pinPromptTarget, setPinPromptTarget] = useState(null);
     const [micOn, setMicOn] = useState(false);
     const [draft, setDraft] = useState("");
     const [messages, setMessages] = useState([
@@ -216,12 +220,8 @@
       }
     }, [username, selectedCardId, applyCard, cards, selectCard]);
 
-    const toggleCardPin = useCallback(async () => {
+    const revealCardPin = useCallback(async () => {
       if (!selectedCardId) return;
-      if (pinShown) {
-        setPinShown(false);
-        return;
-      }
       setCardBusy(true);
       setCardsError(null);
       try {
@@ -233,14 +233,21 @@
       } finally {
         setCardBusy(false);
       }
-    }, [username, selectedCardId, pinShown]);
+    }, [username, selectedCardId]);
 
-    const toggleCardDetails = useCallback(async () => {
+    const toggleCardPin = useCallback(() => {
       if (!selectedCardId) return;
-      if (detailsShown) {
-        setDetailsShown(false);
+      if (pinShown) {
+        setPinShown(false);
         return;
       }
+      setPinPromptError(null);
+      setPinPromptTarget("cardPin");
+      setPinPromptOpen(true);
+    }, [selectedCardId, pinShown]);
+
+    const revealCardDetails = useCallback(async () => {
+      if (!selectedCardId) return;
       setCardBusy(true);
       setCardsError(null);
       try {
@@ -252,7 +259,38 @@
       } finally {
         setCardBusy(false);
       }
-    }, [username, selectedCardId, detailsShown]);
+    }, [username, selectedCardId]);
+
+    const toggleCardDetails = useCallback(() => {
+      if (!selectedCardId) return;
+      if (detailsShown) {
+        setDetailsShown(false);
+        return;
+      }
+      setPinPromptError(null);
+      setPinPromptTarget("details");
+      setPinPromptOpen(true);
+    }, [selectedCardId, detailsShown]);
+
+    const confirmLoginPin = useCallback(async (pin) => {
+      setPinPromptBusy(true);
+      setPinPromptError(null);
+      try {
+        await api.verifyPin(username, pin);
+        setPinPromptOpen(false);
+        if (pinPromptTarget === "cardPin") await revealCardPin();
+        else if (pinPromptTarget === "details") await revealCardDetails();
+      } catch (err) {
+        setPinPromptError(err);
+      } finally {
+        setPinPromptBusy(false);
+      }
+    }, [username, pinPromptTarget, revealCardPin, revealCardDetails]);
+
+    const cancelLoginPin = useCallback(() => {
+      setPinPromptOpen(false);
+      setPinPromptError(null);
+    }, []);
 
     const setCardAtmLimit = useCallback(async (minor) => {
       if (!selectedCardId) return;
@@ -331,6 +369,11 @@
                 cvv={cardCvv}
                 detailsShown={detailsShown}
                 onToggleDetails={toggleCardDetails}
+                pinPromptOpen={pinPromptOpen}
+                pinPromptBusy={pinPromptBusy}
+                pinPromptError={pinPromptError}
+                onConfirmLoginPin={confirmLoginPin}
+                onCancelLoginPin={cancelLoginPin}
                 onSetAtmLimit={setCardAtmLimit}
                 onSetOnlineLimit={setCardOnlineLimit}
               />

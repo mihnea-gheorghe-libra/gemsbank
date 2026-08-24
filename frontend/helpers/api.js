@@ -95,6 +95,7 @@
       send("/onboarding/" + id + "/complete", { method: "POST", json: payload }),
 
     login: (username, pin) => send("/auth/login", { method: "POST", json: { username, pin } }),
+    verifyPin: (username, pin) => send("/auth/pin/verify", { method: "POST", json: { username, pin } }),
     revealPin: (username, password) =>
       send("/auth/pin/reveal", { method: "POST", json: { username, password } }),
     requestPasswordReset: (username) =>

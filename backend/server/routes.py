@@ -11,6 +11,7 @@ from backend.auth.service import (
     RevealPin,
     SignIn,
     SignOut,
+    VerifyPin,
     VerifyResetCode,
     get_auth_service,
 )
@@ -261,6 +262,14 @@ async def login(
     payload: SignInRequest, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
     command = SignIn(username=payload.username, pin=payload.pin.strip())
+    return await bus.execute(command, _auth_actor(), idempotency_key)
+
+
+@auth_router.post("/pin/verify")
+async def verify_pin(
+    payload: SignInRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = VerifyPin(username=payload.username, pin=payload.pin.strip())
     return await bus.execute(command, _auth_actor(), idempotency_key)
 
 

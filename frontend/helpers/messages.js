@@ -298,6 +298,13 @@
           empty: "No cards deleted yet.",
           close: "Close",
         },
+        pinDialog: {
+          title: "Confirm your PIN",
+          hint: "Enter the 6-digit PIN you use to sign in to continue.",
+          confirm: "Confirm",
+          confirming: "Checking…",
+          cancel: "Cancel",
+        },
       },
       analytics: {
         title: "Analytics & statistics",
@@ -775,6 +782,13 @@
           virtualNote: "Instant, utilizabil online imediat, fără livrare fizică.",
           physicalNote: "Se livrează la adresa din cont — ajunge în 5–7 zile lucrătoare.",
           create: "Creează cardul",
+        },
+        pinDialog: {
+          title: "Confirmă PIN-ul",
+          hint: "Introdu PIN-ul de 6 cifre cu care te conectezi, ca să continui.",
+          confirm: "Confirmă",
+          confirming: "Se verifică…",
+          cancel: "Renunță",
         },
         historyDialog: {
           title: "Carduri șterse",

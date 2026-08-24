@@ -2,6 +2,7 @@
   const GEMS = (window.GEMS = window.GEMS || {});
   const SCR = (GEMS.dashboardScreens = GEMS.dashboardScreens || {});
   const UI = GEMS.ui;
+  const AUTH = GEMS.auth;
   const DASH = GEMS.dashboardUi;
   const t = GEMS.i18n.t;
   const DATA = GEMS.dashboardData;
@@ -336,6 +337,53 @@
     );
   }
 
+  function CardPinDialog({ busy, error, onDismiss, onSubmit }) {
+    const [pin, setPin] = useState("");
+
+    return (
+      <UI.Dialog labelledBy="card-pin-title" onDismiss={onDismiss}>
+        <h2 id="card-pin-title" className="dialog-title">
+          {t("dashboard.cards.pinDialog.title")}
+        </h2>
+        <p className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
+          {t("dashboard.cards.pinDialog.hint")}
+        </p>
+
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit(pin);
+          }}
+        >
+          <div className="field">
+            <AUTH.DigitGroup
+              label={t("dashboard.cards.pinDialog.title")}
+              length={6}
+              value={pin}
+              onChange={setPin}
+              autoFocus
+            />
+            {error ? (
+              <div style={{ fontSize: 11, marginTop: 4, color: "var(--color-negative)" }}>
+                {error.message}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="dialog-actions">
+            <UI.Button type="button" onClick={onDismiss}>
+              {t("dashboard.cards.pinDialog.cancel")}
+            </UI.Button>
+            <UI.Button type="submit" variant="primary" disabled={busy || pin.length !== 6}>
+              {busy ? t("dashboard.cards.pinDialog.confirming") : t("dashboard.cards.pinDialog.confirm")}
+            </UI.Button>
+          </div>
+        </form>
+      </UI.Dialog>
+    );
+  }
+
   SCR.CardsScreen = function CardsScreen({
     cards,
     loading,
@@ -354,6 +402,11 @@
     cvv,
     detailsShown,
     onToggleDetails,
+    pinPromptOpen,
+    pinPromptBusy,
+    pinPromptError,
+    onConfirmLoginPin,
+    onCancelLoginPin,
     onSetAtmLimit,
     onSetOnlineLimit,
   }) {
@@ -544,6 +597,15 @@
             ) : null}
           </div>
         )}
+
+        {pinPromptOpen ? (
+          <CardPinDialog
+            busy={pinPromptBusy}
+            error={pinPromptError}
+            onDismiss={onCancelLoginPin}
+            onSubmit={onConfirmLoginPin}
+          />
+        ) : null}
       </div>
     );
   };
