@@ -300,6 +300,7 @@
     const [form, setForm] = useState({
       username: "",
       password: "",
+      passwordConfirmation: "",
       pin: "",
       pinConfirmation: "",
     });
@@ -315,6 +316,7 @@
     const ready =
       form.username &&
       form.password &&
+      form.passwordConfirmation &&
       form.pin.length === CODE_LENGTH &&
       form.pinConfirmation.length === CODE_LENGTH;
 
@@ -347,6 +349,21 @@
               required
               value={form.password}
               onChange={(event) => update("password", event.target.value)}
+            />
+          </UI.Field>
+          <UI.Field
+            id="passwordConfirmation"
+            label={t("credentials.passwordConfirm")}
+            error={fieldErrors.passwordConfirm}
+          >
+            <UI.TextInput
+              id="passwordConfirmation"
+              name="passwordConfirmation"
+              type="password"
+              autoComplete="new-password"
+              required
+              value={form.passwordConfirmation}
+              onChange={(event) => update("passwordConfirmation", event.target.value)}
             />
           </UI.Field>
           <UI.Field id="pin" label={t("credentials.pin")} error={fieldErrors.pin}>
@@ -393,29 +410,6 @@
           {busy ? t("credentials.creating") : t("credentials.cta")}
         </UI.Button>
       </form>
-    );
-  };
-
-  ONB.DoneStep = function DoneStep({ result, onSignIn }) {
-    return (
-      <div className="onb-fade">
-        <UI.Plate style={{ padding: 20, maxWidth: 560, background: "var(--color-surface)" }}>
-          <UI.Kicker style={{ marginBottom: 8 }}>{t("done.caseLabel")}</UI.Kicker>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, marginBottom: 14 }}>
-            {result.kycCaseId}
-          </div>
-          <UI.Tag>{t("credentials.passkeyTag")}</UI.Tag>
-        </UI.Plate>
-
-        <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-          <UI.Button type="button" variant="primary" onClick={onSignIn}>
-            {t("done.goToSignIn")}
-          </UI.Button>
-          <UI.Button type="button" disabled>
-            {t("done.comingSoon")}
-          </UI.Button>
-        </div>
-      </div>
     );
   };
 })();

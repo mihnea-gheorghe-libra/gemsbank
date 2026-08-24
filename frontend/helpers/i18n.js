@@ -11,8 +11,18 @@
     return DEFAULT_LOCALE;
   }
 
-  const locale = resolveLocale();
-  const dictionary = GEMS.messages[locale] || GEMS.messages[DEFAULT_LOCALE];
+  let locale = resolveLocale();
+  let dictionary = GEMS.messages[locale] || GEMS.messages[DEFAULT_LOCALE];
+
+  function setLocale(newLocale) {
+    if (!GEMS.messages[newLocale]) return;
+    locale = newLocale;
+    dictionary = GEMS.messages[locale];
+    GEMS.i18n.locale = locale;
+    GEMS.i18n.dictionary = dictionary;
+    document.documentElement.lang = locale;
+    window.localStorage.setItem("gems.lang", locale);
+  }
 
   function lookup(key) {
     return key.split(".").reduce((node, part) => (node == null ? null : node[part]), dictionary);
@@ -27,6 +37,13 @@
     );
   }
 
+  function tError(message) {
+    if (!message) return message;
+    const value = dictionary.serverErrors && dictionary.serverErrors[message];
+    if (typeof value === "string") return value;
+    return message;
+  }
+
   function isoToDisplayDate(iso) {
     if (typeof iso !== "string") return "";
     const parts = iso.split("-");
@@ -34,6 +51,6 @@
     return parts[2] + "." + parts[1] + "." + parts[0];
   }
 
-  GEMS.i18n = { locale, t, dictionary, isoToDisplayDate };
+  GEMS.i18n = { locale, t, tError, dictionary, isoToDisplayDate, setLocale };
   document.documentElement.lang = locale;
 })();

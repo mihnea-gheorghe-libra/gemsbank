@@ -38,7 +38,9 @@ def normalise_phone(raw: str) -> str:
     return candidate
 
 
-def validate_password(raw: str) -> str:
+def validate_password(raw: str, confirmation: str) -> str:
+    if raw != confirmation:
+        raise ValidationError("Passwords do not match.", details={"field": "passwordConfirm"})
     if len(raw) < MIN_PASSWORD_LENGTH:
         raise ValidationError(
             f"Password must be at least {MIN_PASSWORD_LENGTH} characters.",

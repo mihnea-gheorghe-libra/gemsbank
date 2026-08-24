@@ -26,13 +26,10 @@
     };
 
     const handleLangChange = (newLang) => {
-      window.localStorage.setItem("gems.lang", newLang);
+      GEMS.i18n.setLocale(newLang);
+      setLang(newLang);
       if (username) {
-        GEMS.api.updatePreferences({ theme, lang: newLang }).catch(() => {}).finally(() => {
-          window.location.reload();
-        });
-      } else {
-        window.location.reload();
+        GEMS.api.updatePreferences({ theme, lang: newLang }).catch(() => {});
       }
     };
 
@@ -59,6 +56,17 @@
           lang={lang}
           onLang={handleLangChange}
           onSwitchToSignIn={() => setMode("signIn")}
+          onRegistered={(name, prefs) => {
+            setUsername(name);
+            if (prefs) {
+              if (prefs.theme && prefs.theme !== theme) setTheme(prefs.theme);
+              if (prefs.lang && prefs.lang !== lang) {
+                GEMS.i18n.setLocale(prefs.lang);
+                setLang(prefs.lang);
+              }
+            }
+            setMode("dashboard");
+          }}
         />
       );
     }
@@ -74,9 +82,8 @@
           if (prefs) {
             if (prefs.theme && prefs.theme !== theme) setTheme(prefs.theme);
             if (prefs.lang && prefs.lang !== lang) {
-              window.localStorage.setItem("gems.lang", prefs.lang);
-              window.location.reload();
-              return;
+              GEMS.i18n.setLocale(prefs.lang);
+              setLang(prefs.lang);
             }
           }
           setMode("dashboard");

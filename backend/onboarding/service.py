@@ -71,6 +71,7 @@ class CompleteOnboarding(Command):
     kyc_case_id: str
     username: str
     password: str
+    password_confirmation: str
     pin: str
     pin_confirmation: str
     prefs: dict[str, Any] | None = None
@@ -380,7 +381,7 @@ class OnboardingService:
         before = case.status.value
 
         username = validation.normalise_username(command.username)
-        password = validation.validate_password(command.password)
+        password = validation.validate_password(command.password, command.password_confirmation)
         pin = validation.validate_pin(command.pin, command.pin_confirmation)
 
         if await self._users.exists_username(username):

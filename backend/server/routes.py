@@ -62,6 +62,7 @@ class VerifyCodeRequest(BaseModel):
 class CredentialsRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     password: str = Field(min_length=1, max_length=200)
+    password_confirmation: str = Field(min_length=1, max_length=200, alias="passwordConfirmation")
     pin: str = Field(min_length=4, max_length=8)
     pin_confirmation: str = Field(min_length=4, max_length=8, alias="pinConfirmation")
     prefs: dict[str, Any] | None = None
@@ -254,6 +255,7 @@ async def complete(
         kyc_case_id=kyc_case_id,
         username=payload.username,
         password=payload.password,
+        password_confirmation=payload.password_confirmation,
         pin=payload.pin,
         pin_confirmation=payload.pin_confirmation,
         prefs=payload.prefs,

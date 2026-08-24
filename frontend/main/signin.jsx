@@ -19,7 +19,7 @@
   function toFieldErrors(error) {
     if (!error || !error.details || !error.details.field) return {};
     if (FIELD_KEYS.indexOf(error.details.field) < 0) return {};
-    return { [error.details.field]: error.message };
+    return { [error.details.field]: GEMS.i18n.tError(error.message) };
   }
 
   function normaliseUsername(value) {

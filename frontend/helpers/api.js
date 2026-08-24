@@ -94,15 +94,25 @@
     complete: (id, payload) =>
       send("/onboarding/" + id + "/complete", { method: "POST", json: payload }),
 
-    login: (username, pin) => send("/auth/login", { method: "POST", json: { username, pin } }),
-    revealPin: (username, password) =>
-      send("/auth/pin/reveal", { method: "POST", json: { username, password } }),
+    login: async (username, pin) => {
+      const response = await send("/auth/login", { method: "POST", json: { username, pin } });
+      GEMS.session.set(response.sessionToken);
+      return response;
+    },
+    revealPin: async (username, password) => {
+      const response = await send("/auth/pin/reveal", { method: "POST", json: { username, password } });
+      GEMS.session.set(response.sessionToken);
+      return response;
+    },
     requestPasswordReset: (username) =>
       send("/auth/password/reset", { method: "POST", json: { username } }),
     verifyResetCode: (id, code) =>
       send("/auth/password/reset/" + id + "/verify", { method: "POST", json: { code } }),
-    completePasswordReset: (id, payload) =>
-      send("/auth/password/reset/" + id + "/complete", { method: "POST", json: payload }),
+    completePasswordReset: async (id, payload) => {
+      const response = await send("/auth/password/reset/" + id + "/complete", { method: "POST", json: payload });
+      GEMS.session.set(response.sessionToken);
+      return response;
+    },
     logout: () => send("/auth/logout", { method: "POST" }),
     updatePreferences: (prefs) => send("/auth/preferences", { method: "PUT", json: { prefs } }),
 
