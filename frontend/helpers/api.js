@@ -116,6 +116,9 @@
     signTransfer: (id, code) =>
       send("/payments/transfers/" + id + "/sign", { method: "POST", json: { code } }),
 
+    marketSnapshot: (range, refresh) =>
+      send("/investments/market" + query({ range, refresh: refresh ? "true" : "" })),
+
     listCards: (username) => send("/cards?username=" + encodeURIComponent(username)),
     issueVirtualCard: (username) =>
       send("/cards/virtual", { method: "POST", json: { username } }),

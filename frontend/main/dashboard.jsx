@@ -54,9 +54,11 @@
     const [credits] = useState(DATA.credits);
     const [holdings, setHoldings] = useState(DATA.holdings);
     const [investCashMinor, setInvestCashMinor] = useState(DATA.investCashMinor);
+    const [market, setMarket] = useState(null);
+    const [marketLoading, setMarketLoading] = useState(false);
+    const [marketError, setMarketError] = useState(null);
     const [creditApplications, setCreditApplications] = useState([]);
     const [openAccountShown, setOpenAccountShown] = useState(false);
-    const [depositShown, setDepositShown] = useState(false);
     const [depositMove, setDepositMove] = useState(null);
     const [trade, setTrade] = useState(null);
     const [creditShown, setCreditShown] = useState(false);
@@ -159,6 +161,26 @@
         loadCards();
       }
     }, [screen, cardsLoaded, cardsLoading, loadCards]);
+
+    const loadMarket = useCallback(async (force) => {
+      setMarketLoading(true);
+      setMarketError(null);
+      try {
+        setMarket(await api.marketSnapshot("6mo", force === true));
+      } catch (err) {
+        setMarketError(err);
+      } finally {
+        setMarketLoading(false);
+      }
+    }, []);
+
+    useEffect(() => {
+      if (screen === "portfolio" && !market && !marketLoading && !marketError) {
+        loadMarket();
+      }
+    }, [screen, market, marketLoading, marketError, loadMarket]);
+
+    const pricedHoldings = DASH.applyQuotes(holdings, market);
 
     const selectCard = useCallback((cardId) => {
       setSelectedCardId(cardId);
@@ -463,8 +485,13 @@
         direction: "out",
         accountId: fromId,
       });
-      setDepositShown(false);
+      setOpenAccountShown(false);
     }, [creditAccount, bookMovement]);
+
+    const openProduct = useCallback(
+      (payload) => (payload.deposit ? newDeposit(payload) : openAccount(payload)),
+      [newDeposit, openAccount]
+    );
 
     const moveDeposit = useCallback(({ depositId, accountId, amountMinor, direction }) => {
       const inbound = direction === "in";
@@ -509,7 +536,7 @@
     }, [accounts, creditAccount, bookMovement]);
 
     const runTrade = useCallback(({ holdingId, accountId, amountMinor, direction }) => {
-      const holding = holdings.find((item) => item.id === holdingId);
+      const holding = DASH.applyQuotes(holdings, market).find((item) => item.id === holdingId);
       if (!holding) return;
       const buying = direction === "buy";
 
@@ -551,7 +578,7 @@
         )
       );
       setTrade(null);
-    }, [holdings, investCashMinor, creditAccount, bookMovement]);
+    }, [holdings, market, investCashMinor, creditAccount, bookMovement]);
 
     const applyForCredit = useCallback((application) => {
       setCreditApplications((list) => [application].concat(list));
@@ -613,11 +640,14 @@
                 accounts={accounts}
                 deposits={deposits}
                 credits={credits}
-                holdings={holdings}
+                holdings={pricedHoldings}
                 investCashMinor={investCashMinor}
                 creditApplications={creditApplications}
+                market={market}
+                marketLoading={marketLoading}
+                marketError={marketError}
+                onRefreshMarket={loadMarket}
                 onOpenAccount={() => setOpenAccountShown(true)}
-                onNewDeposit={() => setDepositShown(true)}
                 onMoveDeposit={(deposit, direction) => setDepositMove({ deposit, direction })}
                 onCloseDeposit={closeDeposit}
                 onTrade={(holdingId, direction) => setTrade({ holdingId, direction })}
@@ -700,15 +730,7 @@
           <DASH.OpenAccountDialog
             accounts={accounts}
             onClose={() => setOpenAccountShown(false)}
-            onSubmit={openAccount}
-          />
-        ) : null}
-
-        {depositShown ? (
-          <DASH.NewDepositDialog
-            accounts={accounts}
-            onClose={() => setDepositShown(false)}
-            onSubmit={newDeposit}
+            onSubmit={openProduct}
           />
         ) : null}
 
@@ -726,7 +748,7 @@
         {trade ? (
           <DASH.InvestDialog
             key={(trade.holdingId || "any") + trade.direction}
-            holdings={holdings}
+            holdings={pricedHoldings}
             accounts={accounts}
             investCashMinor={investCashMinor}
             holdingId={trade.holdingId}

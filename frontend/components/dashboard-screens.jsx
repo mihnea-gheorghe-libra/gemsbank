@@ -329,8 +329,11 @@
     holdings,
     investCashMinor,
     creditApplications,
+    market,
+    marketLoading,
+    marketError,
+    onRefreshMarket,
     onOpenAccount,
-    onNewDeposit,
     onMoveDeposit,
     onCloseDeposit,
     onTrade,
@@ -338,6 +341,13 @@
     onWithdrawApplication,
   }) {
     const investedMinor = holdings.reduce((sum, holding) => sum + DASH.holdingValue(holding), 0) + investCashMinor;
+    const [focusId, setFocusId] = useState(null);
+
+    const focused = holdings.find((holding) => holding.id === focusId) || null;
+    const totalSeries = DASH.portfolioSeries(holdings, investCashMinor);
+    const series = focused ? DASH.instrumentSeries(focused) : totalSeries;
+    const windowChangeBps = DASH.seriesChangeBps(totalSeries);
+    const focusChangeBps = focused ? DASH.seriesChangeBps(series) : null;
 
     return (
       <div>
@@ -362,7 +372,6 @@
           <UI.Plate className="elev-sm" style={{ padding: 16 }}>
             <div className="dash-kicker-row">
               <UI.Kicker>{t("dashboard.portfolio.deposits")}</UI.Kicker>
-              <UI.Button type="button" variant="ghost" onClick={onNewDeposit}>{t("dashboard.portfolio.newDeposit")}</UI.Button>
             </div>
             {deposits.length ? (
               <div className="dash-product-list">
@@ -410,7 +419,7 @@
                       </UI.Button>
                       <UI.Button
                         type="button"
-                        variant="ghost"
+                        variant="secondary"
                         aria-label={t("dashboard.deposit.closeLabel", { name: deposit.name })}
                         onClick={() => onCloseDeposit(deposit)}
                       >
@@ -428,7 +437,7 @@
           <UI.Plate className="elev-sm" style={{ padding: 16 }}>
             <div className="dash-kicker-row">
               <UI.Kicker>{t("dashboard.portfolio.credits")}</UI.Kicker>
-              <UI.Button type="button" variant="ghost" onClick={onApplyCredit}>{t("dashboard.portfolio.applyCredit")}</UI.Button>
+              <UI.Button type="button" variant="secondary" onClick={onApplyCredit}>{t("dashboard.portfolio.applyCredit")}</UI.Button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {credits.map((credit) => {
@@ -490,7 +499,7 @@
                         </div>
                         <UI.Button
                           type="button"
-                          variant="ghost"
+                          variant="secondary"
                           aria-label={t("dashboard.credit.withdrawLabel")}
                           onClick={() => onWithdrawApplication(application.id)}
                         >
@@ -511,32 +520,124 @@
         <UI.Plate className="elev-sm" style={{ padding: 16, marginTop: 20 }}>
           <div className="dash-kicker-row">
             <UI.Kicker>
-              {t("dashboard.portfolio.investments", { total: formatMinor(investedMinor) })}
+              {windowChangeBps == null
+                ? t("dashboard.portfolio.investments", { total: formatMinor(investedMinor) })
+                : t("dashboard.portfolio.investmentsWithChange", {
+                    total: formatMinor(investedMinor),
+                    change: DASH.formatChangeBps(windowChangeBps),
+                    months: DASH.seriesMonths(series),
+                  })}
             </UI.Kicker>
-            <UI.Button type="button" variant="ghost" onClick={() => onTrade(null, "buy")}>
+            <UI.Button type="button" variant="secondary" onClick={() => onTrade(null, "buy")}>
               {t("dashboard.invest.new")}
             </UI.Button>
           </div>
+
+          <DASH.MarketStatus
+            market={market}
+            loading={marketLoading}
+            error={marketError}
+            onRefresh={onRefreshMarket}
+          />
+
           <div className="dash-invest-row">
-            <UI.Plate className="dash-spark">
-              <svg viewBox="0 0 400 140" preserveAspectRatio="none" style={{ width: "100%", height: "100%" }} aria-hidden="true">
-                <polyline points="0,110 40,96 80,102 120,74 160,82 200,58 240,64 280,40 320,48 360,26 400,18" fill="none" stroke="var(--color-primary)" strokeWidth="1.5" />
-              </svg>
+            <UI.Plate className="dash-chart-plate">
+              <div className="dash-chart-head">
+                <div>
+                  <div className="dash-chart-title">
+                    {focused ? focused.name : t("dashboard.invest.totalTitle")}
+                  </div>
+                  <div className="text-muted dash-chart-sub">
+                    {focused
+                      ? t("dashboard.invest.instrumentSub", {
+                          symbol: focused.symbol || focused.id,
+                          currency: focused.quoteCurrency || focused.cur,
+                        })
+                      : t("dashboard.invest.totalSub")}
+                  </div>
+                </div>
+                {focused ? (
+                  <UI.Button type="button" variant="secondary" onClick={() => setFocusId(null)}>
+                    {t("dashboard.invest.backToTotal")}
+                  </UI.Button>
+                ) : null}
+              </div>
+
+              {series.length > 1 ? (
+                <DASH.PriceChart
+                  key={focusId || "total"}
+                  series={series}
+                  dimmed={marketLoading}
+                  label={t("dashboard.invest.chartLabel", {
+                    what: focused ? focused.name : t("dashboard.invest.totalTitle"),
+                    from: GEMS.i18n.isoToDisplayDate(series[0].on),
+                    to: GEMS.i18n.isoToDisplayDate(series[series.length - 1].on),
+                    change:
+                      DASH.seriesChangeBps(series) == null
+                        ? "—"
+                        : DASH.formatChangeBps(DASH.seriesChangeBps(series)),
+                  })}
+                />
+              ) : (
+                <div className="dash-chart-empty text-muted">
+                  {marketLoading ? t("dashboard.invest.loading") : t("dashboard.invest.noHistory")}
+                </div>
+              )}
+
+              {focused && focusChangeBps != null ? (
+                <div className="dash-chart-foot text-muted">
+                  {t("dashboard.invest.windowChange", {
+                    change: DASH.formatChangeBps(focusChangeBps),
+                  })}
+                </div>
+              ) : null}
             </UI.Plate>
             <table className="dash-table">
               <tbody>
                 {holdings.map((holding) => (
-                  <tr key={holding.id}>
-                    <td>{holding.name}</td>
+                  <tr
+                    key={holding.id}
+                    className={UI.classNames(
+                      "dash-holding-row",
+                      focusId === holding.id && "is-focused"
+                    )}
+                  >
+                    <td>
+                      <button
+                        type="button"
+                        className="dash-holding-pick"
+                        aria-pressed={focusId === holding.id}
+                        disabled={!holding.history || holding.history.length < 2}
+                        onClick={() => setFocusId(focusId === holding.id ? null : holding.id)}
+                      >
+                        <span>{holding.name}</span>
+                        {holding.symbol ? (
+                          <span className="dash-symbol">{holding.symbol}</span>
+                        ) : null}
+                      </button>
+                    </td>
                     <td className="text-muted" style={{ fontSize: 12 }}>{DASH.formatUnits(holding)}</td>
-                    <td className="amount-col">{formatMinor(DASH.holdingValue(holding))}</td>
-                    <td className="amount-col" style={{ whiteSpace: "nowrap" }}>
-                      <UI.Button type="button" variant="ghost" onClick={() => onTrade(holding.id, "buy")}>
+                    <td className="amount-col">
+                      <div>{formatMinor(DASH.holdingValue(holding))}</div>
+                      {holding.changeBps == null ? null : (
+                        <div
+                          className={UI.classNames(
+                            "dash-change",
+                            holding.changeBps > 0 && "is-up",
+                            holding.changeBps < 0 && "is-down"
+                          )}
+                        >
+                          {DASH.formatChangeBps(holding.changeBps)}
+                        </div>
+                      )}
+                    </td>
+                    <td className="amount-col dash-trade-cell">
+                      <UI.Button type="button" variant="secondary" onClick={() => onTrade(holding.id, "buy")}>
                         {t("dashboard.invest.buy")}
                       </UI.Button>
                       <UI.Button
                         type="button"
-                        variant="ghost"
+                        variant="secondary"
                         disabled={DASH.holdingValue(holding) <= 0}
                         onClick={() => onTrade(holding.id, "sell")}
                       >

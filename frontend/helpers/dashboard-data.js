@@ -52,6 +52,14 @@
       },
     ],
 
+    accountTypes: [
+      { key: "current", creates: "account", rateBps: 0, monthlyFeeMinor: 0, minOpenMinor: 0, accessKey: "anytime" },
+      { key: "savings", creates: "account", rateBps: 225, monthlyFeeMinor: 0, minOpenMinor: 10000, accessKey: "anytime" },
+      { key: "deposit", creates: "deposit", depositKind: "term", monthlyFeeMinor: 0, minOpenMinor: 100000, accessKey: "maturity" },
+      { key: "goal", creates: "deposit", depositKind: "goal", monthlyFeeMinor: 0, minOpenMinor: 10000, accessKey: "goalExit" },
+      { key: "invest", creates: "account", rateBps: 0, monthlyFeeMinor: 900, minOpenMinor: 50000, accessKey: "settlement" },
+    ],
+
     templates: [
       {
         id: "tpl-rent",
@@ -100,21 +108,63 @@
       { id: "dep-eur-savings", kind: "savings", name: "EUR savings", rateBps: 225, matures: null, minor: 1194000, cur: "EUR" },
       { id: "dep-goal-apartment", kind: "goal", name: "Goal — apartment", rateBps: 300, matures: "2028-06-01", minor: 820000, targetMinor: 5000000, cur: "RON" },
     ],
-    depositTerms: [
-      { months: 3, rateBps: 480 },
-      { months: 6, rateBps: 540 },
-      { months: 12, rateBps: 610 },
-      { months: 24, rateBps: 665 },
-    ],
+    depositProducts: {
+      term: {
+        defaultMonths: 12,
+        terms: [
+          { months: 1, rateBps: 375 },
+          { months: 3, rateBps: 480 },
+          { months: 6, rateBps: 540 },
+          { months: 9, rateBps: 575 },
+          { months: 12, rateBps: 610 },
+          { months: 18, rateBps: 640 },
+          { months: 24, rateBps: 665 },
+          { months: 36, rateBps: 690 },
+        ],
+      },
+      goal: {
+        defaultMonths: 24,
+        terms: [
+          { months: 12, rateBps: 260 },
+          { months: 24, rateBps: 300 },
+          { months: 36, rateBps: 330 },
+          { months: 60, rateBps: 360 },
+        ],
+      },
+    },
 
     credits: [
       { id: "cr-personal", kind: "loan", nameKey: "personal", termMonths: 60, paidMonths: 24, outstandingMinor: 3410000, cur: "RON", rateBps: 890 },
       { id: "cr-line", kind: "line", nameKey: "line", limitMinor: 600000, usedMinor: 120000, cur: "RON", rateBps: 1890 },
     ],
     creditProducts: [
-      { id: "personal", kind: "loan", rateBps: 890, maxMinor: 15000000, terms: [12, 24, 36, 48, 60] },
+      {
+        id: "personal",
+        kind: "loan",
+        rateBps: 890,
+        maxMinor: 15000000,
+        terms: [
+          { months: 12, rateBps: 790 },
+          { months: 24, rateBps: 830 },
+          { months: 36, rateBps: 890 },
+          { months: 48, rateBps: 940 },
+          { months: 60, rateBps: 990 },
+        ],
+      },
       { id: "line", kind: "line", rateBps: 1890, maxMinor: 2000000, terms: [] },
-      { id: "mortgage", kind: "loan", rateBps: 590, maxMinor: 90000000, terms: [120, 180, 240, 300, 360] },
+      {
+        id: "mortgage",
+        kind: "loan",
+        rateBps: 590,
+        maxMinor: 90000000,
+        terms: [
+          { months: 120, rateBps: 520 },
+          { months: 180, rateBps: 560 },
+          { months: 240, rateBps: 590 },
+          { months: 300, rateBps: 635 },
+          { months: 360, rateBps: 670 },
+        ],
+      },
     ],
 
     holdings: [

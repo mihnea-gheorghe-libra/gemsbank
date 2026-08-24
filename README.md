@@ -26,10 +26,14 @@ action opens the dashboard mockup. Plain PIN sign-in opens it directly, since it
 show — there is no separate "welcome" screen any more. There is still no session token: the real
 dashboard and the `sessions` collection arrive together, later.
 
-The **Cards** screen is the one exception: it has a real backend (`backend/cards/`) — issue a
+The **Cards** screen is one exception: it has a real backend (`backend/cards/`) — issue a
 virtual card, freeze/unfreeze, reveal PIN, set ATM/online limits, block permanently — but the
 Cards screen itself still renders from `dashboard-data.js`, not from these endpoints. See
 "Cards — a backend without a session" below before wiring it up.
+
+The **Investments** widget on the Portfolio screen is the other: its prices, history and FX are
+real, fetched live through `backend/investments/`. See "Investments — real prices, demo trades"
+below.
 
 The mockup's **Payments** screen is interactive, but only against React state seeded from
 `dashboard-data.js` — nothing reaches the ledger, and a refresh resets everything:
@@ -146,6 +150,11 @@ backend/
     service.py       open, resolve by IBAN, list with balances derived from the ledger
     validation.py    IBAN mod-97 check and generation
     adapters.py      clock, the starter-account list
+  investments/       market data only — read-only, no money movement
+    instrument.py    Instrument, Quote, HistoryPoint, ExchangeRate, MarketSnapshot
+    service.py       catalogue reads, TTL cache, last-known-good fallback, FX conversion
+    validation.py    minor-unit and rate conversion, history range whitelist
+    adapters.py      Yahoo chart client, Frankfurter rate client, shared httpx transport
   payments/
     service.py       commands, ports, handlers, read models
     payment.py       the Payment state machine and the Beneficiary aggregate
@@ -323,6 +332,46 @@ Other tradeoffs worth knowing:
     permanently — there is no admin back-office in v0, so a permanently locked demo account has no
     self-service recovery, by design. A correct password at any stage before that resets the
     track to zero.
+
+## Investments — real prices, demo trades
+
+`backend/investments/` is the only feature that reaches outside the system. It is **read-only**:
+no command, no journal entry, no outbox event. Buy and Sell on the Portfolio screen still move
+React state only, exactly as before — the money door is untouched.
+
+Two public providers, neither needing a key or an account:
+
+- **Yahoo Finance** `v8/finance/chart/{symbol}` — an unofficial endpoint — for `URTH`
+  (MSCI World ETF, USD), `TLV.RO` (Banca Transilvania on BVB, RON) and `BTC-USD`. One provider
+  covers all three asset classes. It returns the spot price and a daily close series.
+- **Frankfurter** for USD→RON, both the latest rate and a daily time series, sourced from ECB
+  reference rates.
+
+Everything is normalised to **RON minor units** before it leaves the service. Floats exist only
+inside `adapters.py`; `validation.py` converts them with `Decimal` and `ROUND_HALF_EVEN`. FX rates
+cross the wire as `rateMicro` — the rate scaled by 1e6 — never as a float.
+
+Historical points are converted with the FX rate **of that day**, not today's, so the RON curve
+has the right shape and not just the right endpoint. Weekends and holidays forward-fill from the
+last published rate.
+
+- `GET /investments/instruments` — the static catalogue
+- `GET /investments/market?range=6mo` — quotes, day change in bps, converted history, FX rates
+- `GET /investments/market?refresh=true` — what the widget's Refresh button calls; skips the TTL
+  cache and refetches, with a floor of `investments_min_refresh_seconds` so a held-down button
+  cannot hammer an unofficial endpoint
+
+**When a provider is down** the service degrades in three steps: the TTL cache
+(`investments_quote_ttl_seconds`, 15 min), then the last successful response held in memory, then
+the fallback prices baked into `adapters.py`. The response carries `live: false` and the widget
+says so, with the timestamp of the data it is actually showing. Retries back off to
+`investments_retry_seconds`. The app therefore starts and renders with no internet at all.
+
+The cache is per-process and in memory: a restart loses the last-known-good and falls back to the
+baked-in prices until the first successful fetch.
+
+`Instrument.id` values (`h-msci`, `h-tlv`, `h-btc`) match the holding ids in `dashboard-data.js`;
+that join is what lets the mockup's unit counts meet real prices.
 
 ## Cards — a backend without a session
 
