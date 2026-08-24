@@ -26,10 +26,53 @@ action opens the dashboard mockup. Plain PIN sign-in opens it directly, since it
 show — there is no separate "welcome" screen any more. There is still no session token: the real
 dashboard and the `sessions` collection arrive together, later.
 
-The **Cards** screen is the one exception: it has a real backend (`backend/cards/`) — issue a
+The **Cards** screen is one exception: it has a real backend (`backend/cards/`) — issue a
 virtual card, freeze/unfreeze, reveal PIN, set ATM/online limits, block permanently — but the
 Cards screen itself still renders from `dashboard-data.js`, not from these endpoints. See
 "Cards — a backend without a session" below before wiring it up.
+
+The **Investments** widget on the Portfolio screen is the other: its prices, history and FX are
+real, fetched live through `backend/investments/`. See "Investments — real prices, demo trades"
+below.
+
+The mockup's **Payments** screen is interactive, but only against React state seeded from
+`dashboard-data.js` — nothing reaches the ledger, and a refresh resets everything:
+
+- **New payment** has two rails. *IBAN transfer* pays a third party; *Between my accounts* is a
+  dropdown of the customer's own accounts, restricted to targets in the same currency because
+  GEMS does not convert money. Both show the source account with its balance, and an amount the
+  account cannot cover turns the field red, names the shortfall and blocks the button.
+- **Templates** are saved payees under a name the customer chooses (Rent, Mum, Gym). They live on
+  the Payments screen — add, edit, delete, or *Pay* to open the dialog prefilled — and appear as
+  quick-pick chips inside the dialog. A payment can save its payee as a template on the way out.
+- **Split bill** is its own button and its own dialog, not a third rail of New payment: a total,
+  the account to collect into, a row per person, and *Split equally* which divides in minor units
+  and puts the remainder on the first share, so the parts always sum to the total. Open requests
+  land in a card on the Payments screen where each share can be marked paid.
+- **All / Income / Spending / Pending / Cards** and the filter box now actually filter the
+  movements table. `Cards` selects card-channel movements; the filter box matches counterparty,
+  reference or IBAN.
+
+The **Portfolio** screen is interactive on the same terms:
+
+- **Open new account** picks a type and currency, mints a demo `RO.. GEMS ....` IBAN, and
+  optionally funds the account from an existing one in the same currency. The new account shows
+  up everywhere accounts are listed, including the payment dropdowns.
+- **New deposit** opens a term deposit, a savings account, or a savings goal with a target. Term
+  rates come from `depositTerms`; the money leaves the funding account and the maturity date is
+  computed from the term. Every product can be topped up, withdrawn from, or closed — closing
+  returns the balance to an account in the same currency.
+- **Investments** buy and sell holdings at the stored unit price, spending *cash to invest*
+  before touching an account. Position value is derived from units times price, so the
+  INVESTMENTS header always equals the sum of what is listed under it.
+- **Apply for credit** records an application against a product from `creditProducts` (with its
+  rate and maximum) and leaves it in `review`. **Nothing is approved here.** The eligibility
+  decision is the seam left for a future agent that reads accounts and income; until that agent
+  exists, applications sit in review and say so on screen.
+
+Balances and amounts in the mockup are integer minor units, formatted for display, so the
+arithmetic above matches rule 1 even though no money is real. Interest rates are integer basis
+points for the same reason.
 
 ## Run it
 
@@ -107,6 +150,11 @@ backend/
     service.py       open, resolve by IBAN, list with balances derived from the ledger
     validation.py    IBAN mod-97 check and generation
     adapters.py      clock, the starter-account list
+  investments/       market data only — read-only, no money movement
+    instrument.py    Instrument, Quote, HistoryPoint, ExchangeRate, MarketSnapshot
+    service.py       catalogue reads, TTL cache, last-known-good fallback, FX conversion
+    validation.py    minor-unit and rate conversion, history range whitelist
+    adapters.py      Yahoo chart client, Frankfurter rate client, shared httpx transport
   payments/
     service.py       commands, ports, handlers, read models
     payment.py       the Payment state machine and the Beneficiary aggregate
@@ -122,11 +170,16 @@ frontend/            no build step; index.html script order is the module graph
   main/app.jsx       chooses sign in vs register, mounts the app
   main/signin.jsx    sign in, PIN recovery, password reset, welcome, hands off to the dashboard
   main/register.jsx  onboarding page state and flow orchestration
-  main/dashboard.jsx post-login dashboard mockup: screen state, chat state, mock-data wiring
+  main/dashboard.jsx post-login dashboard mockup: screen state, chat state, accounts,
+                     transactions, templates and split bills, mock-data wiring
   components/        ui.jsx (primitives) · rails.jsx (step rail, agent panel) · steps.jsx ·
                      auth.jsx (sign-in forms, PIN panel, welcome) ·
-                     dashboard-widgets.jsx (segmented control, bars, donut, progress, amount) ·
-                     dashboard-shell.jsx (sidebar, topbar, agent dock, new-payment dialog) ·
+                     dashboard-widgets.jsx (segmented control, bars, donut, progress, amount,
+                     minor-unit format/parse/split helpers) ·
+                     dashboard-shell.jsx (sidebar, topbar, agent dock, new-payment, split-bill
+                     and template dialogs) ·
+                     dashboard-portfolio.jsx (open-account, deposit, invest and credit dialogs,
+                     IBAN/rate/unit helpers) ·
                      dashboard-screens.jsx (home, payments, chat, portfolio, cards, analytics, settings)
   helpers/           api.js (the only fetch caller) · i18n.js · messages.js (en + ro) ·
                      people.js (name formatting for display) ·
@@ -281,6 +334,45 @@ Other tradeoffs worth knowing:
     self-service recovery, by design. A correct password at any stage before that resets the
     track to zero.
 
+## Investments — real prices, demo trades
+
+`backend/investments/` is the only feature that reaches outside the system. It is **read-only**:
+no command, no journal entry, no outbox event. Buy and Sell on the Portfolio screen still move
+React state only, exactly as before — the money door is untouched.
+
+Two public providers, neither needing a key or an account:
+
+- **Yahoo Finance** `v8/finance/chart/{symbol}` — an unofficial endpoint — for `URTH`
+  (MSCI World ETF, USD), `TLV.RO` (Banca Transilvania on BVB, RON) and `BTC-USD`. One provider
+  covers all three asset classes. It returns the spot price and a daily close series.
+- **Frankfurter** for USD→RON, both the latest rate and a daily time series, sourced from ECB
+  reference rates.
+
+Everything is normalised to **RON minor units** before it leaves the service. Floats exist only
+inside `adapters.py`; `validation.py` converts them with `Decimal` and `ROUND_HALF_EVEN`. FX rates
+cross the wire as `rateMicro` — the rate scaled by 1e6 — never as a float.
+
+Historical points are converted with the FX rate **of that day**, not today's, so the RON curve
+has the right shape and not just the right endpoint. Weekends and holidays forward-fill from the
+last published rate.
+
+- `GET /investments/instruments` — the static catalogue
+- `GET /investments/market?range=6mo` — quotes, day change in bps, converted history, FX rates
+- `GET /investments/market?refresh=true` — what the widget's Refresh button calls; skips the TTL
+  cache and refetches, with a floor of `investments_min_refresh_seconds` so a held-down button
+  cannot hammer an unofficial endpoint
+
+**When a provider is down** the service degrades in three steps: the TTL cache
+(`investments_quote_ttl_seconds`, 15 min), then the last successful response held in memory, then
+the fallback prices baked into `adapters.py`. The response carries `live: false` and the widget
+says so, with the timestamp of the data it is actually showing. Retries back off to
+`investments_retry_seconds`. The app therefore starts and renders with no internet at all.
+
+The cache is per-process and in memory: a restart loses the last-known-good and falls back to the
+baked-in prices until the first successful fetch.
+
+`Instrument.id` values (`h-msci`, `h-tlv`, `h-btc`) match the holding ids in `dashboard-data.js`;
+that join is what lets the mockup's unit counts meet real prices.
 ## Personal details come from the ID document
 
 Everything the app shows about who you are is read once, by OCR, from the ID document you upload

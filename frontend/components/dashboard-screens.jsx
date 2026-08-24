@@ -15,13 +15,23 @@
     { icon: "QrCode", key: "scanQr", go: "payments" },
   ];
 
-  const MONEY_FORMAT = new Intl.NumberFormat("ro-RO", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const formatMinor = DASH.formatMinor;
 
-  function formatMinor(minor) {
-    return MONEY_FORMAT.format(minor / 100);
+  const TX_FILTERS = {
+    all: () => true,
+    income: (row) => row.direction === "in",
+    spending: (row) => row.direction === "out",
+    pending: (row) => row.statusKey === "pending",
+    cards: (row) => row.channel === "card",
+  };
+
+  function matchesQuery(row, query) {
+    if (!query) return true;
+    const needle = query.trim().toLowerCase();
+    if (!needle) return true;
+    return [row.who, row.ref, row.iban].some(
+      (value) => typeof value === "string" && value.toLowerCase().indexOf(needle) >= 0
+    );
   }
 
   function kindToI18nKey(kind) {
@@ -71,7 +81,7 @@
                 <td className="text-muted">{t("dashboard.category." + row.categoryKey)}</td>
                 <td><UI.Tag variant="accent">{t("dashboard.status." + row.statusKey)}</UI.Tag></td>
                 <td className="amount-col">
-                  <DASH.Amount value={row.amount} direction={row.direction} />
+                  <DASH.Amount minor={row.minor} direction={row.direction} currency={row.currency || "RON"} />
                 </td>
               </tr>
             ))}
@@ -81,7 +91,7 @@
     );
   }
 
-  SCR.HomeScreen = function HomeScreen({ balanceHidden, onToggleBalance, onNavigate }) {
+SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onSpeakBalance, onNavigate }) {
     return (
       <div className="dash-grid-home">
         <UI.Plate className="dash-balance-card elev-sm">
@@ -117,13 +127,13 @@
             <a href="#" onClick={(event) => { event.preventDefault(); onNavigate("portfolio"); }}>{t("dashboard.home.openAccount")}</a>
           </div>
           <div className="dash-accounts-tiles">
-            {DATA.accounts.map((account, index) => (
+            {accounts.slice(0, 3).map((account, index) => (
               <UI.Plate key={index} className="dash-account-tile">
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
                   {account.cur} · {t("dashboard.accountType." + account.typeKey)}
                 </div>
-                <div className="dash-account-amount">{balanceHidden ? "••••••" : account.amount}</div>
-                <div className="text-muted" style={{ fontSize: 11 }}>{account.iban}</div>
+                <div className="dash-account-amount">{balanceHidden ? "••••••" : formatMinor(account.minor)}</div>
+                <div className="text-muted" style={{ fontSize: 11 }}>{account.ibanShort}</div>
               </UI.Plate>
             ))}
           </div>
@@ -147,31 +157,53 @@
             <UI.Kicker>{t("dashboard.home.recentActivity")}</UI.Kicker>
             <a href="#" onClick={(event) => { event.preventDefault(); onNavigate("payments"); }}>{t("dashboard.home.allTransactions")}</a>
           </div>
-          <TxTable rows={DATA.transactions.slice(0, 4)} compact />
+          <TxTable rows={transactions.slice(0, 4)} compact />
         </UI.Plate>
       </div>
     );
   };
 
-  SCR.PaymentsScreen = function PaymentsScreen({ filter, onFilter, onOpenPay }) {
-    const filters = ["all", "income", "spending", "pending", "cards"];
+  SCR.PaymentsScreen = function PaymentsScreen({
+    accounts,
+    transactions,
+    pending,
+    templates,
+    splitBills,
+    filter,
+    onFilter,
+    query,
+    onQuery,
+    onOpenPay,
+    onOpenSplit,
+    onNewTemplate,
+    onEditTemplate,
+    onDeleteTemplate,
+    onUseTemplate,
+    onSettleShare,
+    onDeleteSplit,
+  }) {
+    const filters = Object.keys(TX_FILTERS);
+    const visible = transactions.filter((row) => TX_FILTERS[filter](row) && matchesQuery(row, query));
+
     return (
       <div>
         <div className="dash-screen-head">
           <div>
             <h3 style={{ margin: 0 }}>{t("dashboard.payments.title")}</h3>
             <div className="text-muted" style={{ fontSize: 13 }}>
-              {t("dashboard.payments.subtitle", { count: DATA.transactions.length, pending: DATA.pending.length })}
+              {t("dashboard.payments.subtitle", { count: transactions.length, pending: pending.length })}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <UI.Button type="button" variant="secondary">{t("dashboard.payments.splitBill")}</UI.Button>
-            <UI.Button type="button" variant="secondary">{t("dashboard.payments.scanQr")}</UI.Button>
+            <UI.Button type="button" variant="secondary" onClick={onOpenSplit}>{t("dashboard.payments.splitBill")}</UI.Button>
             <UI.Button type="button" variant="primary" onClick={onOpenPay}>{t("dashboard.payments.newPayment")}</UI.Button>
           </div>
         </div>
 
         <UI.Plate className="elev-sm" style={{ padding: 16, marginBottom: 18 }}>
+          <div className="dash-kicker-row">
+            <UI.Kicker>{t("dashboard.templates.title")}</UI.Kicker>
+            <UI.Button type="button" variant="ghost" onClick={onNewTemplate}>{t("dashboard.templates.new")}</UI.Button>
           <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.payments.pendingTitle")}</UI.Kicker>
           <div className="dash-pending-grid">
             {DATA.pending.map((row, index) => (
@@ -186,38 +218,165 @@
               </div>
             ))}
           </div>
+          {templates.length ? (
+            <div className="dash-template-grid">
+              {templates.map((template) => (
+                <UI.Plate key={template.id} className="dash-template-card">
+                  <div className="dash-template-name">{template.name}</div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>{template.beneficiary}</div>
+                  <div className="dash-template-iban">{template.iban}</div>
+                  <div className="dash-template-actions">
+                    <UI.Button type="button" variant="secondary" onClick={() => onUseTemplate(template)}>
+                      {t("dashboard.templates.use")}
+                    </UI.Button>
+                    <UI.Button type="button" variant="ghost" onClick={() => onEditTemplate(template)}>
+                      {t("dashboard.templates.edit")}
+                    </UI.Button>
+                    <UI.Button
+                      type="button"
+                      variant="ghost"
+                      aria-label={t("dashboard.templates.deleteLabel", { name: template.name })}
+                      onClick={() => onDeleteTemplate(template.id)}
+                    >
+                      {t("dashboard.templates.delete")}
+                    </UI.Button>
+                  </div>
+                </UI.Plate>
+              ))}
+            </div>
+          ) : (
+            <div className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.templates.empty")}</div>
+          )}
         </UI.Plate>
+
+        {splitBills.length ? (
+          <UI.Plate className="elev-sm" style={{ padding: 16, marginBottom: 18 }}>
+            <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.split.openTitle")}</UI.Kicker>
+            <div className="dash-split-list">
+              {splitBills.map((bill) => {
+                const outstanding = bill.participants
+                  .filter((person) => !person.settled)
+                  .reduce((sum, person) => sum + person.minor, 0);
+                const account = accounts.find((item) => item.id === bill.accountId);
+                return (
+                  <div className="dash-split-card" key={bill.id}>
+                    <div className="dash-split-card-head">
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>{bill.reference}</div>
+                        <div className="text-muted" style={{ fontSize: 11 }}>
+                          {t("dashboard.split.cardMeta", {
+                            total: formatMinor(bill.totalMinor) + " " + bill.currency,
+                            account: account ? account.ibanShort : "",
+                            mine: formatMinor(bill.myShareMinor) + " " + bill.currency,
+                          })}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontFamily: "var(--font-heading)", fontSize: 18 }}>
+                          {formatMinor(outstanding)} {bill.currency}
+                        </div>
+                        <div className="text-muted" style={{ fontSize: 11 }}>{t("dashboard.split.outstanding")}</div>
+                      </div>
+                      <UI.Button
+                        type="button"
+                        variant="ghost"
+                        aria-label={t("dashboard.split.closeRequest")}
+                        onClick={() => onDeleteSplit(bill.id)}
+                      >
+                        {"×"}
+                      </UI.Button>
+                    </div>
+                    <ul className="dash-split-shares">
+                      {bill.participants.map((person) => (
+                        <li key={person.key} data-settled={person.settled ? "true" : "false"}>
+                          <span className="dash-split-share-name">{person.name}</span>
+                          <span className="dash-split-share-amount">{formatMinor(person.minor)} {bill.currency}</span>
+                          {person.settled ? (
+                            <UI.Tag variant="accent">{t("dashboard.split.paid")}</UI.Tag>
+                          ) : (
+                            <UI.Button type="button" variant="secondary" onClick={() => onSettleShare(bill.id, person.key)}>
+                              {t("dashboard.split.markPaid")}
+                            </UI.Button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          </UI.Plate>
+        ) : null}
 
         <UI.Plate className="elev-sm" style={{ padding: 16 }}>
           <div className="dash-filters-row">
             {filters.map((key) => (
-              <UI.Button key={key} type="button" variant={filter === key ? "primary" : "secondary"} onClick={() => onFilter(key)}>
+              <UI.Button key={key} type="button" variant={filter === key ? "primary" : "secondary"} aria-pressed={filter === key} onClick={() => onFilter(key)}>
                 {t("dashboard.payments.filter." + key)}
               </UI.Button>
             ))}
-            <UI.TextInput style={{ marginLeft: "auto", maxWidth: 260 }} placeholder={t("dashboard.payments.filterPlaceholder")} aria-label={t("dashboard.payments.filterPlaceholder")} />
+            <UI.TextInput
+              style={{ marginLeft: "auto", maxWidth: 260 }}
+              type="search"
+              value={query}
+              placeholder={t("dashboard.payments.filterPlaceholder")}
+              aria-label={t("dashboard.payments.filterPlaceholder")}
+              onChange={(event) => onQuery(event.target.value)}
+            />
           </div>
-          <TxTable rows={DATA.transactions} />
+          {visible.length ? (
+            <TxTable rows={visible} />
+          ) : (
+            <div className="text-muted" style={{ fontSize: 13, padding: "18px 8px" }}>
+              {t("dashboard.payments.noMatches")}
+            </div>
+          )}
         </UI.Plate>
       </div>
     );
   };
 
-  SCR.PortfolioScreen = function PortfolioScreen() {
+  SCR.PortfolioScreen = function PortfolioScreen({
+    accounts,
+    deposits,
+    credits,
+    holdings,
+    investCashMinor,
+    creditApplications,
+    market,
+    marketLoading,
+    marketError,
+    onRefreshMarket,
+    onOpenAccount,
+    onMoveDeposit,
+    onCloseDeposit,
+    onTrade,
+    onApplyCredit,
+    onWithdrawApplication,
+  }) {
+    const investedMinor = holdings.reduce((sum, holding) => sum + DASH.holdingValue(holding), 0) + investCashMinor;
+    const [focusId, setFocusId] = useState(null);
+
+    const focused = holdings.find((holding) => holding.id === focusId) || null;
+    const totalSeries = DASH.portfolioSeries(holdings, investCashMinor);
+    const series = focused ? DASH.instrumentSeries(focused) : totalSeries;
+    const windowChangeBps = DASH.seriesChangeBps(totalSeries);
+    const focusChangeBps = focused ? DASH.seriesChangeBps(series) : null;
+
     return (
       <div>
         <div className="dash-screen-head">
           <h3 style={{ margin: 0 }}>{t("dashboard.portfolio.title")}</h3>
-          <UI.Button type="button" variant="primary">{t("dashboard.portfolio.openAccount")}</UI.Button>
+          <UI.Button type="button" variant="primary" onClick={onOpenAccount}>{t("dashboard.portfolio.openAccount")}</UI.Button>
         </div>
 
         <div className="dash-portfolio-tiles">
-          {DATA.accountsFull.map((account, index) => (
-            <UI.Plate key={index} className="elev-sm" style={{ padding: 14 }}>
+          {accounts.map((account) => (
+            <UI.Plate key={account.id} className="elev-sm" style={{ padding: 14 }}>
               <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
                 {account.cur} · {t("dashboard.accountType." + account.typeKey)}
               </div>
-              <div className="dash-account-amount">{account.amount}</div>
+              <div className="dash-account-amount">{formatMinor(account.minor)}</div>
               <div className="text-muted" style={{ fontSize: 11 }}>{account.iban}</div>
             </UI.Plate>
           ))}
@@ -227,66 +386,286 @@
           <UI.Plate className="elev-sm" style={{ padding: 16 }}>
             <div className="dash-kicker-row">
               <UI.Kicker>{t("dashboard.portfolio.deposits")}</UI.Kicker>
-              <UI.Button type="button" variant="ghost">{t("dashboard.portfolio.newDeposit")}</UI.Button>
             </div>
-            <table className="dash-table">
-              <thead>
-                <tr>
-                  <th>{t("dashboard.portfolio.product")}</th>
-                  <th>{t("dashboard.portfolio.rate")}</th>
-                  <th>{t("dashboard.portfolio.matures")}</th>
-                  <th className="amount-col">{t("dashboard.portfolio.value")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {DATA.deposits.map((row, index) => (
-                  <tr key={index}>
-                    <td>{row.name}</td>
-                    <td className="text-muted">{row.rate}</td>
-                    <td style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{row.due}</td>
-                    <td className="amount-col">{row.value}</td>
-                  </tr>
+            {deposits.length ? (
+              <div className="dash-product-list">
+                {deposits.map((deposit) => (
+                  <div className="dash-product-row" key={deposit.id}>
+                    <div className="dash-product-head">
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>{deposit.name}</div>
+                        <div className="text-muted" style={{ fontSize: 11 }}>
+                          {t("dashboard.deposit.meta", {
+                            kind: t("dashboard.deposit.kind." + deposit.kind),
+                            rate: DASH.formatRate(deposit.rateBps),
+                            matures: deposit.matures
+                              ? t("dashboard.deposit.maturesOn", { date: GEMS.i18n.isoToDisplayDate(deposit.matures) })
+                              : t("dashboard.deposit.noMaturity"),
+                          })}
+                        </div>
+                      </div>
+                      <div style={{ fontFamily: "var(--font-heading)", fontSize: 18 }}>
+                        {formatMinor(deposit.minor)} {deposit.cur}
+                      </div>
+                    </div>
+
+                    {deposit.targetMinor ? (
+                      <div style={{ marginTop: 8 }}>
+                        <div className="text-muted" style={{ fontSize: 11, marginBottom: 4 }}>
+                          {t("dashboard.deposit.goalProgress", {
+                            saved: formatMinor(deposit.minor) + " " + deposit.cur,
+                            target: formatMinor(deposit.targetMinor) + " " + deposit.cur,
+                          })}
+                        </div>
+                        <DASH.ProgressBar
+                          pct={Math.min(100, Math.round((deposit.minor / deposit.targetMinor) * 100))}
+                          label={deposit.name}
+                        />
+                      </div>
+                    ) : null}
+
+                    <div className="dash-product-actions">
+                      <UI.Button type="button" variant="secondary" onClick={() => onMoveDeposit(deposit, "in")}>
+                        {t("dashboard.deposit.topUp")}
+                      </UI.Button>
+                      <UI.Button type="button" variant="secondary" onClick={() => onMoveDeposit(deposit, "out")}>
+                        {t("dashboard.deposit.withdraw")}
+                      </UI.Button>
+                      <UI.Button
+                        type="button"
+                        variant="secondary"
+                        aria-label={t("dashboard.deposit.closeLabel", { name: deposit.name })}
+                        onClick={() => onCloseDeposit(deposit)}
+                      >
+                        {t("dashboard.deposit.close")}
+                      </UI.Button>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            ) : (
+              <div className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.deposit.empty")}</div>
+            )}
           </UI.Plate>
 
           <UI.Plate className="elev-sm" style={{ padding: 16 }}>
             <div className="dash-kicker-row">
               <UI.Kicker>{t("dashboard.portfolio.credits")}</UI.Kicker>
-              <UI.Button type="button" variant="ghost">{t("dashboard.portfolio.applyCredit")}</UI.Button>
+              <UI.Button type="button" variant="secondary" onClick={onApplyCredit}>{t("dashboard.portfolio.applyCredit")}</UI.Button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {DATA.credits.map((row, index) => (
-                <div key={index}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
-                    <span>{row.name}</span>
-                    <span className="text-muted">{row.left}</span>
+              {credits.map((credit) => {
+                const loan = credit.kind === "loan";
+                const pct = loan
+                  ? Math.round((credit.paidMonths / credit.termMonths) * 100)
+                  : Math.round((credit.usedMinor / credit.limitMinor) * 100);
+                const name = loan
+                  ? t("dashboard.credit.loanName", {
+                      name: t("dashboard.credit.name." + credit.nameKey),
+                      paid: credit.paidMonths,
+                      term: credit.termMonths,
+                    })
+                  : t("dashboard.credit.name." + credit.nameKey);
+                const right = loan
+                  ? t("dashboard.credit.left", { amount: formatMinor(credit.outstandingMinor) + " " + credit.cur })
+                  : t("dashboard.credit.used", {
+                      used: formatMinor(credit.usedMinor),
+                      limit: formatMinor(credit.limitMinor) + " " + credit.cur,
+                    });
+                return (
+                  <div key={credit.id}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6, gap: 12 }}>
+                      <span>{name}</span>
+                      <span className="text-muted">{right}</span>
+                    </div>
+                    <DASH.ProgressBar pct={pct} label={name} />
                   </div>
-                  <DASH.ProgressBar pct={row.pct} label={row.name} />
-                </div>
-              ))}
+                );
+              })}
             </div>
+
+            {creditApplications.length ? (
+              <div style={{ marginTop: 18 }}>
+                <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.credit.applicationsTitle")}</UI.Kicker>
+                <div className="dash-product-list">
+                  {creditApplications.map((application) => (
+                    <div className="dash-product-row" key={application.id}>
+                      <div className="dash-product-head">
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontFamily: "var(--font-heading)", fontSize: 15 }}>
+                            {t("dashboard.credit.name." + application.productId)}
+                          </div>
+                          <div className="text-muted" style={{ fontSize: 11 }}>
+                            {t("dashboard.credit.applicationMeta", {
+                              rate: DASH.formatRate(application.rateBps),
+                              term: application.termMonths
+                                ? t("dashboard.deposit.months", { n: application.termMonths })
+                                : t("dashboard.credit.revolving"),
+                              date: GEMS.i18n.isoToDisplayDate(application.submitted),
+                            })}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontFamily: "var(--font-heading)", fontSize: 17 }}>
+                            {formatMinor(application.amountMinor)} {application.cur}
+                          </div>
+                          <UI.Tag variant="outline">{t("dashboard.credit.status.review")}</UI.Tag>
+                        </div>
+                        <UI.Button
+                          type="button"
+                          variant="secondary"
+                          aria-label={t("dashboard.credit.withdrawLabel")}
+                          onClick={() => onWithdrawApplication(application.id)}
+                        >
+                          {"×"}
+                        </UI.Button>
+                      </div>
+                      <div className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
+                        {t("dashboard.credit.awaitingAgent")}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </UI.Plate>
         </div>
 
         <UI.Plate className="elev-sm" style={{ padding: 16, marginTop: 20 }}>
-          <UI.Kicker style={{ marginBottom: 12 }}>{t("dashboard.portfolio.investments")}</UI.Kicker>
+          <div className="dash-kicker-row">
+            <UI.Kicker>
+              {windowChangeBps == null
+                ? t("dashboard.portfolio.investments", { total: formatMinor(investedMinor) })
+                : t("dashboard.portfolio.investmentsWithChange", {
+                    total: formatMinor(investedMinor),
+                    change: DASH.formatChangeBps(windowChangeBps),
+                    months: DASH.seriesMonths(series),
+                  })}
+            </UI.Kicker>
+            <UI.Button type="button" variant="secondary" onClick={() => onTrade(null, "buy")}>
+              {t("dashboard.invest.new")}
+            </UI.Button>
+          </div>
+
+          <DASH.MarketStatus
+            market={market}
+            loading={marketLoading}
+            error={marketError}
+            onRefresh={onRefreshMarket}
+          />
+
           <div className="dash-invest-row">
-            <UI.Plate className="dash-spark">
-              <svg viewBox="0 0 400 140" preserveAspectRatio="none" style={{ width: "100%", height: "100%" }} aria-hidden="true">
-                <polyline points="0,110 40,96 80,102 120,74 160,82 200,58 240,64 280,40 320,48 360,26 400,18" fill="none" stroke="var(--color-primary)" strokeWidth="1.5" />
-              </svg>
+            <UI.Plate className="dash-chart-plate">
+              <div className="dash-chart-head">
+                <div>
+                  <div className="dash-chart-title">
+                    {focused ? focused.name : t("dashboard.invest.totalTitle")}
+                  </div>
+                  <div className="text-muted dash-chart-sub">
+                    {focused
+                      ? t("dashboard.invest.instrumentSub", {
+                          symbol: focused.symbol || focused.id,
+                          currency: focused.quoteCurrency || focused.cur,
+                        })
+                      : t("dashboard.invest.totalSub")}
+                  </div>
+                </div>
+                {focused ? (
+                  <UI.Button type="button" variant="secondary" onClick={() => setFocusId(null)}>
+                    {t("dashboard.invest.backToTotal")}
+                  </UI.Button>
+                ) : null}
+              </div>
+
+              {series.length > 1 ? (
+                <DASH.PriceChart
+                  key={focusId || "total"}
+                  series={series}
+                  dimmed={marketLoading}
+                  label={t("dashboard.invest.chartLabel", {
+                    what: focused ? focused.name : t("dashboard.invest.totalTitle"),
+                    from: GEMS.i18n.isoToDisplayDate(series[0].on),
+                    to: GEMS.i18n.isoToDisplayDate(series[series.length - 1].on),
+                    change:
+                      DASH.seriesChangeBps(series) == null
+                        ? "—"
+                        : DASH.formatChangeBps(DASH.seriesChangeBps(series)),
+                  })}
+                />
+              ) : (
+                <div className="dash-chart-empty text-muted">
+                  {marketLoading ? t("dashboard.invest.loading") : t("dashboard.invest.noHistory")}
+                </div>
+              )}
+
+              {focused && focusChangeBps != null ? (
+                <div className="dash-chart-foot text-muted">
+                  {t("dashboard.invest.windowChange", {
+                    change: DASH.formatChangeBps(focusChangeBps),
+                  })}
+                </div>
+              ) : null}
             </UI.Plate>
             <table className="dash-table">
               <tbody>
-                {DATA.holdings.map((row, index) => (
-                  <tr key={index}>
-                    <td>{row.name}</td>
-                    <td className="text-muted" style={{ fontSize: 12 }}>{row.qty}</td>
-                    <td className="amount-col">{row.value}</td>
+                {holdings.map((holding) => (
+                  <tr
+                    key={holding.id}
+                    className={UI.classNames(
+                      "dash-holding-row",
+                      focusId === holding.id && "is-focused"
+                    )}
+                  >
+                    <td>
+                      <button
+                        type="button"
+                        className="dash-holding-pick"
+                        aria-pressed={focusId === holding.id}
+                        disabled={!holding.history || holding.history.length < 2}
+                        onClick={() => setFocusId(focusId === holding.id ? null : holding.id)}
+                      >
+                        <span>{holding.name}</span>
+                        {holding.symbol ? (
+                          <span className="dash-symbol">{holding.symbol}</span>
+                        ) : null}
+                      </button>
+                    </td>
+                    <td className="text-muted" style={{ fontSize: 12 }}>{DASH.formatUnits(holding)}</td>
+                    <td className="amount-col">
+                      <div>{formatMinor(DASH.holdingValue(holding))}</div>
+                      {holding.changeBps == null ? null : (
+                        <div
+                          className={UI.classNames(
+                            "dash-change",
+                            holding.changeBps > 0 && "is-up",
+                            holding.changeBps < 0 && "is-down"
+                          )}
+                        >
+                          {DASH.formatChangeBps(holding.changeBps)}
+                        </div>
+                      )}
+                    </td>
+                    <td className="amount-col dash-trade-cell">
+                      <UI.Button type="button" variant="secondary" onClick={() => onTrade(holding.id, "buy")}>
+                        {t("dashboard.invest.buy")}
+                      </UI.Button>
+                      <UI.Button
+                        type="button"
+                        variant="secondary"
+                        disabled={DASH.holdingValue(holding) <= 0}
+                        onClick={() => onTrade(holding.id, "sell")}
+                      >
+                        {t("dashboard.invest.sell")}
+                      </UI.Button>
+                    </td>
                   </tr>
                 ))}
+                <tr>
+                  <td>{t("dashboard.invest.cash")}</td>
+                  <td className="text-muted" style={{ fontSize: 12 }}>—</td>
+                  <td className="amount-col">{formatMinor(investCashMinor)}</td>
+                  <td />
+                </tr>
               </tbody>
             </table>
           </div>

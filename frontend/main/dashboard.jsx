@@ -32,8 +32,31 @@
     const [dockOpen, setDockOpen] = useState(true);
     const [payOpen, setPayOpen] = useState(false);
     const [payType, setPayType] = useState("iban");
+    const [payPrefill, setPayPrefill] = useState(null);
+    const [splitOpen, setSplitOpen] = useState(false);
+    const [templateDraft, setTemplateDraft] = useState(null);
+    const [templateOpen, setTemplateOpen] = useState(false);
+    const [accounts, setAccounts] = useState(DATA.accounts);
+    const [transactions, setTransactions] = useState(DATA.transactions);
+    const [pending, setPending] = useState(DATA.pending);
+    const [templates, setTemplates] = useState(DATA.templates);
+    const [splitBills, setSplitBills] = useState([]);
+    const [deposits, setDeposits] = useState(DATA.deposits);
+    const [credits] = useState(DATA.credits);
+    const [holdings, setHoldings] = useState(DATA.holdings);
+    const [investCashMinor, setInvestCashMinor] = useState(DATA.investCashMinor);
+    const [market, setMarket] = useState(null);
+    const [marketLoading, setMarketLoading] = useState(false);
+    const [marketError, setMarketError] = useState(null);
+    const [creditApplications, setCreditApplications] = useState([]);
+    const [openAccountShown, setOpenAccountShown] = useState(false);
+    const [depositMove, setDepositMove] = useState(null);
+    const [trade, setTrade] = useState(null);
+    const [creditShown, setCreditShown] = useState(false);
     const [filter, setFilter] = useState("all");
+    const [query, setQuery] = useState("");
     const [range, setRange] = useState("6");
+    const [lang, setLang] = useState(GEMS.i18n.locale);
     const [cards, setCards] = useState([]);
     const [cardsLoaded, setCardsLoaded] = useState(false);
     const [cardsLoading, setCardsLoading] = useState(false);
@@ -132,6 +155,26 @@
         loadCards();
       }
     }, [screen, cardsLoaded, cardsLoading, loadCards]);
+
+    const loadMarket = useCallback(async (force) => {
+      setMarketLoading(true);
+      setMarketError(null);
+      try {
+        setMarket(await api.marketSnapshot("6mo", force === true));
+      } catch (err) {
+        setMarketError(err);
+      } finally {
+        setMarketLoading(false);
+      }
+    }, []);
+
+    useEffect(() => {
+      if (screen === "portfolio" && !market && !marketLoading && !marketError) {
+        loadMarket();
+      }
+    }, [screen, market, marketLoading, marketError, loadMarket]);
+
+    const pricedHoldings = DASH.applyQuotes(holdings, market);
 
     const selectCard = useCallback((cardId) => {
       setSelectedCardId(cardId);
@@ -259,6 +302,287 @@
       }
     }, [username, selectedCardId, applyCard]);
 
+    const today = useCallback(
+      () =>
+        new Intl.DateTimeFormat("ro-RO", { day: "2-digit", month: "2-digit", year: "numeric" })
+          .format(new Date())
+          .replace(/\//g, "."),
+      []
+    );
+
+    const openPayment = useCallback((prefill) => {
+      setPayPrefill(prefill || null);
+      setPayType(prefill && prefill.payType ? prefill.payType : "iban");
+      setPayOpen(true);
+    }, []);
+
+    const closePayment = useCallback(() => {
+      setPayOpen(false);
+      setPayPrefill(null);
+    }, []);
+
+    const submitPayment = useCallback((payment) => {
+      const date = today();
+
+      setAccounts((list) =>
+        list.map((account) => {
+          if (account.id === payment.fromId) return Object.assign({}, account, { minor: account.minor - payment.amountMinor });
+          if (account.id === payment.toId) return Object.assign({}, account, { minor: account.minor + payment.amountMinor });
+          return account;
+        })
+      );
+
+      setTransactions((list) =>
+        [
+          {
+            date,
+            who: payment.beneficiary,
+            ref: payment.reference || t("dashboard.payDialog.title"),
+            iban: payment.iban,
+            categoryKey: "transfer",
+            statusKey: "pending",
+            minor: payment.amountMinor,
+            currency: payment.currency,
+            direction: "out",
+            channel: "transfer",
+            accountId: payment.fromId,
+          },
+        ].concat(list)
+      );
+
+      setPending((list) =>
+        list.concat([
+          {
+            num: String(list.length + 1).padStart(2, "0"),
+            who: payment.beneficiary,
+            note: payment.reference,
+            minor: payment.amountMinor,
+            currency: payment.currency,
+          },
+        ])
+      );
+
+      if (payment.template) setTemplates((list) => list.concat([payment.template]));
+      closePayment();
+    }, [today, closePayment]);
+
+    const useTemplate = useCallback((template) => {
+      const match = accounts.find((account) => account.cur === template.cur) || accounts[0];
+      openPayment({
+        payType: "iban",
+        beneficiary: template.beneficiary,
+        iban: template.iban,
+        reference: template.reference,
+        fromId: match.id,
+      });
+    }, [accounts, openPayment]);
+
+    const saveTemplate = useCallback((template) => {
+      setTemplates((list) => {
+        const known = list.some((item) => item.id === template.id);
+        return known ? list.map((item) => (item.id === template.id ? template : item)) : list.concat([template]);
+      });
+      setTemplateOpen(false);
+      setTemplateDraft(null);
+    }, []);
+
+    const deleteTemplate = useCallback((templateId) => {
+      setTemplates((list) => list.filter((item) => item.id !== templateId));
+    }, []);
+
+    const createSplitBill = useCallback((bill) => {
+      setSplitBills((list) => [bill].concat(list));
+      setSplitOpen(false);
+    }, []);
+
+    const settleShare = useCallback((billId, personKey) => {
+      const bill = splitBills.find((item) => item.id === billId);
+      const person = bill && bill.participants.find((item) => item.key === personKey);
+      if (!bill || !person || person.settled) return;
+
+      setSplitBills((list) =>
+        list.map((item) =>
+          item.id === billId
+            ? Object.assign({}, item, {
+                participants: item.participants.map((entry) =>
+                  entry.key === personKey ? Object.assign({}, entry, { settled: true }) : entry
+                ),
+              })
+            : item
+        )
+      );
+
+      setAccounts((list) =>
+        list.map((account) =>
+          account.id === bill.accountId ? Object.assign({}, account, { minor: account.minor + person.minor }) : account
+        )
+      );
+
+      setTransactions((list) =>
+        [
+          {
+            date: today(),
+            who: person.name,
+            ref: bill.reference,
+            categoryKey: "transfer",
+            statusKey: "booked",
+            minor: person.minor,
+            currency: bill.currency,
+            direction: "in",
+            channel: "transfer",
+            accountId: bill.accountId,
+          },
+        ].concat(list)
+      );
+    }, [splitBills, today]);
+
+    const deleteSplitBill = useCallback((billId) => {
+      setSplitBills((list) => list.filter((bill) => bill.id !== billId));
+    }, []);
+
+    const creditAccount = useCallback((accountId, minor) => {
+      setAccounts((list) =>
+        list.map((account) => (account.id === accountId ? Object.assign({}, account, { minor: account.minor + minor }) : account))
+      );
+    }, []);
+
+    const bookMovement = useCallback((row) => {
+      setTransactions((list) => [Object.assign({ date: today(), statusKey: "booked", channel: "transfer" }, row)].concat(list));
+    }, [today]);
+
+    const openAccount = useCallback(({ account, fundFromId, fundMinor }) => {
+      setAccounts((list) => list.concat([Object.assign({}, account, { minor: fundMinor })]));
+      if (fundFromId && fundMinor > 0) {
+        creditAccount(fundFromId, -fundMinor);
+        bookMovement({
+          who: DASH.accountLabel(account),
+          ref: t("dashboard.openAccount.movementRef"),
+          categoryKey: "transfer",
+          minor: fundMinor,
+          currency: account.cur,
+          direction: "out",
+          accountId: fundFromId,
+        });
+      }
+      setOpenAccountShown(false);
+    }, [creditAccount, bookMovement]);
+
+    const newDeposit = useCallback(({ deposit, fromId, amountMinor }) => {
+      setDeposits((list) => list.concat([deposit]));
+      creditAccount(fromId, -amountMinor);
+      bookMovement({
+        who: deposit.name,
+        ref: t("dashboard.deposit.movementRef"),
+        categoryKey: "transfer",
+        minor: amountMinor,
+        currency: deposit.cur,
+        direction: "out",
+        accountId: fromId,
+      });
+      setOpenAccountShown(false);
+    }, [creditAccount, bookMovement]);
+
+    const openProduct = useCallback(
+      (payload) => (payload.deposit ? newDeposit(payload) : openAccount(payload)),
+      [newDeposit, openAccount]
+    );
+
+    const moveDeposit = useCallback(({ depositId, accountId, amountMinor, direction }) => {
+      const inbound = direction === "in";
+      setDeposits((list) =>
+        list.map((deposit) =>
+          deposit.id === depositId
+            ? Object.assign({}, deposit, { minor: deposit.minor + (inbound ? amountMinor : -amountMinor) })
+            : deposit
+        )
+      );
+      creditAccount(accountId, inbound ? -amountMinor : amountMinor);
+
+      const deposit = deposits.find((item) => item.id === depositId);
+      bookMovement({
+        who: deposit ? deposit.name : "",
+        ref: inbound ? t("dashboard.deposit.topUp") : t("dashboard.deposit.withdraw"),
+        categoryKey: "transfer",
+        minor: amountMinor,
+        currency: deposit ? deposit.cur : "RON",
+        direction: inbound ? "out" : "in",
+        accountId,
+      });
+      setDepositMove(null);
+    }, [deposits, creditAccount, bookMovement]);
+
+    const closeDeposit = useCallback((deposit) => {
+      const target = accounts.find((account) => account.cur === deposit.cur);
+      if (!target) return;
+      setDeposits((list) => list.filter((item) => item.id !== deposit.id));
+      if (deposit.minor > 0) {
+        creditAccount(target.id, deposit.minor);
+        bookMovement({
+          who: deposit.name,
+          ref: t("dashboard.deposit.closeRef"),
+          categoryKey: "transfer",
+          minor: deposit.minor,
+          currency: deposit.cur,
+          direction: "in",
+          accountId: target.id,
+        });
+      }
+    }, [accounts, creditAccount, bookMovement]);
+
+    const runTrade = useCallback(({ holdingId, accountId, amountMinor, direction }) => {
+      const holding = DASH.applyQuotes(holdings, market).find((item) => item.id === holdingId);
+      if (!holding) return;
+      const buying = direction === "buy";
+
+      if (buying) {
+        const fromCash = Math.min(investCashMinor, amountMinor);
+        const fromAccount = amountMinor - fromCash;
+        setInvestCashMinor((cash) => cash - fromCash);
+        if (fromAccount > 0) {
+          creditAccount(accountId, -fromAccount);
+          bookMovement({
+            who: holding.name,
+            ref: t("dashboard.invest.buy"),
+            categoryKey: "transfer",
+            minor: fromAccount,
+            currency: holding.cur,
+            direction: "out",
+            accountId,
+          });
+        }
+      } else {
+        creditAccount(accountId, amountMinor);
+        bookMovement({
+          who: holding.name,
+          ref: t("dashboard.invest.sell"),
+          categoryKey: "transfer",
+          minor: amountMinor,
+          currency: holding.cur,
+          direction: "in",
+          accountId,
+        });
+      }
+
+      const deltaUnits = amountMinor / holding.unitPriceMinor;
+      setHoldings((list) =>
+        list.map((item) =>
+          item.id === holdingId
+            ? Object.assign({}, item, { units: Math.max(0, item.units + (buying ? deltaUnits : -deltaUnits)) })
+            : item
+        )
+      );
+      setTrade(null);
+    }, [holdings, market, investCashMinor, creditAccount, bookMovement]);
+
+    const applyForCredit = useCallback((application) => {
+      setCreditApplications((list) => [application].concat(list));
+      setCreditShown(false);
+    }, []);
+
+    const withdrawApplication = useCallback((applicationId) => {
+      setCreditApplications((list) => list.filter((item) => item.id !== applicationId));
+    }, []);
+
     return (
       <div className="dash-shell">
         <DASH.Sidebar screen={screen} onNavigate={navigate} onSignOut={onSignOut} />
@@ -276,10 +600,35 @@
 
           <main className="dash-content" aria-label={t("dashboard.tag." + screen)}>
             {screen === "home" ? (
-              <SCR.HomeScreen balanceHidden={balanceHidden} onToggleBalance={toggleBalance} onNavigate={navigate} />
+              <SCR.HomeScreen 
+                accounts={accounts} 
+                transactions={transactions} 
+                balanceHidden={balanceHidden} 
+                onToggleBalance={toggleBalance} 
+                onSpeakBalance={speakBalance} 
+                onNavigate={navigate} 
+              />
             ) : null}
             {screen === "payments" ? (
-              <SCR.PaymentsScreen filter={filter} onFilter={setFilter} onOpenPay={() => setPayOpen(true)} />
+              <SCR.PaymentsScreen
+                accounts={accounts}
+                transactions={transactions}
+                pending={pending}
+                templates={templates}
+                splitBills={splitBills}
+                filter={filter}
+                onFilter={setFilter}
+                query={query}
+                onQuery={setQuery}
+                onOpenPay={() => openPayment(null)}
+                onOpenSplit={() => setSplitOpen(true)}
+                onNewTemplate={() => { setTemplateDraft(null); setTemplateOpen(true); }}
+                onEditTemplate={(template) => { setTemplateDraft(template); setTemplateOpen(true); }}
+                onDeleteTemplate={deleteTemplate}
+                onUseTemplate={useTemplate}
+                onSettleShare={settleShare}
+                onDeleteSplit={deleteSplitBill}
+              />
             ) : null}
             {screen === "chat" ? (
               <SCR.ChatScreen
@@ -295,7 +644,26 @@
                 username={firstName}
               />
             ) : null}
-            {screen === "portfolio" ? <SCR.PortfolioScreen /> : null}
+            {screen === "portfolio" ? (
+              <SCR.PortfolioScreen
+                accounts={accounts}
+                deposits={deposits}
+                credits={credits}
+                holdings={pricedHoldings}
+                investCashMinor={investCashMinor}
+                creditApplications={creditApplications}
+                market={market}
+                marketLoading={marketLoading}
+                marketError={marketError}
+                onRefreshMarket={loadMarket}
+                onOpenAccount={() => setOpenAccountShown(true)}
+                onMoveDeposit={(deposit, direction) => setDepositMove({ deposit, direction })}
+                onCloseDeposit={closeDeposit}
+                onTrade={(holdingId, direction) => setTrade({ holdingId, direction })}
+                onApplyCredit={() => setCreditShown(true)}
+                onWithdrawApplication={withdrawApplication}
+              />
+            ) : null}
             {screen === "cards" ? (
               <SCR.CardsScreen
                 cards={cards}
@@ -350,10 +718,72 @@
 
         {payOpen ? (
           <DASH.NewPaymentDialog
+            key={payPrefill ? payPrefill.iban : "blank"}
             payType={payType}
             onPayType={setPayType}
-            onClose={() => setPayOpen(false)}
-            onContinue={() => setPayOpen(false)}
+            accounts={accounts}
+            templates={templates}
+            prefill={payPrefill}
+            onClose={closePayment}
+            onSubmit={submitPayment}
+          />
+        ) : null}
+
+        {splitOpen ? (
+          <DASH.SplitBillDialog
+            accounts={accounts}
+            onClose={() => setSplitOpen(false)}
+            onSubmit={createSplitBill}
+          />
+        ) : null}
+
+        {openAccountShown ? (
+          <DASH.OpenAccountDialog
+            accounts={accounts}
+            onClose={() => setOpenAccountShown(false)}
+            onSubmit={openProduct}
+          />
+        ) : null}
+
+        {depositMove ? (
+          <DASH.MoveDepositDialog
+            key={depositMove.deposit.id + depositMove.direction}
+            deposit={deposits.find((item) => item.id === depositMove.deposit.id) || depositMove.deposit}
+            accounts={accounts}
+            direction={depositMove.direction}
+            onClose={() => setDepositMove(null)}
+            onSubmit={moveDeposit}
+          />
+        ) : null}
+
+        {trade ? (
+          <DASH.InvestDialog
+            key={(trade.holdingId || "any") + trade.direction}
+            holdings={pricedHoldings}
+            accounts={accounts}
+            investCashMinor={investCashMinor}
+            holdingId={trade.holdingId}
+            direction={trade.direction}
+            onClose={() => setTrade(null)}
+            onSubmit={runTrade}
+          />
+        ) : null}
+
+        {creditShown ? (
+          <DASH.CreditApplicationDialog
+            accounts={accounts}
+            onClose={() => setCreditShown(false)}
+            onSubmit={applyForCredit}
+          />
+        ) : null}
+
+        {templateOpen ? (
+          <DASH.TemplateDialog
+            key={templateDraft ? templateDraft.id : "new"}
+            accounts={accounts}
+            template={templateDraft}
+            onClose={() => { setTemplateOpen(false); setTemplateDraft(null); }}
+            onSubmit={saveTemplate}
           />
         ) : null}
       </div>
