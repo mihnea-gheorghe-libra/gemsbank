@@ -6,20 +6,19 @@
   const api = GEMS.api;
   const { useState, useEffect, useCallback } = React;
 
-  const FIELD_KEYS = ["email", "phone", "username", "password", "pin", "pinConfirm"];
+  const FIELD_KEYS = ["email", "phone", "username", "password", "passwordConfirm", "pin", "pinConfirm"];
 
   function toFieldErrors(error) {
     if (!error || !error.details || !error.details.field) return {};
     if (FIELD_KEYS.indexOf(error.details.field) < 0) return {};
-    return { [error.details.field]: error.message };
+    return { [error.details.field]: GEMS.i18n.tError(error.message) };
   }
 
-  function RegisterPage({ onSwitchToSignIn }) {
+  function RegisterPage({ onSwitchToSignIn, onRegistered, theme, onTheme, lang, onLang }) {
     const [caseId, setCaseId] = useState(null);
     const [step, setStep] = useState(1);
     const [extracted, setExtracted] = useState(null);
     const [delivery, setDelivery] = useState(null);
-    const [result, setResult] = useState(null);
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(false);
     const [resending, setResending] = useState(false);
@@ -83,36 +82,38 @@
         const response = await api.complete(caseId, {
           username: form.username,
           password: form.password,
+          passwordConfirmation: form.passwordConfirmation,
           pin: form.pin,
           pinConfirmation: form.pinConfirmation,
+          prefs: { theme, lang },
         });
-        setResult(response);
-        setStep(5);
+        
+        // Log in immediately after creation to get a session
+        const loginResponse = await api.login(form.username, form.pin);
+        onRegistered(loginResponse.username, loginResponse.prefs);
       });
 
-    const done = step === 5;
-    const stepKey = done ? "done" : ONB.STEPS[step - 1].key;
-    const title = done
-      ? t("done.title", { username: (result && result.username) || "" })
-      : t(stepKey + ".title");
-    const lede = done ? t("done.lede") : t(stepKey + ".lede");
+    const stepKey = ONB.STEPS[step - 1].key;
+    const title = t(stepKey + ".title");
+    const lede = t(stepKey + ".lede");
     const fieldErrors = toFieldErrors(error);
 
     return (
       <div className="onb-shell">
         <header className="onb-topbar">
           <span className="onb-wordmark">{t("brand")}</span>
-          <span
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "var(--text-kicker)",
-              letterSpacing: "0.2em",
-              color: "var(--color-plum-700)",
-            }}
-          >
+          <span className="auth-screen-tag">
             {t("screenTag")}
           </span>
-          <div style={{ marginLeft: "auto" }}>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 16, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 4 }}>
+              <UI.Button type="button" variant={lang === "ro" ? "primary" : "ghost"} onClick={() => onLang("ro")}>RO</UI.Button>
+              <UI.Button type="button" variant={lang === "en" ? "primary" : "ghost"} onClick={() => onLang("en")}>EN</UI.Button>
+            </div>
+            <div style={{ display: "flex", gap: 4 }}>
+              <UI.Button type="button" variant={theme === "light" ? "primary" : "ghost"} onClick={() => onTheme("light")}>Light</UI.Button>
+              <UI.Button type="button" variant={theme === "dark" ? "primary" : "ghost"} onClick={() => onTheme("dark")}>Dark</UI.Button>
+            </div>
             <UI.Button type="button" onClick={onSwitchToSignIn}>
               {t("backToSignIn")}
             </UI.Button>
@@ -124,7 +125,7 @@
 
           <main className="onb-main">
             <UI.Kicker style={{ marginBottom: 8 }}>
-              {done ? t("state.done") : t("stepOf", { n: step, total: ONB.STEPS.length })}
+              {t("stepOf", { n: step, total: ONB.STEPS.length - 1 })}
             </UI.Kicker>
             <h1 style={{ fontSize: "var(--text-h2)" }}>{title}</h1>
             <p className="text-muted onb-lede">{lede}</p>
@@ -136,9 +137,14 @@
                 extracted={extracted}
                 busy={busy}
                 onExtract={handleExtract}
+                onReset={() => {
+                  setExtracted(null);
+                  setError(null);
+                }}
                 onNext={() => setStep(2)}
               />
             ) : null}
+
 
             {caseId && step === 2 ? (
               <ONB.ContactStep busy={busy} fieldErrors={fieldErrors} onSubmit={handleContact} />
@@ -160,10 +166,6 @@
                 fieldErrors={fieldErrors}
                 onSubmit={handleComplete}
               />
-            ) : null}
-
-            {done && result ? (
-              <ONB.DoneStep result={result} onSignIn={onSwitchToSignIn} />
             ) : null}
 
             <UI.ErrorNote error={error} />

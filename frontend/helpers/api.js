@@ -94,17 +94,44 @@
     complete: (id, payload) =>
       send("/onboarding/" + id + "/complete", { method: "POST", json: payload }),
 
-    login: (username, pin) => send("/auth/login", { method: "POST", json: { username, pin } }),
+    login: async (username, pin) => {
+      const response = await send("/auth/login", { method: "POST", json: { username, pin } });
+      GEMS.session.set(response.sessionToken);
+      return response;
+    },
     verifyPin: (username, pin) => send("/auth/pin/verify", { method: "POST", json: { username, pin } }),
-    revealPin: (username, password) =>
-      send("/auth/pin/reveal", { method: "POST", json: { username, password } }),
+    revealPin: async (username, password) => {
+      const response = await send("/auth/pin/reveal", { method: "POST", json: { username, password } });
+      GEMS.session.set(response.sessionToken);
+      return response;
+    },
     requestPasswordReset: (username) =>
       send("/auth/password/reset", { method: "POST", json: { username } }),
     verifyResetCode: (id, code) =>
       send("/auth/password/reset/" + id + "/verify", { method: "POST", json: { code } }),
-    completePasswordReset: (id, payload) =>
-      send("/auth/password/reset/" + id + "/complete", { method: "POST", json: payload }),
+    completePasswordReset: async (id, payload) => {
+      const response = await send("/auth/password/reset/" + id + "/complete", { method: "POST", json: payload });
+      GEMS.session.set(response.sessionToken);
+      return response;
+    },
     logout: () => send("/auth/logout", { method: "POST" }),
+    me: () => send("/auth/me"),
+    listSessions: () => send("/auth/sessions"),
+    revokeSession: (sessionId) => send("/auth/sessions/" + sessionId + "/revoke", { method: "POST" }),
+    requestEmailChange: (newEmail) =>
+      send("/auth/email/change", { method: "POST", json: { newEmail } }),
+    requestPhoneChange: (newPhone) =>
+      send("/auth/phone/change", { method: "POST", json: { newPhone } }),
+    requestPinChange: (newPin, newPinConfirmation) =>
+      send("/auth/pin/change", {
+        method: "POST",
+        json: { newPin, newPinConfirmation },
+      }),
+    verifySecureChange: (caseId, code) =>
+      send("/auth/secure-change/" + caseId + "/verify", { method: "POST", json: { code } }),
+    requestAccountClosure: (pin) =>
+      send("/auth/account/closure-request", { method: "POST", json: { pin } }),
+    updatePreferences: (prefs) => send("/auth/preferences", { method: "PUT", json: { prefs } }),
 
     listAccounts: () => send("/accounts"),
     paymentsSummary: () => send("/payments/summary"),
@@ -116,6 +143,9 @@
     transfer: (payload) => send("/payments/transfers", { method: "POST", json: payload }),
     signTransfer: (id, code) =>
       send("/payments/transfers/" + id + "/sign", { method: "POST", json: { code } }),
+
+    marketSnapshot: (range, refresh) =>
+      send("/investments/market" + query({ range, refresh: refresh ? "true" : "" })),
 
     listCards: (username) => send("/cards?username=" + encodeURIComponent(username)),
     issueVirtualCard: (username) =>

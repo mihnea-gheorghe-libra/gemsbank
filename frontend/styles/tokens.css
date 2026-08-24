@@ -10,16 +10,30 @@
   --color-surface: #F5FBDA;
   --color-surface-muted: #F3F1E9;
 
+  /* Relief cue reused by .plate/.elev-* — a hairline top highlight, tinted
+     from the current text colour so it self-adjusts per theme. */
+  --relief-highlight: inset 0 1px 0 color-mix(in srgb, var(--color-text) 8%, transparent);
+
   /* ── content ──────────────────────────────────────────────── */
   --color-text: #280725;
   --color-heading: #450C3F;
   --color-muted: color-mix(in srgb, #280725 55%, transparent);
 
+  /* Theme-invariant — for content that sits on a surface pinned to its light-mode
+     colour in both themes (card faces, tiles): the light-mode foreground, always,
+     so a light card never gets light-on-light text when the app is in dark mode. */
+  --color-on-light-text: #280725;
+  --color-on-light-heading: #450C3F;
+  --color-on-light-primary: #450C3F;
+  --color-on-light-muted: color-mix(in srgb, #280725 55%, transparent);
+  --color-on-light-border: color-mix(in srgb, #450C3F 18%, transparent);
+  --color-on-light-negative: #9F144B;
+
   /* ── brand ────────────────────────────────────────────────── */
   --color-primary: #450C3F;
   --color-on-primary: #FDFDF9;
   --color-accent: #8BA646;
-  --color-border: color-mix(in srgb, #450C3F 18%, transparent);
+  --color-border: color-mix(in srgb, #450C3F 11%, transparent);
 
   /* ── semantic money states ────────────────────────────────────
      DERIVED, not in the design archive (DESIGN_NOTES §4.2).
@@ -82,6 +96,7 @@
   --shadow-sm: 0 1px 3px color-mix(in srgb, #450C3F 12%, transparent);
   --shadow-md: 0 6px 18px color-mix(in srgb, #450C3F 14%, transparent);
   --shadow-lg: 0 18px 44px color-mix(in srgb, #450C3F 22%, transparent);
+  --shadow-inset: inset 0 1px 3px color-mix(in srgb, #450C3F 10%, transparent);
 
   /* ── a11y ─────────────────────────────────────────────────── */
   --focus-ring: 2px solid var(--color-primary);
@@ -93,35 +108,43 @@
    we express the same swap declaratively for both `system` and explicit choice. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --color-bg: #450C3F;
-    --color-surface: #852275;
-    --color-surface-muted: #58124D;
+    --color-bg: #1C0D30;
+    --color-surface: color-mix(in srgb, #F5FBDA 10%, #1C0D30);
+    --color-surface-muted: color-mix(in srgb, #F5FBDA 6%, #1C0D30);
     --color-text: #F5FBDA;
     --color-heading: #B9D175;
     --color-muted: color-mix(in srgb, #F5FBDA 60%, transparent);
     --color-primary: #B9D175;
     --color-on-primary: #280725;
-    --color-border: color-mix(in srgb, #F5FBDA 22%, transparent);
+    --color-border: color-mix(in srgb, #F5FBDA 13%, transparent);
     --color-positive: #9ED9A8;
     --color-negative: #FFB3B8;
     --color-warning: #F0C26B;
     --color-info: #93C5FD;
+    --shadow-sm: 0 1px 3px color-mix(in srgb, black 45%, transparent);
+    --shadow-md: 0 10px 24px color-mix(in srgb, black 50%, transparent);
+    --shadow-lg: 0 24px 56px color-mix(in srgb, black 60%, transparent);
+    --shadow-inset: inset 0 1px 3px color-mix(in srgb, black 40%, transparent);
   }
 }
 :root[data-theme="dark"] {
-  --color-bg: #450C3F;
-  --color-surface: #852275;
-  --color-surface-muted: #58124D;
+  --color-bg: #1C0D30;
+  --color-surface: color-mix(in srgb, #F5FBDA 10%, #1C0D30);
+  --color-surface-muted: color-mix(in srgb, #F5FBDA 6%, #1C0D30);
   --color-text: #F5FBDA;
   --color-heading: #B9D175;
   --color-muted: color-mix(in srgb, #F5FBDA 60%, transparent);
   --color-primary: #B9D175;
   --color-on-primary: #280725;
-  --color-border: color-mix(in srgb, #F5FBDA 22%, transparent);
+  --color-border: color-mix(in srgb, #F5FBDA 13%, transparent);
   --color-positive: #9ED9A8;
   --color-negative: #FFB3B8;
   --color-warning: #F0C26B;
   --color-info: #93C5FD;
+  --shadow-sm: 0 1px 3px color-mix(in srgb, black 45%, transparent);
+  --shadow-md: 0 10px 24px color-mix(in srgb, black 50%, transparent);
+  --shadow-lg: 0 24px 56px color-mix(in srgb, black 60%, transparent);
+  --shadow-inset: inset 0 1px 3px color-mix(in srgb, black 40%, transparent);
 }
 
 /* Tailwind v4 — expose the tokens as utilities. Tailwind reads --color-*,

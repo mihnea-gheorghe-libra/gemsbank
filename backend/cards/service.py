@@ -93,6 +93,9 @@ class ResolvedUser(Protocol):
     id: str
     username: str
 
+    @property
+    def display_name(self) -> str: ...
+
 
 class UserDirectory(Protocol):
     async def get_by_username(self, username: str) -> ResolvedUser | None: ...

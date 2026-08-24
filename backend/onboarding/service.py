@@ -15,7 +15,7 @@ from backend.helpers.crypto import AesGcmPinCipher, Argon2idHasher
 from backend.helpers.errors import ConflictError, DomainError, NotFoundError
 from backend.onboarding import validation
 from backend.onboarding.adapters import (
-    DemoDocumentExtractor,
+    AzureDocIntelDocumentExtractor,
     ResendOtpSender,
     SystemClock,
 )
@@ -71,8 +71,10 @@ class CompleteOnboarding(Command):
     kyc_case_id: str
     username: str
     password: str
+    password_confirmation: str
     pin: str
     pin_confirmation: str
+    prefs: dict[str, Any] | None = None
 
 
 class KycCaseRepository(Protocol):
@@ -94,10 +96,13 @@ class UserRepository(Protocol):
         username: str,
         email: str,
         phone: str,
+        full_name: str,
         password_hash: str,
         pin_hash: str,
         pin_encrypted: str,
         kyc_case_id: str,
+        extracted: ExtractedIdentity,
+        prefs: dict[str, Any] | None = None,
         session: AsyncIOMotorClientSession | None = None,
     ) -> None: ...
 
@@ -378,13 +383,14 @@ class OnboardingService:
         before = case.status.value
 
         username = validation.normalise_username(command.username)
-        password = validation.validate_password(command.password)
+        password = validation.validate_password(command.password, command.password_confirmation)
         pin = validation.validate_pin(command.pin, command.pin_confirmation)
 
         if await self._users.exists_username(username):
             raise ConflictError("That username is taken.", details={"field": "username"})
 
         assert case.contact is not None
+        assert case.document is not None
         user_id = new_id()
         case.complete(user_id)
 
@@ -393,15 +399,17 @@ class OnboardingService:
             username=username,
             email=case.contact.email,
             phone=case.contact.phone,
+            full_name=case.document.extracted.full_name,
             password_hash=self._hasher.hash(password),
             pin_hash=self._hasher.hash(pin),
             pin_encrypted=self._cipher.encrypt(pin, user_id),
             kyc_case_id=case.id,
+            extracted=case.document.extracted,
+            prefs=command.prefs,
             session=session,
         )
         await self._cases.save(case, session=session)
 
-        assert case.document is not None
         account_ids = await self._provisioning.provision_starter_accounts(
             user_id=user_id,
             holder_name=case.document.extracted.full_name,
@@ -444,7 +452,12 @@ def get_onboarding_service() -> OnboardingService:
         hasher=Argon2idHasher(),
         cipher=AesGcmPinCipher(settings.pin_encryption_key),
         otp_sender=ResendOtpSender(settings),
-        extractor=DemoDocumentExtractor(),
+        extractor=AzureDocIntelDocumentExtractor(
+            endpoint=settings.azure_docintel_endpoint,
+            key=settings.azure_docintel_key,
+            min_confidence=settings.ocr_min_confidence
+        ),
+
         clock=SystemClock(),
         config=settings,
     )

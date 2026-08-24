@@ -42,7 +42,7 @@ services:
     env_file:
       - .env
     environment:
-      MONGO_URI: mongodb://172.16.64.44:27018/gems?replicaSet=rs-gemsbank
+      MONGO_URI: mongodb://172.16.64.44:27018/?replicaSet=rs-gemsbank
       MONGO_DB_NAME: gems
       WEB_DIR: /web
     ports:
