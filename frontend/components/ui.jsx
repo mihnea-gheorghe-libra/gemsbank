@@ -15,6 +15,33 @@
     );
   };
 
+  UI.Icon = function Icon({ name, size = 18, strokeWidth = 2, className, style, ...rest }) {
+    const node = window.lucide && window.lucide.icons[name];
+    if (!node) return null;
+    return (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={classNames("icon", className)}
+        style={style}
+        aria-hidden="true"
+        {...rest}
+      >
+        {node.map(([tag, attrs], index) => {
+          const Tag = tag;
+          return <Tag key={index} {...attrs} />;
+        })}
+      </svg>
+    );
+  };
+
   UI.Kicker = function Kicker({ children, style }) {
     return (
       <div className="kicker" style={style}>
@@ -68,7 +95,7 @@
     if (!error) return null;
     return (
       <div className="onb-error" role="alert">
-        {error.message}
+        {GEMS.i18n.tError(error.message)}
       </div>
     );
   };

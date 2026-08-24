@@ -1,5 +1,6 @@
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, ClassVar
+from typing import Any, ClassVar
 
 from motor.motor_asyncio import AsyncIOMotorClientSession
 from pydantic import BaseModel
@@ -50,6 +51,8 @@ class CommandBus:
         command: Command,
         actor: Actor,
         idempotency_key: str | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
     ) -> dict[str, Any]:
         name = type(command).command_name
         handler = self._handlers.get(name)
@@ -61,15 +64,20 @@ class CommandBus:
             if replayed is not None:
                 return replayed
 
-        context = ActorContext(actor=actor, correlation_id=get_correlation_id())
+        context = ActorContext(
+            actor=actor, correlation_id=get_correlation_id(), ip=ip, user_agent=user_agent
+        )
 
-        async with await get_client().start_session() as session:
-            async with session.start_transaction():
-                result = await handler(command, context, session)
-                await write_audit(result.audit, actor, context.correlation_id, session=session)
-                await write_events(result.events, context.correlation_id, session=session)
-                if idempotency_key:
-                    await store_response(name, idempotency_key, result.data, session=session)
+        async with (
+            await get_client().start_session() as session,
+            session.start_transaction(),
+        ):
+            result = await handler(command, context, session)
+            await write_audit(result.audit, actor, context.correlation_id, session=session)
+            await write_events(result.events, context.correlation_id, session=session)
+            if idempotency_key:
+                await store_response(name, idempotency_key, result.data, session=session)
+
 
         return result.data | result.sensitive
 

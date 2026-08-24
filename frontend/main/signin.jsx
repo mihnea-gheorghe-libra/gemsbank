@@ -19,14 +19,14 @@
   function toFieldErrors(error) {
     if (!error || !error.details || !error.details.field) return {};
     if (FIELD_KEYS.indexOf(error.details.field) < 0) return {};
-    return { [error.details.field]: error.message };
+    return { [error.details.field]: GEMS.i18n.tError(error.message) };
   }
 
   function normaliseUsername(value) {
     return value.trim().toLowerCase();
   }
 
-  AUTH.SignInPage = function SignInPage({ onSwitchToRegister }) {
+  AUTH.SignInPage = function SignInPage({ onSwitchToRegister, onSignedIn, theme, onTheme, lang, onLang }) {
     const DASHBOARD = GEMS.dashboard;
     const [view, setView] = useState(VIEWS.SIGN_IN);
     const [session, setSession] = useState(null);
@@ -36,7 +36,6 @@
     const [pinLockedUsername, setPinLockedUsername] = useState(null);
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(false);
-    const [dashboardOpen, setDashboardOpen] = useState(false);
 
     const run = useCallback(async (work) => {
       setBusy(true);
@@ -57,13 +56,15 @@
     }, []);
 
     const resetToSignIn = useCallback(() => {
+      if (GEMS.session.has()) {
+        api.logout().catch(() => {});
+      }
       GEMS.session.clear();
       setPin(null);
       setPinMissing(false);
       setRecovery(null);
       setSession(null);
       setError(null);
-      setDashboardOpen(false);
       setView(VIEWS.SIGN_IN);
     }, []);
 
@@ -75,10 +76,11 @@
         }
         try {
           const response = await api.login(form.username, form.pin);
+          GEMS.session.set(response.sessionToken);
           setSession(response);
           setPin(null);
           setPinMissing(false);
-          setDashboardOpen(true);
+          onSignedIn(response.username, response.prefs);
         } catch (err) {
           if (err.details && err.details.pinLocked) {
             setPinLockedUsername(normaliseUsername(form.username));
@@ -94,6 +96,7 @@
         if (normaliseUsername(form.username) === pinLockedUsername) {
           setPinLockedUsername(null);
         }
+        GEMS.session.set(response.sessionToken);
         setSession(response);
         setPin(response.pin);
         setView(VIEWS.PIN_REVEAL);
@@ -116,6 +119,7 @@
       run(async () => {
         const response = await api.completePasswordReset(recovery.recoveryCaseId, form);
         setPinLockedUsername(null);
+        GEMS.session.set(response.sessionToken);
         setSession(response);
         setPin(response.pin || null);
         setPinMissing(!response.pin);
@@ -125,8 +129,8 @@
     const handleContinueToDashboard = useCallback(() => {
       setPin(null);
       setPinMissing(false);
-      setDashboardOpen(true);
-    }, []);
+      onSignedIn(session.username, session.prefs);
+    }, [session, onSignedIn]);
 
     const fieldErrors = toFieldErrors(error);
     const lockout =
@@ -141,16 +145,20 @@
     });
     const lede = t("auth.views." + view + ".lede");
 
-    if (dashboardOpen && session) {
-      return <DASHBOARD.Dashboard username={session.username} onSignOut={resetToSignIn} />;
-    }
-
     return (
       <div className="onb-shell">
         <header className="onb-topbar">
           <span className="onb-wordmark">{t("brand")}</span>
           <span className="auth-screen-tag">{t("auth.screenTag")}</span>
-          <div style={{ marginLeft: "auto" }}>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 16, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 4 }}>
+              <UI.Button type="button" variant={lang === "ro" ? "primary" : "ghost"} onClick={() => onLang("ro")}>RO</UI.Button>
+              <UI.Button type="button" variant={lang === "en" ? "primary" : "ghost"} onClick={() => onLang("en")}>EN</UI.Button>
+            </div>
+            <div style={{ display: "flex", gap: 4 }}>
+              <UI.Button type="button" variant={theme === "light" ? "primary" : "ghost"} onClick={() => onTheme("light")}>Light</UI.Button>
+              <UI.Button type="button" variant={theme === "dark" ? "primary" : "ghost"} onClick={() => onTheme("dark")}>Dark</UI.Button>
+            </div>
             <UI.Button type="button" onClick={onSwitchToRegister}>
               {t("auth.createAccount")}
             </UI.Button>

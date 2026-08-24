@@ -45,6 +45,7 @@ class ExtractedIdentity(BaseModel):
     cnp_masked: str
     document_number_masked: str
     expires_on: date
+    cnp_raw: str | None = None
 
 
 class SubmittedDocument(BaseModel):
@@ -177,10 +178,12 @@ class KycCase(BaseModel):
             "fullName": extracted.full_name,
             "birthDate": extracted.birth_date.isoformat(),
             "ageYears": age_in_years(extracted.birth_date, datetime.now(timezone.utc).date()),
+            "cnp": extracted.cnp_raw or extracted.cnp_masked,
             "cnpMasked": extracted.cnp_masked,
             "documentNumberMasked": extracted.document_number_masked,
             "expiresOn": extracted.expires_on.isoformat(),
         }
+
 
     def public_view(self) -> dict[str, Any]:
         return {
