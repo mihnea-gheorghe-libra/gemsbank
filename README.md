@@ -15,7 +15,7 @@ Three working screens:
 Sign in mints a **session token** (`sessions` collection). The frontend holds it in memory and
 sends it as `Authorization: Bearer …`; a page refresh signs you out, which is the intended
 behaviour while there is no refresh-token rotation (`PROMPT.md` §6: never `localStorage`).
-After a successful sign in you land on a **dashboard mockup**: a static, frontend-only prototype
+After a successful sign in you land on a **dashboard mockup**: a mostly frontend-only prototype
 (`frontend/main/dashboard.jsx` and `frontend/components/dashboard-*.jsx`) covering Dashboard,
 Payments, AI Assistant, Portfolio, Cards, Analytics and Settings. It is a deliberate, explicitly
 approved deviation from `PROMPT.md` §4 — cards, investments, analytics and the chatbot are listed
@@ -26,10 +26,53 @@ action opens the dashboard mockup. Plain PIN sign-in opens it directly, since it
 show — there is no separate "welcome" screen any more. There is still no session token: the real
 dashboard and the `sessions` collection arrive together, later.
 
-The **Cards** screen is the one exception: it has a real backend (`backend/cards/`) — issue a
+The **Cards** screen is one exception: it has a real backend (`backend/cards/`) — issue a
 virtual card, freeze/unfreeze, reveal PIN, set ATM/online limits, block permanently — but the
 Cards screen itself still renders from `dashboard-data.js`, not from these endpoints. See
 "Cards — a backend without a session" below before wiring it up.
+
+The **Investments** widget on the Portfolio screen is the other: its prices, history and FX are
+real, fetched live through `backend/investments/`. See "Investments — real prices, demo trades"
+below.
+
+The mockup's **Payments** screen is interactive, but only against React state seeded from
+`dashboard-data.js` — nothing reaches the ledger, and a refresh resets everything:
+
+- **New payment** has two rails. *IBAN transfer* pays a third party; *Between my accounts* is a
+  dropdown of the customer's own accounts, restricted to targets in the same currency because
+  GEMS does not convert money. Both show the source account with its balance, and an amount the
+  account cannot cover turns the field red, names the shortfall and blocks the button.
+- **Templates** are saved payees under a name the customer chooses (Rent, Mum, Gym). They live on
+  the Payments screen — add, edit, delete, or *Pay* to open the dialog prefilled — and appear as
+  quick-pick chips inside the dialog. A payment can save its payee as a template on the way out.
+- **Split bill** is its own button and its own dialog, not a third rail of New payment: a total,
+  the account to collect into, a row per person, and *Split equally* which divides in minor units
+  and puts the remainder on the first share, so the parts always sum to the total. Open requests
+  land in a card on the Payments screen where each share can be marked paid.
+- **All / Income / Spending / Pending / Cards** and the filter box now actually filter the
+  movements table. `Cards` selects card-channel movements; the filter box matches counterparty,
+  reference or IBAN.
+
+The **Portfolio** screen is interactive on the same terms:
+
+- **Open new account** picks a type and currency, mints a demo `RO.. GEMS ....` IBAN, and
+  optionally funds the account from an existing one in the same currency. The new account shows
+  up everywhere accounts are listed, including the payment dropdowns.
+- **New deposit** opens a term deposit, a savings account, or a savings goal with a target. Term
+  rates come from `depositTerms`; the money leaves the funding account and the maturity date is
+  computed from the term. Every product can be topped up, withdrawn from, or closed — closing
+  returns the balance to an account in the same currency.
+- **Investments** buy and sell holdings at the stored unit price, spending *cash to invest*
+  before touching an account. Position value is derived from units times price, so the
+  INVESTMENTS header always equals the sum of what is listed under it.
+- **Apply for credit** records an application against a product from `creditProducts` (with its
+  rate and maximum) and leaves it in `review`. **Nothing is approved here.** The eligibility
+  decision is the seam left for a future agent that reads accounts and income; until that agent
+  exists, applications sit in review and say so on screen.
+
+Balances and amounts in the mockup are integer minor units, formatted for display, so the
+arithmetic above matches rule 1 even though no money is real. Interest rates are integer basis
+points for the same reason.
 
 ## Run it
 
@@ -93,7 +136,7 @@ backend/
     validation.py    username, password, PIN, email, phone rules
     adapters.py      clock, document extractor, OTP email
   auth/
-    service.py       commands, ports, handlers
+    service.py       commands, ports, handlers, the /me profile read model
     credentials.py   the AuthUser, Session and RecoveryCase aggregates and their transitions
     validation.py    username, PIN shape, new-password rules
     adapters.py      clock, reset-code email
@@ -107,6 +150,11 @@ backend/
     service.py       open, resolve by IBAN, list with balances derived from the ledger
     validation.py    IBAN mod-97 check and generation
     adapters.py      clock, the starter-account list
+  investments/       market data only — read-only, no money movement
+    instrument.py    Instrument, Quote, HistoryPoint, ExchangeRate, MarketSnapshot
+    service.py       catalogue reads, TTL cache, last-known-good fallback, FX conversion
+    validation.py    minor-unit and rate conversion, history range whitelist
+    adapters.py      Yahoo chart client, Frankfurter rate client, shared httpx transport
   payments/
     service.py       commands, ports, handlers, read models
     payment.py       the Payment state machine and the Beneficiary aggregate
@@ -122,13 +170,19 @@ frontend/            no build step; index.html script order is the module graph
   main/app.jsx       chooses sign in vs register, mounts the app
   main/signin.jsx    sign in, PIN recovery, password reset, welcome, hands off to the dashboard
   main/register.jsx  onboarding page state and flow orchestration
-  main/dashboard.jsx post-login dashboard mockup: screen state, chat state, mock-data wiring
+  main/dashboard.jsx post-login dashboard mockup: screen state, chat state, accounts,
+                     transactions, templates and split bills, mock-data wiring
   components/        ui.jsx (primitives) · rails.jsx (step rail, agent panel) · steps.jsx ·
                      auth.jsx (sign-in forms, PIN panel, welcome) ·
-                     dashboard-widgets.jsx (segmented control, bars, donut, progress, amount) ·
-                     dashboard-shell.jsx (sidebar, topbar, agent dock, new-payment dialog) ·
+                     dashboard-widgets.jsx (segmented control, bars, donut, progress, amount,
+                     minor-unit format/parse/split helpers) ·
+                     dashboard-shell.jsx (sidebar, topbar, agent dock, new-payment, split-bill
+                     and template dialogs) ·
+                     dashboard-portfolio.jsx (open-account, deposit, invest and credit dialogs,
+                     IBAN/rate/unit helpers) ·
                      dashboard-screens.jsx (home, payments, chat, portfolio, cards, analytics, settings)
   helpers/           api.js (the only fetch caller) · i18n.js · messages.js (en + ro) ·
+                     people.js (name formatting for display) ·
                      dashboard-data.js (hand-authored demo data for the dashboard mockup)
   styles/            tokens.css (the only place a hex value may appear) · app.css · dashboard.css
 
@@ -280,15 +334,84 @@ Other tradeoffs worth knowing:
     self-service recovery, by design. A correct password at any stage before that resets the
     track to zero.
 
+## Investments — real prices, demo trades
+
+`backend/investments/` is the only feature that reaches outside the system. It is **read-only**:
+no command, no journal entry, no outbox event. Buy and Sell on the Portfolio screen still move
+React state only, exactly as before — the money door is untouched.
+
+Two public providers, neither needing a key or an account:
+
+- **Yahoo Finance** `v8/finance/chart/{symbol}` — an unofficial endpoint — for `URTH`
+  (MSCI World ETF, USD), `TLV.RO` (Banca Transilvania on BVB, RON) and `BTC-USD`. One provider
+  covers all three asset classes. It returns the spot price and a daily close series.
+- **Frankfurter** for USD→RON, both the latest rate and a daily time series, sourced from ECB
+  reference rates.
+
+Everything is normalised to **RON minor units** before it leaves the service. Floats exist only
+inside `adapters.py`; `validation.py` converts them with `Decimal` and `ROUND_HALF_EVEN`. FX rates
+cross the wire as `rateMicro` — the rate scaled by 1e6 — never as a float.
+
+Historical points are converted with the FX rate **of that day**, not today's, so the RON curve
+has the right shape and not just the right endpoint. Weekends and holidays forward-fill from the
+last published rate.
+
+- `GET /investments/instruments` — the static catalogue
+- `GET /investments/market?range=6mo` — quotes, day change in bps, converted history, FX rates
+- `GET /investments/market?refresh=true` — what the widget's Refresh button calls; skips the TTL
+  cache and refetches, with a floor of `investments_min_refresh_seconds` so a held-down button
+  cannot hammer an unofficial endpoint
+
+**When a provider is down** the service degrades in three steps: the TTL cache
+(`investments_quote_ttl_seconds`, 15 min), then the last successful response held in memory, then
+the fallback prices baked into `adapters.py`. The response carries `live: false` and the widget
+says so, with the timestamp of the data it is actually showing. Retries back off to
+`investments_retry_seconds`. The app therefore starts and renders with no internet at all.
+
+The cache is per-process and in memory: a restart loses the last-known-good and falls back to the
+baked-in prices until the first successful fetch.
+
+`Instrument.id` values (`h-msci`, `h-tlv`, `h-btc`) match the holding ids in `dashboard-data.js`;
+that join is what lets the mockup's unit counts meet real prices.
+## Personal details come from the ID document
+
+Everything the app shows about who you are is read once, by OCR, from the ID document you upload
+in step 1 of onboarding — never typed by hand and never invented. `identity.onboarding.complete`
+copies the extracted identity onto the user record as an `identity` sub-document (full name, birth
+date, masked CNP, masked document number, document expiry), so the rest of the system has one
+source for it:
+
+- **`GET /me`** returns it, alongside the username, email and phone from the contact step. It is
+  the read model behind the dashboard's Settings screen, which renders those fields **read-only** —
+  a customer cannot retype their own legal name, and there is no endpoint that would let them.
+- **The dashboard greeting, the agent dock and the chat** address the customer by the given name
+  from the document, not by their username.
+- **Accounts** already carried `holderName` from the same extraction; **cards** now emboss it too,
+  instead of the uppercased username.
+
+Only the **masked** CNP is copied onto the user record. The raw CNP stays where the OCR put it and
+is not spread any further — see the note below about `GET /onboarding/{id}`.
+
+`ops/006_user_identity.js` backfills `identity` for accounts created before this existed, reading
+each user's own KYC case, and re-stamps `holderName`/`ownerName` on their accounts and cards. Users
+whose KYC case has no extracted document keep `identity: null`; `GET /me` returns null for them and
+the Settings screen says so instead of showing blanks.
+
 ## Cards — a backend without a session
 
-`backend/cards/` implements the six actions on the dashboard's Cards mockup, through the same one
+`backend/cards/` implements the actions behind the dashboard's Cards screen, through the same one
 write path as everything else (`bus.execute` → policy-free for now, audit, outbox, idempotency):
 
 - `POST /cards/virtual` — issue a virtual Mastercard for a user
+- `POST /cards/physical` — issue a physical Visa debit card for a user; same handler shape as
+  virtual (`CardsService._issue`), only `kind` and validity period differ (3 years virtual, 5
+  physical). The frontend's "Issue card" button opens a dialog to choose between the two.
 - `POST /cards/{id}/freeze` / `/unfreeze` — reversible pause
 - `POST /cards/{id}/block` — terminal; every other action on that card then fails with
-  `illegal_transition`
+  `illegal_transition`. The frontend labels this **"Delete card"** and, once blocked, drops the
+  card from the visible grid — its masked number moves to a "History" dialog instead. Nothing is
+  deleted from Mongo; this is a UI relabelling of the existing terminal transition, chosen over
+  adding a second terminal state, consistent with the rest of the app never hard-deleting state.
 - `POST /cards/{id}/pin/reveal` — same `CommandResult.sensitive` channel as `auth.reveal_pin`, so a
   replayed `Idempotency-Key` does not re-reveal
 - `POST /cards/{id}/details/reveal` — same `sensitive` channel, returns the CVV; the frontend's
@@ -300,8 +423,17 @@ write path as everything else (`bus.execute` → policy-free for now, audit, out
 - `GET /cards?username=` — read model, bypasses the bus like `GET /onboarding/{id}` does
 
 "Monthly online spend" has no backend — it stays a static number on the mock, unchanged, as asked.
-The date printed on the front of each card is client-side only (the browser's local clock via
-`Intl.DateTimeFormat`), not persisted or served by the backend.
+
+The card **back face** (`SCR.CardsScreen` in `dashboard-screens.jsx`) shows the number, expiry and
+CVV stacked, same font/size, nothing else. The number shown there is a **client-side-only cosmetic
+mock** (`mockFullNumber`, deterministic from the card id) — never sent to or stored by the backend,
+which still never generates or keeps a full PAN (`cards/adapters.py`, unchanged, see below). A
+frozen card gets a translucent blue veil over the whole tile, front or back
+(`--color-info`, added to `frontend/styles/tokens.css` for this — the extracted design archive has
+no blue; `PROMPT.md` §3's fidelity rule says structure wins where the archive and the brief
+disagree, logged here per that rule). A Mastercard-kind card's front shows a small two-circle
+network mark bottom-right, drawn in the app's own plum/lime tokens rather than the real trademarked
+mark (colours, shape and IP are Mastercard's, not ours to reproduce).
 
 There is no session token (see above), so every card endpoint takes `username` in the request body
 instead of a bearer token, resolves it to a user id, and checks the card belongs to that user
@@ -310,6 +442,9 @@ before doing anything. The `Actor` on each command is `Actor.public_cards()` —
 `userId` lands in the audit `after`/event `payload` instead. This is a real gap (anyone who knows a
 username can manage that user's cards) and not a new one — it is the same gap every existing
 endpoint already has. Close it once for all of them when sessions arrive, not per-feature.
+
+Card issuance now embosses the cardholder's name from the ID document (`AuthUser.display_name`,
+falling back to the uppercased username for a user with no extracted identity).
 
 The card PIN is 4 digits, generated at issuance and stored only as `pinEncrypted`
 (`AesGcmPinCipher`, same key as the account PIN, associated data = card id so a blob cannot move

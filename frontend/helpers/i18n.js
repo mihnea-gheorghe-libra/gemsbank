@@ -33,7 +33,7 @@
 
   function tError(message) {
     if (!message) return message;
-    const value = dictionary.serverErrors && dictionary.serverErrors[message];
+    const value = state.dictionary.serverErrors && state.dictionary.serverErrors[message];
     if (typeof value === "string") return value;
     return message;
   }

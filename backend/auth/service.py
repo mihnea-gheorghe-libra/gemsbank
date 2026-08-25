@@ -49,6 +49,13 @@ class SignIn(Command):
     pin: str
 
 
+class VerifyPin(Command):
+    command_name: ClassVar[str] = "auth.verify_pin"
+
+    username: str
+    pin: str
+
+
 class RevealPin(Command):
     command_name: ClassVar[str] = "auth.reveal_pin"
 
@@ -214,6 +221,7 @@ class AuthService:
 
     def register(self, command_bus: CommandBus) -> None:
         command_bus.register(SignIn, self._handle_sign_in)
+        command_bus.register(VerifyPin, self._handle_verify_pin)
         command_bus.register(RevealPin, self._handle_reveal_pin)
         command_bus.register(RequestPasswordReset, self._handle_reset_request)
         command_bus.register(VerifyResetCode, self._handle_reset_verify)
@@ -363,6 +371,35 @@ class AuthService:
             events=[
                 DomainEvent(
                     name="auth.signed_in",
+                    aggregate_type="user",
+                    aggregate_id=user.id,
+                )
+            ],
+        )
+
+    async def _handle_verify_pin(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, VerifyPin)
+        username = validation.normalise_username(command.username)
+        pin = validation.validate_pin_shape(command.pin)
+        user = await self._load_user(username, GENERIC_REJECTION)
+        user.guard_usable(self._clock.now())
+
+        if not self._hasher.verify(pin, user.pin_hash):
+            raise AuthenticationError(GENERIC_REJECTION)
+
+        return CommandResult(
+            data={"verified": True},
+            audit=AuditRecord(
+                action="auth.pin_verified",
+                entity_type="user",
+                entity_id=user.id,
+                after={"username": user.username},
+            ),
+            events=[
+                DomainEvent(
+                    name="auth.pin_verified",
                     aggregate_type="user",
                     aggregate_id=user.id,
                 )

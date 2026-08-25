@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     transactions_page_size: int = 25
     ocr_min_confidence: float = 0.60
 
+    yahoo_chart_base_url: str = "https://query1.finance.yahoo.com"
+    frankfurter_base_url: str = "https://api.frankfurter.app"
+    investments_timeout_seconds: float = 6.0
+    investments_quote_ttl_seconds: int = 900
+    investments_retry_seconds: int = 60
+    investments_min_refresh_seconds: int = 3
+    investments_series_days: int = 400
+
 
 
 settings = Settings()  # type: ignore[call-arg]

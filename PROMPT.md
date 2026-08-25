@@ -194,6 +194,16 @@ accounts, admin back-office, chatbot, **and the entire agent layer**.
 
 For each of these: build nothing. A feature folder appears the day its first line of code does.
 
+**Deliberately taken out of this list since:**
+
+- **Cards** — `backend/cards/` exists; see README.
+- **Investments, read-only market data** — `backend/investments/` exists. It fetches prices and
+  FX from public providers and converts to RON minor units. It moves no money: no command, no
+  journal entry, no outbox event, and Buy/Sell on the Portfolio screen remain React state. Real
+  ledger-backed trading stays out of scope.
+- **FX conversion, display only** — the USD→RON conversion above is presentational, applied to
+  market prices. Accounts still hold exactly one currency and no payment converts between them.
+
 ### Definition of done for v0
 
 - [ ] `docker compose up --build` gives a working app at `localhost:8000/app/` from a clean clone.

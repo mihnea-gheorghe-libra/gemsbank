@@ -16,6 +16,7 @@ from backend.auth.service import (
     RevokeSession,
     SignIn,
     SignOut,
+    VerifyPin,
     UpdatePreferences,
     VerifyResetCode,
     VerifySecureChange,
@@ -25,6 +26,7 @@ from backend.cards.service import (
     BlockCardPermanently,
     CardsService,
     FreezeCard,
+    IssuePhysicalCard,
     IssueVirtualCard,
     RevealCardDetails,
     RevealCardPin,
@@ -34,6 +36,7 @@ from backend.cards.service import (
     get_cards_service,
 )
 from backend.command_bus import bus
+from backend.investments.service import InvestmentsService, get_investments_service
 from backend.database.mongo import get_db
 from backend.helpers.context import Actor
 from backend.helpers.errors import AuthenticationError
@@ -164,6 +167,7 @@ AuthDep = Annotated[AuthService, Depends(get_auth_service)]
 AccountsDep = Annotated[AccountsService, Depends(get_accounts_service)]
 PaymentsDep = Annotated[PaymentsService, Depends(get_payments_service)]
 CardsServiceDep = Annotated[CardsService, Depends(get_cards_service)]
+InvestmentsDep = Annotated[InvestmentsService, Depends(get_investments_service)]
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key")]
 BearerToken = Annotated[str | None, Header(alias="Authorization")]
 
@@ -173,6 +177,7 @@ auth_router = APIRouter(prefix="/auth", tags=["auth"])
 accounts_router = APIRouter(prefix="/accounts", tags=["accounts"])
 payments_router = APIRouter(prefix="/payments", tags=["payments"])
 cards_router = APIRouter(prefix="/cards", tags=["cards"])
+investments_router = APIRouter(prefix="/investments", tags=["investments"])
 
 
 def _actor() -> Actor:
@@ -315,6 +320,14 @@ async def login(
 ) -> dict[str, Any]:
     command = SignIn(username=payload.username, pin=payload.pin.strip())
     return await bus.execute(command, _auth_actor(), idempotency_key, ip=ip, user_agent=user_agent)
+
+
+@auth_router.post("/pin/verify")
+async def verify_pin(
+    payload: SignInRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = VerifyPin(username=payload.username, pin=payload.pin.strip())
+    return await bus.execute(command, _auth_actor(), idempotency_key)
 
 
 @auth_router.post("/pin/reveal")
@@ -539,6 +552,14 @@ async def issue_virtual_card(
     return await bus.execute(command, _cards_actor(), idempotency_key)
 
 
+@cards_router.post("/physical", status_code=201)
+async def issue_physical_card(
+    payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = IssuePhysicalCard(username=payload.username)
+    return await bus.execute(command, _cards_actor(), idempotency_key)
+
+
 @cards_router.post("/{card_id}/freeze")
 async def freeze_card(
     card_id: str, payload: UsernameRequest, idempotency_key: IdempotencyKey = None
@@ -597,8 +618,21 @@ async def set_online_limit(
     return await bus.execute(command, _cards_actor(), idempotency_key)
 
 
+@investments_router.get("/instruments")
+async def list_instruments(service: InvestmentsDep) -> dict[str, Any]:
+    return service.instruments()
+
+
+@investments_router.get("/market")
+async def market_snapshot(
+    service: InvestmentsDep, range: str | None = None, refresh: bool = False
+) -> dict[str, Any]:
+    return await service.market(range, force=refresh)
+
+
 api_router.include_router(onboarding_router)
 api_router.include_router(auth_router)
 api_router.include_router(accounts_router)
 api_router.include_router(payments_router)
 api_router.include_router(cards_router)
+api_router.include_router(investments_router)
