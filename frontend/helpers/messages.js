@@ -230,6 +230,12 @@
       payments: {
         title: "Payments & transfers",
         subtitle: "{count} movements · {pending} pending signatures",
+        pendingTitle: "Pending Signatures",
+        sign: "Sign",
+        note: {
+          revolut: "Revolut top-up",
+          rent: "August rent"
+        },
         splitBill: "Split bill",
         newPayment: "New payment",
         filter: { all: "All", income: "Income", spending: "Spending", pending: "Pending", cards: "Cards" },
@@ -999,6 +1005,12 @@
       payments: {
         title: "Plăți și transferuri",
         subtitle: "{count} mișcări · {pending} semnături în așteptare",
+        pendingTitle: "Semnături în așteptare",
+        sign: "Semnează",
+        note: {
+          revolut: "Alimentare Revolut",
+          rent: "Chirie august"
+        },
         splitBill: "Împarte nota",
         newPayment: "Plată nouă",
         filter: { all: "Toate", income: "Venituri", spending: "Cheltuieli", pending: "În așteptare", cards: "Carduri" },

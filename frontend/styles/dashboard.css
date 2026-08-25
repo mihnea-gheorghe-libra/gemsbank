@@ -59,7 +59,8 @@
 /* The physical card face (dash-card-tile) keeps its light-mode brand surface in
    dark mode too — a bank card doesn't change colour when the phone goes dark —
    pinning its content colours to the light-mode foreground keeps text legible. */
-:root[data-theme="dark"] .dash-card-tile {
+:root[data-theme="dark"] .dash-card-tile,
+:root[data-theme="dark"] .dash-card-face-back {
   --color-text: var(--color-on-light-text);
   --color-heading: var(--color-on-light-heading);
   --color-primary: var(--color-on-light-primary);
@@ -69,7 +70,8 @@
   background: var(--color-lime-500);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .dash-card-tile {
+  :root:not([data-theme="light"]) .dash-card-tile,
+  :root:not([data-theme="light"]) .dash-card-face-back {
     --color-text: var(--color-on-light-text);
     --color-heading: var(--color-on-light-heading);
     --color-primary: var(--color-on-light-primary);
