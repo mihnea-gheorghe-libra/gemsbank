@@ -562,24 +562,47 @@
       <sc-if value="{{ isCards }}" hint-placeholder-val="{{ false }}">
         <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:18px">
           <h3 style="margin:0">My cards</h3>
-          <button class="btn btn-secondary">Issue virtual card</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-secondary" onClick="{{ openIssue }}">Issue card</button>
+            <button class="btn btn-secondary" onClick="{{ openHistory }}">History</button>
+          </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 300px;gap:22px">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
             <sc-for list="{{ cards }}" as="c" hint-placeholder-count="4">
-              <button onClick="{{ c.go }}" style="all:unset;cursor:pointer;display:block">
-                <div class="blueprint" style="aspect-ratio:1.6;padding:16px;display:flex;flex-direction:column;justify-content:space-between;background:var(--color-surface)" style-hover="background:color-mix(in srgb,var(--color-accent) 10%,transparent)">
-                  <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-                  <div style="display:flex;justify-content:space-between;align-items:flex-start">
-                    <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em">{{ c.kind }}</span>
-                    <span class="tag tag-outline">{{ c.state }}</span>
+              <div>
+                <button onClick="{{ c.go }}" style="all:unset;cursor:pointer;display:block;width:100%">
+                  <div class="blueprint" style="aspect-ratio:1.6;padding:16px;display:flex;flex-direction:column;justify-content:space-between;background:var(--color-surface);position:relative" style-hover="background:color-mix(in srgb,var(--color-accent) 10%,transparent)">
+                    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+                    <sc-if value="{{ c.frozen }}" hint-placeholder-val="{{ false }}">
+                      <div style="position:absolute;inset:0;background:rgba(37,99,235,.42);pointer-events:none"></div>
+                    </sc-if>
+                    <sc-if value="{{ c.showFront }}" hint-placeholder-val="{{ true }}">
+                      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                        <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em">{{ c.kind }}</span>
+                        <span class="tag tag-outline">{{ c.stateLabel }}</span>
+                      </div>
+                      <div>
+                        <div style="font-family:ui-monospace,Menlo,monospace;font-size:15px;letter-spacing:.18em">{{ c.maskedNum }}</div>
+                        <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:8px" class="text-muted"><span>{{ c.owner }}</span><span>{{ c.exp }}</span></div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ c.showBack }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;justify-content:flex-end">
+                        <span class="tag tag-outline">{{ c.stateLabel }}</span>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:8px;font-family:ui-monospace,Menlo,monospace;font-size:14px;letter-spacing:.14em">
+                        <span>{{ c.fullNum }}</span>
+                        <div style="display:flex;gap:20px;font-size:12px">
+                          <span>EXP {{ c.exp }}</span>
+                          <span>CVV {{ c.cvv }}</span>
+                        </div>
+                      </div>
+                    </sc-if>
                   </div>
-                  <div>
-                    <div style="font-family:ui-monospace,Menlo,monospace;font-size:15px;letter-spacing:.18em">{{ c.num }}</div>
-                    <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:8px" class="text-muted"><span>{{ c.owner }}</span><span>{{ c.exp }}</span></div>
-                  </div>
-                </div>
-              </button>
+                </button>
+                <button onClick="{{ c.flip }}" class="btn btn-ghost" style="font-size:11px;padding:2px 0;margin-top:4px">{{ c.flipLabel }}</button>
+              </div>
             </sc-for>
           </div>
           <div class="blueprint" style="padding:16px;align-self:start;background:var(--color-surface)">
@@ -591,7 +614,7 @@
               <button class="btn btn-secondary" onClick="{{ showPin }}" style="justify-content:space-between">{{ pinLabel }}<span style="font-family:ui-monospace,Menlo,monospace;font-size:10px">02</span></button>
               <button class="btn btn-secondary" style="justify-content:space-between">Set ATM limit<span style="font-family:ui-monospace,Menlo,monospace;font-size:10px">03</span></button>
               <button class="btn btn-secondary" style="justify-content:space-between">Set online limit<span style="font-family:ui-monospace,Menlo,monospace;font-size:10px">04</span></button>
-              <button class="btn btn-secondary" style="justify-content:space-between;color:var(--color-accent-800)">Block permanently<span style="font-family:ui-monospace,Menlo,monospace;font-size:10px">05</span></button>
+              <button class="btn btn-secondary" onClick="{{ deleteCard }}" style="justify-content:space-between;color:var(--color-accent-800)">Delete card<span style="font-family:ui-monospace,Menlo,monospace;font-size:10px">05</span></button>
             </div>
             <div style="height:1px;background:var(--color-divider);margin:14px 0"></div>
             <div style="font-size:12px" class="text-muted">Monthly online spend 1.840 / 4.000 RON</div>
@@ -764,6 +787,54 @@
   </div>
 </sc-if>
 
+<sc-if value="{{ historyOpen }}" hint-placeholder-val="{{ false }}">
+  <div class="dialog-backdrop" style="z-index:60">
+    <div class="dialog blueprint" style="background:var(--color-bg);width:min(420px,100%)">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="dialog-title">Deleted cards</div>
+      <div class="dialog-body" style="display:flex;flex-direction:column;gap:0">
+        <sc-if value="{{ hasDeleted }}" hint-placeholder-val="{{ false }}">
+          <sc-for list="{{ deletedCards }}" as="d" hint-placeholder-count="2">
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:14px;letter-spacing:.14em;padding:8px 0;border-bottom:1px solid var(--color-divider)">•••• •••• •••• {{ d.last4 }}</div>
+          </sc-for>
+        </sc-if>
+        <sc-if value="{{ noDeleted }}" hint-placeholder-val="{{ true }}">
+          <div class="text-muted" style="font-size:13px">No cards deleted yet.</div>
+        </sc-if>
+      </div>
+      <div class="dialog-actions">
+        <button class="btn btn-secondary" onClick="{{ closeHistory }}">Close</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ issueOpen }}" hint-placeholder-val="{{ false }}">
+  <div class="dialog-backdrop" style="z-index:60">
+    <div class="dialog blueprint" style="background:var(--color-bg);width:min(420px,100%)">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="dialog-title">Issue card</div>
+      <div class="seg" style="align-self:flex-start">
+        <sc-for list="{{ issueTypes }}" as="o" hint-placeholder-count="2">
+          <label class="seg-opt" onClick="{{ o.pick }}" style="background:{{ o.bg }};color:{{ o.fg }}"><span>{{ o.label }}</span></label>
+        </sc-for>
+      </div>
+      <div class="dialog-body text-muted" style="font-size:13px">
+        <sc-if value="{{ issueIsVirtual }}" hint-placeholder-val="{{ true }}">
+          Instant, usable online right away, no physical delivery.
+        </sc-if>
+        <sc-if value="{{ issueIsPhysical }}" hint-placeholder-val="{{ false }}">
+          Ships to your address on file — arrives in 5–7 business days.
+        </sc-if>
+      </div>
+      <div class="dialog-actions">
+        <button class="btn btn-secondary" onClick="{{ closeIssue }}">Cancel</button>
+        <button class="btn btn-primary blueprint" onClick="{{ createCard }}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Create card</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
 </div>
 
 </x-dc>
@@ -779,10 +850,10 @@ const TX = [
   {date:'10.08.2026', who:'Digi Communications', ref:'Direct debit', cat:'Utilities', status:'Booked', amt:'−59,00'}
 ];
 const CARDS = [
-  {kind:'PHYSICAL · VISA DEBIT', num:'•••• •••• •••• 4127', owner:'A. POP', exp:'09/29', state:'Active', name:'Visa Debit ••4127'},
-  {kind:'VIRTUAL · MASTERCARD', num:'•••• •••• •••• 3319', owner:'A. POP', exp:'04/28', state:'Active', name:'Mastercard Virtual ••3319'},
-  {kind:'VIRTUAL · SINGLE USE', num:'•••• •••• •••• 7740', owner:'A. POP', exp:'08/26', state:'Frozen', name:'Single-use ••7740'},
-  {kind:'PHYSICAL · METAL', num:'•••• •••• •••• 1002', owner:'A. POP', exp:'12/30', state:'Active', name:'Metal ••1002'}
+  {id:0, kind:'PHYSICAL · VISA DEBIT', last4:'4127', fullNum:'4532 8817 2201 4127', cvv:'482', owner:'A. POP', exp:'09/29', frozen:false, name:'Visa Debit ••4127'},
+  {id:1, kind:'VIRTUAL · MASTERCARD', last4:'3319', fullNum:'5412 7734 9908 3319', cvv:'716', owner:'A. POP', exp:'04/28', frozen:false, name:'Mastercard Virtual ••3319'},
+  {id:2, kind:'VIRTUAL · SINGLE USE', last4:'7740', fullNum:'5412 0043 6612 7740', cvv:'305', owner:'A. POP', exp:'08/26', frozen:true, name:'Single-use ••7740'},
+  {id:3, kind:'PHYSICAL · METAL', last4:'1002', fullNum:'4916 2287 5501 1002', cvv:'894', owner:'A. POP', exp:'12/30', frozen:false, name:'Metal ••1002'}
 ];
 const NAV = [
   ['dash','01','Dashboard'],['pay','02','Payments'],['chat','03','AI Assistant'],
@@ -794,9 +865,11 @@ const TAGS = {dash:'DASHBOARD · SCREEN 03', pay:'PAYMENTS & TRANSFERS · SCREEN
 class Component extends DCLogic {
   state = {
     screen: null, bal: false, tts: false, dock: null, dark: null,
-    attempts: 0, kyc: 1, card: 0, pinShown: false, frozen: false,
+    attempts: 0, kyc: 1, pinShown: false,
     draft: '', mic: false, payOpen: false, filter: 'All',
     range: 'Quarter', lang: 'Română', payType: 'IBAN transfer',
+    cards: CARDS.map(c=>({...c})), selectedCardId: CARDS[0].id, nextCardId: CARDS.length,
+    flippedIds: [], deletedCards: [], historyOpen: false, issueOpen: false, issueType: 'Virtual card',
     msgs: [{who:'ai', kind:'text', text:'Bună, Andrei. Across 4 active accounts you hold 128.470,55 RON. Nothing needs your signature right now — two direct debits land on Thursday.'}]
   };
 
@@ -841,12 +914,62 @@ class Component extends DCLogic {
       pick: ()=> this.setState({[key]: label})
     }));
   }
+  toggleCardFreeze(){
+    this.setState(st => ({
+      cards: st.cards.map(c => c.id === st.selectedCardId ? {...c, frozen: !c.frozen} : c)
+    }));
+  }
+  deleteSelectedCard(){
+    this.setState(st => {
+      const target = st.cards.find(c => c.id === st.selectedCardId);
+      if (!target) return null;
+      const remaining = st.cards.filter(c => c.id !== st.selectedCardId);
+      return {
+        cards: remaining,
+        deletedCards: st.deletedCards.concat([{last4: target.last4}]),
+        selectedCardId: remaining.length ? remaining[0].id : null,
+        pinShown: false
+      };
+    });
+  }
+  toggleCardFlip(id){
+    this.setState(st => ({
+      flippedIds: st.flippedIds.includes(id) ? st.flippedIds.filter(x=>x!==id) : st.flippedIds.concat([id])
+    }));
+  }
+  issueCard(){
+    this.setState(st => {
+      const isVirtual = st.issueType === 'Virtual card';
+      const group = () => String(Math.floor(1000 + Math.random()*9000));
+      const last4 = group();
+      const id = st.nextCardId;
+      const card = {
+        id,
+        kind: isVirtual ? 'VIRTUAL · MASTERCARD' : 'PHYSICAL · VISA DEBIT',
+        name: (isVirtual ? 'Mastercard Virtual ••' : 'Visa Debit ••') + last4,
+        last4,
+        fullNum: [group(), group(), group(), last4].join(' '),
+        cvv: group().slice(0,3),
+        owner: 'A. POP',
+        exp: isVirtual ? '12/27' : '12/30',
+        frozen: false
+      };
+      return {
+        cards: st.cards.concat([card]),
+        nextCardId: id + 1,
+        selectedCardId: id,
+        pinShown: false,
+        issueOpen: false
+      };
+    });
+  }
   renderVals(){
     const s = {...this.state};
     if (s.screen === null) s.screen = this.props.startScreen ?? 'dash';
     if (s.dark === null) s.dark = this.props.theme === 'Dark';
     if (s.dock === null) s.dock = (this.props.agentDock ?? 'Floating widget') === 'Floating widget';
     const pin = ['•','•','•',''].map((ch,i)=>({ch, i}));
+    const sel = s.cards.find(c=>c.id===s.selectedCardId) || null;
     return {
       showAuth: s.screen==='login', showKyc: s.screen==='kyc', showApp: !['login','kyc'].includes(s.screen),
       isDash: s.screen==='dash', isChat: s.screen==='chat', isPay: s.screen==='pay',
@@ -937,12 +1060,38 @@ class Component extends DCLogic {
         {name:'BTC', qty:'0,014', val:'2.080,00'},
         {name:'Cash to invest', qty:'—', val:'1.000,00'}
       ],
-      cards: CARDS.map((c,i)=>({...c, go: ()=> this.setState({card:i, pinShown:false})})),
-      cardName: CARDS[s.card].name,
-      freezeLabel: s.frozen ? 'Unfreeze card' : 'Freeze card',
-      toggleFreeze: ()=> this.setState(st=>({frozen: !st.frozen})),
+      cards: s.cards.map(c=>{
+        const flipped = s.flippedIds.includes(c.id);
+        return {
+          ...c,
+          go: ()=> this.setState({selectedCardId: c.id, pinShown:false}),
+          flip: ()=> this.toggleCardFlip(c.id),
+          flipLabel: flipped ? 'Show front' : 'Show back',
+          showFront: !flipped, showBack: flipped,
+          maskedNum: '•••• •••• •••• '+c.last4,
+          stateLabel: c.frozen ? 'Frozen' : 'Active'
+        };
+      }),
+      cardName: sel ? sel.name : '—',
+      freezeLabel: sel && sel.frozen ? 'Unfreeze card' : 'Freeze card',
+      toggleFreeze: ()=> this.toggleCardFreeze(),
       pinLabel: s.pinShown ? 'PIN · 4 1 9 2' : 'Show PIN',
       showPin: ()=> this.setState(st=>({pinShown: !st.pinShown})),
+      deleteCard: ()=> this.deleteSelectedCard(),
+
+      historyOpen: s.historyOpen,
+      openHistory: ()=> this.setState({historyOpen:true}),
+      closeHistory: ()=> this.setState({historyOpen:false}),
+      deletedCards: s.deletedCards,
+      hasDeleted: s.deletedCards.length > 0,
+      noDeleted: s.deletedCards.length === 0,
+
+      issueOpen: s.issueOpen,
+      openIssue: ()=> this.setState({issueOpen:true, issueType:'Virtual card'}),
+      closeIssue: ()=> this.setState({issueOpen:false}),
+      issueTypes: this.seg(['Virtual card','Physical card'], s.issueType, 'issueType'),
+      issueIsVirtual: s.issueType==='Virtual card', issueIsPhysical: s.issueType==='Physical card',
+      createCard: ()=> this.issueCard(),
       cats: [
         {name:'Groceries', val:'1.180 RON · 32%'},
         {name:'Utilities', val:'840 RON · 23%'},

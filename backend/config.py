@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     resend_api_key: str | None = None
     otp_from_email: str = "onboarding@resend.dev"
 
+    azure_docintel_endpoint: str | None = None
+    azure_docintel_key: str | None = None
+
     pin_encryption_key: str | None = None
 
     web_dir: str = str(_REPO_ROOT / "frontend")
@@ -45,6 +48,17 @@ class Settings(BaseSettings):
     step_up_dev_code: str = "000000"
 
     transactions_page_size: int = 25
+    ocr_min_confidence: float = 0.60
+
+    yahoo_chart_base_url: str = "https://query1.finance.yahoo.com"
+    frankfurter_base_url: str = "https://api.frankfurter.app"
+    investments_timeout_seconds: float = 6.0
+    investments_quote_ttl_seconds: int = 900
+    investments_retry_seconds: int = 60
+    investments_min_refresh_seconds: int = 3
+    investments_series_days: int = 400
 
 
-settings = Settings()
+
+settings = Settings()  # type: ignore[call-arg]
+

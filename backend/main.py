@@ -20,6 +20,7 @@ from backend.helpers.context import (
     set_correlation_id,
 )
 from backend.helpers.errors import DomainError
+from backend.investments.service import close_investments_clients, get_investments_service
 from backend.onboarding.service import get_onboarding_service
 from backend.payments.service import get_payments_service
 from backend.server.routes import api_router
@@ -34,8 +35,10 @@ async def lifespan(app: FastAPI):
     get_onboarding_service()
     get_auth_service()
     get_cards_service()
+    get_investments_service()
     await ensure_indexes()
     yield
+    await close_investments_clients()
     await close_client()
 
 
