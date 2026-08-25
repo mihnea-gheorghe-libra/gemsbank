@@ -203,6 +203,17 @@
       setCardCvv(null);
     }, []);
 
+    useEffect(() => {
+      if (screen === "cards") return;
+      setPinShown(false);
+      setCardPin(null);
+      setDetailsShown(false);
+      setCardCvv(null);
+      setPinPromptOpen(false);
+      setPinPromptError(null);
+      setPinPromptTarget(null);
+    }, [screen]);
+
     const openIssueDialog = useCallback(() => {
       setIssueKind("virtual");
       setIssueOpen(true);
@@ -269,15 +280,17 @@
     }, [username, selectedCardId, applyCard, cards, selectCard]);
 
     const revealCardPin = useCallback(async () => {
-      if (!selectedCardId) return;
+      if (!selectedCardId) return false;
       setCardBusy(true);
       setCardsError(null);
       try {
         const result = await api.revealCardPin(username, selectedCardId);
         setCardPin(result.pin);
         setPinShown(true);
+        return true;
       } catch (err) {
         setCardsError(err);
+        return false;
       } finally {
         setCardBusy(false);
       }
@@ -325,9 +338,13 @@
       setPinPromptError(null);
       try {
         await api.verifyPin(username, pin);
-        setPinPromptOpen(false);
-        if (pinPromptTarget === "cardPin") await revealCardPin();
-        else if (pinPromptTarget === "details") await revealCardDetails();
+        if (pinPromptTarget === "cardPin") {
+          const revealed = await revealCardPin();
+          if (!revealed) setPinPromptOpen(false);
+        } else {
+          setPinPromptOpen(false);
+          if (pinPromptTarget === "details") await revealCardDetails();
+        }
       } catch (err) {
         setPinPromptError(err);
       } finally {
@@ -751,6 +768,7 @@
                 pinPromptOpen={pinPromptOpen}
                 pinPromptBusy={pinPromptBusy}
                 pinPromptError={pinPromptError}
+                pinPromptTarget={pinPromptTarget}
                 onConfirmLoginPin={confirmLoginPin}
                 onCancelLoginPin={cancelLoginPin}
                 onSetAtmLimit={setCardAtmLimit}
@@ -779,6 +797,7 @@
           <DASH.AgentDock
             open={dockOpen}
             username={firstName}
+            screen={screen}
             onOpen={() => setDockOpen(true)}
             onClose={() => setDockOpen(false)}
             onExpand={() => navigate("chat")}

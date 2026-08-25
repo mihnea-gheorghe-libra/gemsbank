@@ -721,8 +721,39 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     );
   }
 
-  function CardPinDialog({ busy, error, onDismiss, onSubmit }) {
+  function CardPinDialog({ busy, error, revealedPin, onDismiss, onSubmit }) {
     const [pin, setPin] = useState("");
+
+    if (revealedPin) {
+      return (
+        <UI.Dialog labelledBy="card-pin-title" onDismiss={onDismiss}>
+          <h2 id="card-pin-title" className="dialog-title">
+            {t("dashboard.cards.pinDialog.revealedTitle")}
+          </h2>
+          <p className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
+            {t("dashboard.cards.pinDialog.revealedHint")}
+          </p>
+
+          <div
+            style={{
+              fontFamily: "var(--font-heading)",
+              fontSize: 36,
+              letterSpacing: "0.35em",
+              textAlign: "center",
+              padding: "20px 0",
+            }}
+          >
+            {revealedPin.split("").join(" ")}
+          </div>
+
+          <div className="dialog-actions">
+            <UI.Button type="button" variant="primary" onClick={onDismiss}>
+              {t("dashboard.cards.pinDialog.close")}
+            </UI.Button>
+          </div>
+        </UI.Dialog>
+      );
+    }
 
     return (
       <UI.Dialog labelledBy="card-pin-title" onDismiss={onDismiss}>
@@ -789,6 +820,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     pinPromptOpen,
     pinPromptBusy,
     pinPromptError,
+    pinPromptTarget,
     onConfirmLoginPin,
     onCancelLoginPin,
     onSetAtmLimit,
@@ -797,6 +829,13 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     const [editingLimit, setEditingLimit] = useState(null);
     const card = cards.find((row) => row.cardId === selectedCardId) || null;
     const disabled = busy || !card || card.state === "blocked";
+    // Demo has no real spend feed yet — this month's online spend is a fixed
+    // mock; only the limit (denominator) is live, from the card's own state.
+    const monthlySpendMinor = 184000;
+    const onlineLimitMinor = card ? card.onlineLimitMinor : 0;
+    const monthlySpendPct = onlineLimitMinor > 0
+      ? Math.min(100, Math.round((monthlySpendMinor / onlineLimitMinor) * 100))
+      : 100;
 
     function submitLimit(kind, raw) {
       const normalized = raw.replace(",", ".").trim();
@@ -975,8 +1014,20 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                   </UI.Button>
                 </div>
                 <div className="hr" />
-                <div className="text-muted" style={{ fontSize: 12 }}>{t("dashboard.cards.monthlySpend")}</div>
-                <div style={{ marginTop: 6 }}><DASH.ProgressBar pct={46} label={t("dashboard.cards.monthlySpend")} className="dash-progress-negative" /></div>
+                {(() => {
+                  const spendLabel = t("dashboard.cards.monthlySpend", {
+                    spent: DASH.formatMinor(monthlySpendMinor),
+                    limit: DASH.formatMinor(onlineLimitMinor),
+                  });
+                  return (
+                    <React.Fragment>
+                      <div className="text-muted" style={{ fontSize: 12 }}>{spendLabel}</div>
+                      <div style={{ marginTop: 6 }}>
+                        <DASH.ProgressBar pct={monthlySpendPct} label={spendLabel} className="dash-progress-negative" />
+                      </div>
+                    </React.Fragment>
+                  );
+                })()}
               </UI.Plate>
             ) : null}
           </div>
@@ -986,6 +1037,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
           <CardPinDialog
             busy={pinPromptBusy}
             error={pinPromptError}
+            revealedPin={pinPromptTarget === "cardPin" && pinShown ? pin : null}
             onDismiss={onCancelLoginPin}
             onSubmit={onConfirmLoginPin}
           />
