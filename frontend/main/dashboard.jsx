@@ -111,7 +111,10 @@
     const firstName = GEMS.people.firstName(displayName) || username;
 
     const navigate = useCallback((key) => {
-      if (SCREENS.indexOf(key) >= 0) setScreen(key);
+      if (SCREENS.indexOf(key) >= 0) {
+        setScreen(key);
+        setBalanceHidden(true);
+      }
     }, []);
 
     const toggleBalance = useCallback(() => {
@@ -121,6 +124,7 @@
     const pushExchange = useCallback((userText, reply) => {
       setMessages((list) => list.concat([{ role: "user", kind: "text", text: userText }, reply]));
       setScreen("chat");
+      setBalanceHidden(true);
     }, []);
 
     const sendDraft = useCallback(() => {
