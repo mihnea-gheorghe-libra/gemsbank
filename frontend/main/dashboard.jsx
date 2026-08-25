@@ -10,10 +10,23 @@
 
   const SCREENS = ["home", "payments", "chat", "portfolio", "cards", "analytics", "settings"];
 
+  const ANSWER_KEYS = {
+    pendingSign: "answerPendingSign",
+    portfolioGrowth: "answerPortfolioGrowth",
+    portfolioMove: "answerPortfolioMove",
+    cardFreeze: "answerCardFreeze",
+    cardLimit: "answerCardLimit",
+    spendingTrend: "answerSpendingTrend",
+    settingsPin: "answerSettingsPin",
+    settings2fa: "answerSettings2fa",
+  };
+
   function answerFor(promptKey) {
     if (promptKey === "pay") return { role: "ai", kind: "tx", text: t("dashboard.chat.answerPay") };
     if (promptKey === "recurring") return { role: "ai", kind: "table", text: t("dashboard.chat.answerRecurring") };
     if (promptKey === "groceries") return { role: "ai", kind: "chart", text: t("dashboard.chat.answerGroceries") };
+    const answerKey = ANSWER_KEYS[promptKey];
+    if (answerKey) return { role: "ai", kind: "text", text: t("dashboard.chat." + answerKey) };
     return { role: "ai", kind: "text", text: t("dashboard.chat.answerDefault") };
   }
 
@@ -118,13 +131,9 @@
     }, [draft, pushExchange]);
 
     const onDockPrompt = useCallback((key) => {
-      const label = t("dashboard.chat." + (key === "pay" ? "promptPay" : "promptRecurring"));
+      const prompt = DATA.chatPrompts[key];
+      const label = prompt ? t("dashboard.chat." + prompt.labelKey) : "";
       pushExchange(label, answerFor(key));
-    }, [pushExchange]);
-
-    const onScreenPrompt = useCallback((key) => {
-      const labelKey = key === "pay" ? "promptPay" : key === "recurring" ? "promptRecurring" : "promptGroceries";
-      pushExchange(t("dashboard.chat." + labelKey), answerFor(key));
     }, [pushExchange]);
 
     const confirmTx = useCallback(() => {
@@ -691,7 +700,7 @@
                 onKeyDown={(event) => { if (event.key === "Enter") sendDraft(); }}
                 micOn={micOn}
                 onToggleMic={() => setMicOn((value) => !value)}
-                onPromptClick={onScreenPrompt}
+                onPromptClick={onDockPrompt}
                 onConfirmTx={confirmTx}
                 username={firstName}
               />

@@ -1291,6 +1291,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     const [sessions, setSessions] = useState(null);
     const [error, setError] = useState(null);
     const [revokingId, setRevokingId] = useState(null);
+    const [notice, setNotice] = useState(null);
 
     useEffect(() => {
       api
@@ -1302,9 +1303,11 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     async function revoke(sessionId) {
       setRevokingId(sessionId);
       setError(null);
+      setNotice(null);
       try {
         await api.revokeSession(sessionId);
         setSessions((current) => current.filter((row) => row.sessionId !== sessionId));
+        setNotice(t("dashboard.settings.sessionsDialog.revoked"));
       } catch (err) {
         setError(err);
       } finally {
@@ -1316,6 +1319,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
       <UI.Dialog labelledBy="sessions-title" onDismiss={onDismiss}>
         <h2 id="sessions-title" className="dialog-title">{t("dashboard.settings.sessionsDialog.title")}</h2>
         <UI.ErrorNote error={error} />
+        {notice ? <p className="text-muted" style={{ fontSize: 12 }}>{notice}</p> : null}
         {sessions === null ? (
           <p className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.settings.sessionsDialog.loading")}</p>
         ) : sessions.length === 0 ? (
@@ -1341,9 +1345,11 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                   <UI.Button
                     type="button"
                     variant="secondary"
+                    style={{ gap: 6, color: "var(--color-negative)" }}
                     disabled={revokingId === row.sessionId}
                     onClick={() => revoke(row.sessionId)}
                   >
+                    <UI.Icon name="Trash2" size={14} />
                     {t("dashboard.settings.sessionsDialog.revoke")}
                   </UI.Button>
                 )}
