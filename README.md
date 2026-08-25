@@ -20,11 +20,13 @@ After a successful sign in you land on a **dashboard mockup**: a mostly frontend
 Payments, AI Assistant, Portfolio, Cards, Analytics and Settings. It is a deliberate, explicitly
 approved deviation from `PROMPT.md` §4 — cards, investments, analytics and the chatbot are listed
 there as *not in v0* — kept as UI only, with hand-authored demo data
-(`frontend/helpers/dashboard-data.js`). The PIN-reveal screen (`AUTH.PinRevealScreen`) still runs
-first whenever a flow surfaces the PIN (forgot-PIN, password reset); its "Close and continue"
-action opens the dashboard mockup. Plain PIN sign-in opens it directly, since it has no PIN to
-show — there is no separate "welcome" screen any more. There is still no session token: the real
-dashboard and the `sessions` collection arrive together, later.
+(`frontend/helpers/dashboard-data.js`) for the parts that are not wired to a real backend. The
+PIN-reveal screen (`AUTH.PinRevealScreen`) still runs first whenever a flow surfaces the PIN
+(forgot-PIN, password reset); its "Close and continue" action opens the dashboard mockup. Plain
+PIN sign-in opens it directly, since it has no PIN to show — there is no separate "welcome" screen
+any more. Sign-in already mints the session token described above, and the dashboard mockup uses
+it: `Home` and `Payments` read real accounts and movements over `Authorization: Bearer …`, the
+same way the rest of this section describes.
 
 The **Cards** screen is one exception: it has a real backend (`backend/cards/`) — issue a
 virtual card, freeze/unfreeze, reveal PIN, set ATM/online limits, block permanently — but the
@@ -35,40 +37,58 @@ The **Investments** widget on the Portfolio screen is the other: its prices, his
 real, fetched live through `backend/investments/`. See "Investments — real prices, demo trades"
 below.
 
-The mockup's **Payments** screen is interactive, but only against React state seeded from
-`dashboard-data.js` — nothing reaches the ledger, and a refresh resets everything:
+The mockup's **Payments** screen now moves real money for its core flow, through the same
+`backend/payments/` module as the (currently unrendered) standalone `PaymentsPage`:
 
-- **New payment** has two rails. *IBAN transfer* pays a third party; *Between my accounts* is a
-  dropdown of the customer's own accounts, restricted to targets in the same currency because
-  GEMS does not convert money. Both show the source account with its balance, and an amount the
-  account cannot cover turns the field red, names the shortfall and blocks the button.
-- **Templates** are saved payees under a name the customer chooses (Rent, Mum, Gym). They live on
-  the Payments screen — add, edit, delete, or *Pay* to open the dialog prefilled — and appear as
-  quick-pick chips inside the dialog. A payment can save its payee as a template on the way out.
+- **New payment** has two rails, both real. *IBAN transfer* posts a `MakeTransfer` command against
+  `/payments/transfers` — it only reaches accounts actually held at GEMS, so a made-up IBAN is
+  correctly rejected. *Between my accounts* is a dropdown of the customer's own accounts,
+  restricted to targets in the same currency because GEMS does not convert money. A payment above
+  the step-up threshold comes back `awaiting_signature`; the dashboard opens a sign dialog
+  (dev code from `config.py`, shown inline in demo mode) that calls `/payments/transfers/{id}/sign`.
+  Accounts, the movements table and the pending-signatures panel all reload from the server after
+  every payment or signature, so what you see matches MongoDB, not stale local state.
+- **Templates** are saved payees under a name the customer chooses (Rent, Mum, Gym) — still React
+  state, not the real `beneficiaries` collection. They live on the Payments screen — add, edit,
+  delete, or *Pay* to open the dialog prefilled — and appear as quick-pick chips inside the dialog.
 - **Split bill** is its own button and its own dialog, not a third rail of New payment: a total,
   the account to collect into, a row per person, and *Split equally* which divides in minor units
   and puts the remainder on the first share, so the parts always sum to the total. Open requests
-  land in a card on the Payments screen where each share can be marked paid.
+  land in a card on the Payments screen where each share can be marked paid. This stays React
+  state only — nothing reaches the ledger, and a refresh resets it.
 - **All / Income / Spending / Pending / Cards** and the filter box now actually filter the
   movements table. `Cards` selects card-channel movements; the filter box matches counterparty,
   reference or IBAN.
 
-The **Portfolio** screen is interactive on the same terms:
+The **Portfolio** screen mixes the same way:
 
-- **Open new account** picks a type and currency, mints a demo `RO.. GEMS ....` IBAN, and
-  optionally funds the account from an existing one in the same currency. The new account shows
-  up everywhere accounts are listed, including the payment dropdowns.
-- **New deposit** opens a term deposit, a savings account, or a savings goal with a target. Term
-  rates come from `depositTerms`; the money leaves the funding account and the maturity date is
-  computed from the term. Every product can be topped up, withdrawn from, or closed — closing
-  returns the balance to an account in the same currency.
-- **Investments** buy and sell holdings at the stored unit price, spending *cash to invest*
-  before touching an account. Position value is derived from units times price, so the
-  INVESTMENTS header always equals the sum of what is listed under it.
+- **Open new account** picks a type and currency. For **Current** and **Savings** — and now
+  **Invest** — it posts `OpenAccount` to `/accounts`, which mints a real GEMS IBAN and writes the
+  account to MongoDB; an optional funding amount is a second, real internal transfer through the
+  same payments path above (and can itself land in `awaiting_signature`). The new account shows up
+  everywhere accounts are listed, including the payment dropdowns. **Term deposit** and **Savings
+  goal** still create React-state-only products, since deposits are not a v0 concept on the ledger.
+- **New deposit** opens a term deposit or a savings goal with a target — React state only. Term
+  rates come from `depositTerms`; the money leaves the funding account (a real account, debited
+  only in local state) and the maturity date is computed from the term. Every product can be
+  topped up, withdrawn from, or closed — closing returns the balance to an account in the same
+  currency, again only in local state.
+- **Investments** buy and sell holdings at the stored unit price, spending *cash to invest* before
+  touching an account, exactly as `PROMPT.md` requires — no command, no journal entry, no outbox
+  event for a trade. *Cash to invest* itself is real, though: it is the balance of the customer's
+  `invest`-kind account, read the same way as any other account. A customer with no investment
+  account sees an **"Open an investment account"** button in its place instead of an invented
+  number. Position value is derived from units times price, so the INVESTMENTS header always
+  equals the sum of what is listed under it.
 - **Apply for credit** records an application against a product from `creditProducts` (with its
   rate and maximum) and leaves it in `review`. **Nothing is approved here.** The eligibility
   decision is the seam left for a future agent that reads accounts and income; until that agent
-  exists, applications sit in review and say so on screen.
+  exists, applications sit in review and say so on screen. React state only.
+
+The Dashboard home screen's quick actions split the same way. **Add funds** is a mock top-up —
+React state only, chosen deliberately over a real house-treasury deposit so it stays an obvious
+sandbox action, not something that reads as a real funding rail. **Exchange** is real: see
+"Exchange — real currency conversion" below.
 
 Balances and amounts in the mockup are integer minor units, formatted for display, so the
 arithmetic above matches rule 1 even though no money is real. Interest rates are integer basis
@@ -221,14 +241,17 @@ otherwise erase the evidence of the failure. `onboarding` does the same for OTP 
 
 One collection, `journalTransactions`, holds the whole ledger. Each document is one transaction
 in one currency with an embedded `entries` array, and it is written by exactly one function —
-`ledger.post_transaction`, called only from `payments`.
+`ledger.post_transaction`. Two callers reach it, both explicitly approved: `payments` (transfers,
+opening deposits) and `exchange` (currency conversion) — see "Exchange — real currency conversion"
+below for why a second caller was let in, and how it still keeps every transaction single-currency.
 
 Entry amounts are **signed integer minor units, from the account holder's point of view**: the
 account that receives gets `+`, the account that pays gets `−`. A customer balance is therefore
 the plain sum of that account's entries, and it is always derived — there is no balance column
-anywhere. House accounts (`house:settlement:RON`, `house:fee_revenue:*`, `house:suspense:*`) are
-chart-of-accounts constants, not rows in `accounts`; the settlement account carries the negative
-counter-leg of every demo deposit.
+anywhere. House accounts (`house:settlement:RON`, `house:fee_revenue:*`, `house:suspense:*`,
+`house:fx:*`) are chart-of-accounts constants, not rows in `accounts`; the settlement account
+carries the negative counter-leg of every demo deposit, and `house:fx:{currency}` carries the
+negative counter-leg of every currency exchange.
 
 The balanced-transaction rule is enforced **by Mongo**, not only by Python. The validator in
 `ops/004_payments_ledger_schema.js` carries three `$expr` clauses: entries sum to zero, at least
@@ -280,7 +303,7 @@ yesterday cannot post today against money that is no longer there.
 Completing onboarding opens **RON current, RON savings, EUR savings** and posts
 `DEMO_OPENING_BALANCE_MINOR` (default 2.500,00 RON) into the current account from the house
 settlement account. It is a real double-entry posting, not a seeded number, which is why it goes
-through `payments` — rule 5 says only payments calls the money door.
+through `payments` — rule 5 names the callers of the money door, and onboarding is not one of them.
 
 That is a demo convenience and it is the one place the code does something a bank would not.
 Set `DEMO_OPENING_BALANCE_MINOR=0` to open the accounts empty.
@@ -373,6 +396,46 @@ baked-in prices until the first successful fetch.
 
 `Instrument.id` values (`h-msci`, `h-tlv`, `h-btc`) match the holding ids in `dashboard-data.js`;
 that join is what lets the mockup's unit counts meet real prices.
+
+## Exchange — real currency conversion
+
+`backend/exchange/` is a small feature folder — `service.py`, `validation.py`, `adapters.py`, no
+aggregate file, because there is no new persisted entity: a conversion is two correlated,
+single-currency journal transactions, not a thing of its own. It is a deliberate, explicitly
+requested and approved deviation from `PROMPT.md` §4 ("No FX conversion in v0") — see the note
+there for the reasoning and how it keeps rule 2 intact.
+
+The **Exchange** quick action on the Dashboard home screen opens a dialog: pick a RON account,
+pick EUR or USD, enter an amount. The rate comes live from Frankfurter (`GET /exchange/rate`, the
+same free, keyless ECB-backed API `backend/investments/` uses, fetched independently — the two
+features do not share a client, a small accepted duplication rather than a cross-feature import).
+`POST /exchange/convert` runs the `ConvertCurrency` command through `bus.execute`, same as every
+other write: idempotent, audited, one outbox event.
+
+A conversion posts **two** `fx_conversion` journal transactions in the same DB transaction, tied
+by one `correlation_id`:
+
+1. `-amount` from the source account, `+amount` into `house:fx:{sourceCurrency}`.
+2. `-convertedAmount` from `house:fx:{targetCurrency}`, `+convertedAmount` into the target account.
+
+Each transaction is balanced and single-currency on its own — the `journalTransactions` Mongo
+validator still enforces "sums to zero" per document, unchanged. The `house:fx` accounts are a
+demo treasury exactly like `house:settlement` (the source of the onboarding opening balance): not
+real `Account` documents, never balance-checked, free to run arbitrarily negative in every
+currency it hands out. If the customer has no account in the target currency yet, one is opened
+for them automatically (a real `current` account, real IBAN) before the conversion posts — the
+same `AccountsService.open_account` the "Open new account" flow uses.
+
+There is no step-up here yet — unlike payments, a conversion always posts immediately, whatever
+the amount. That is a scope cut for a first version, not a design decision; adding the same
+`StaticLimitPolicy` / signature dance payments uses would be straightforward if this needs to
+handle larger amounts later.
+
+`payments.transfer` is unaffected: `guard_same_currency` still blocks a payment between two
+accounts that don't share a currency. Exchange is the one sanctioned place an account's currency
+boundary is crossed, and it does that as two single-currency postings, never a mixed-currency
+journal entry.
+
 ## Personal details come from the ID document
 
 Everything the app shows about who you are is read once, by OCR, from the ID document you upload

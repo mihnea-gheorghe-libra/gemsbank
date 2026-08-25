@@ -3,7 +3,8 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 
-from backend.accounts.service import AccountsService, get_accounts_service
+from backend.accounts.service import AccountKind, AccountsService, OpenAccount, get_accounts_service
+from backend.exchange.service import ConvertCurrency, ExchangeService, get_exchange_service
 from backend.auth.service import (
     AuthService,
     RequestAccountClosure,
@@ -126,6 +127,18 @@ class AccountClosureRequest(BaseModel):
     pin: str = Field(min_length=4, max_length=8)
 
 
+class OpenAccountRequest(BaseModel):
+    currency: str = Field(min_length=3, max_length=3)
+    kind: AccountKind
+
+
+class ConvertCurrencyRequest(BaseModel):
+    source_account_id: str = Field(alias="sourceAccountId", min_length=1, max_length=64)
+    target_currency: str = Field(alias="targetCurrency", min_length=3, max_length=3)
+    amount_minor: int = Field(alias="amountMinorUnits", gt=0)
+    model_config = {"populate_by_name": True}
+
+
 class TransferRequest(BaseModel):
     source_account_id: str = Field(alias="sourceAccountId", min_length=1, max_length=64)
     target_account_id: str | None = Field(default=None, alias="targetAccountId", max_length=64)
@@ -168,6 +181,7 @@ AccountsDep = Annotated[AccountsService, Depends(get_accounts_service)]
 PaymentsDep = Annotated[PaymentsService, Depends(get_payments_service)]
 CardsServiceDep = Annotated[CardsService, Depends(get_cards_service)]
 InvestmentsDep = Annotated[InvestmentsService, Depends(get_investments_service)]
+ExchangeDep = Annotated[ExchangeService, Depends(get_exchange_service)]
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key")]
 BearerToken = Annotated[str | None, Header(alias="Authorization")]
 
@@ -177,6 +191,7 @@ auth_router = APIRouter(prefix="/auth", tags=["auth"])
 accounts_router = APIRouter(prefix="/accounts", tags=["accounts"])
 payments_router = APIRouter(prefix="/payments", tags=["payments"])
 cards_router = APIRouter(prefix="/cards", tags=["cards"])
+exchange_router = APIRouter(prefix="/exchange", tags=["exchange"])
 investments_router = APIRouter(prefix="/investments", tags=["investments"])
 
 
@@ -472,6 +487,40 @@ async def list_accounts(actor: CurrentActor, accounts: AccountsDep) -> dict[str,
     return {"accounts": await accounts.list_for_user(actor.id)}
 
 
+@accounts_router.post("", status_code=201)
+async def open_account(
+    actor: CurrentActor,
+    payload: OpenAccountRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = OpenAccount(currency=payload.currency, kind=payload.kind)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@exchange_router.get("/rate")
+async def exchange_rate(
+    actor: CurrentActor,
+    exchange: ExchangeDep,
+    source: Annotated[str, Query(alias="from", min_length=3, max_length=3)],
+    target: Annotated[str, Query(alias="to", min_length=3, max_length=3)],
+) -> dict[str, Any]:
+    return await exchange.rate(source, target)
+
+
+@exchange_router.post("/convert", status_code=201)
+async def convert_currency(
+    actor: CurrentActor,
+    payload: ConvertCurrencyRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = ConvertCurrency(
+        source_account_id=payload.source_account_id,
+        target_currency=payload.target_currency,
+        amount_minor=payload.amount_minor,
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
 @payments_router.get("/summary")
 async def payments_summary(actor: CurrentActor, payments: PaymentsDep) -> dict[str, Any]:
     return await payments.summary(actor.id)
@@ -636,3 +685,4 @@ api_router.include_router(accounts_router)
 api_router.include_router(payments_router)
 api_router.include_router(cards_router)
 api_router.include_router(investments_router)
+api_router.include_router(exchange_router)

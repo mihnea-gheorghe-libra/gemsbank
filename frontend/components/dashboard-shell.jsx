@@ -4,6 +4,7 @@
   const UI = GEMS.ui;
   const t = GEMS.i18n.t;
   const DATA = GEMS.dashboardData;
+  const api = GEMS.api;
   const { useState, useEffect, useRef, useMemo } = React;
 
   function accountLabel(account) {
@@ -215,7 +216,7 @@
     );
   }
 
-  DASH.NewPaymentDialog = function NewPaymentDialog({ payType, onPayType, accounts, templates, prefill, onClose, onSubmit }) {
+  DASH.NewPaymentDialog = function NewPaymentDialog({ payType, onPayType, accounts, templates, prefill, holderName, busy, error, onClose, onSubmit }) {
     const [fromId, setFromId] = useState(() => (prefill && prefill.fromId) || accounts[0].id);
     const [toId, setToId] = useState("");
     const [beneficiary, setBeneficiary] = useState((prefill && prefill.beneficiary) || "");
@@ -224,6 +225,9 @@
     const [reference, setReference] = useState((prefill && prefill.reference) || "");
     const [saveTemplate, setSaveTemplate] = useState(false);
     const [templateName, setTemplateName] = useState("");
+    const [acknowledgeMismatch, setAcknowledgeMismatch] = useState(false);
+
+    const mismatch = Boolean(error && error.details && error.details.payeeCheck === "no_match");
 
     const from = accounts.find((account) => account.id === fromId) || accounts[0];
     const internalTargets = accounts.filter((account) => account.id !== from.id && account.cur === from.cur);
@@ -246,20 +250,24 @@
       if (match) setFromId(match.id);
     };
 
-    const ready = payType === "internal"
+    const ready = (payType === "internal"
       ? Boolean(to) && amountMinor > 0 && shortfall == null
-      : beneficiary.trim() !== "" && iban.trim() !== "" && amountMinor > 0 && shortfall == null;
+      : beneficiary.trim() !== "" && iban.trim() !== "" && amountMinor > 0 && shortfall == null)
+      && reference.trim() !== ""
+      && (!mismatch || acknowledgeMismatch)
+      && !busy;
 
     const submit = () => {
       onSubmit({
         payType,
         fromId: from.id,
         toId: to ? to.id : null,
-        beneficiary: payType === "internal" ? accountLabel(to) : beneficiary.trim(),
-        iban: payType === "internal" ? to.iban : iban.trim(),
+        beneficiary: payType === "internal" ? (holderName || accountLabel(to)) : beneficiary.trim(),
+        iban: payType === "internal" ? null : iban.trim(),
         amountMinor,
         currency: from.cur,
         reference: reference.trim(),
+        acknowledgeMismatch,
         template: payType === "iban" && saveTemplate && templateName.trim()
           ? {
               id: "tpl-" + Date.now(),
@@ -363,9 +371,237 @@
 
           <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>{t("dashboard.payDialog.agentCheck")}</p>
 
+          {mismatch ? (
+            <label className="dash-check">
+              <input type="checkbox" checked={acknowledgeMismatch} onChange={(event) => setAcknowledgeMismatch(event.target.checked)} />
+              {t("dashboard.payDialog.acknowledgeMismatch")}
+            </label>
+          ) : null}
+
+          {error ? (
+            <div className="dash-balance-line is-short" role="alert">{error.message}</div>
+          ) : null}
+
           <div className="dash-dialog-actions">
             <UI.Button type="button" variant="secondary" onClick={onClose}>{t("dashboard.payDialog.cancel")}</UI.Button>
-            <UI.Button type="button" variant="primary" disabled={!ready} onClick={submit}>{t("dashboard.payDialog.continueBtn")}</UI.Button>
+            <UI.Button type="button" variant="primary" disabled={!ready} onClick={submit}>
+              {busy ? t("dashboard.payDialog.sending") : t("dashboard.payDialog.continueBtn")}
+            </UI.Button>
+          </div>
+        </UI.Plate>
+      </div>
+    );
+  };
+
+  DASH.SignPaymentDialog = function SignPaymentDialog({ payment, busy, error, onClose, onSubmit }) {
+    const [code, setCode] = useState("");
+    const devCode = payment.stepUp && payment.stepUp.devCode;
+    const attemptsLeft = error && error.details ? error.details.attemptsLeft : null;
+
+    return (
+      <div className="dash-dialog-backdrop" onClick={onClose}>
+        <UI.Plate className="dash-dialog elev-lg" role="dialog" aria-modal="true" aria-labelledby="sign-payment-title" onClick={(event) => event.stopPropagation()}>
+          <h2 id="sign-payment-title" style={{ margin: 0 }}>{t("dashboard.signDialog.title")}</h2>
+          <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
+            {t("dashboard.signDialog.subtitle", {
+              who: payment.counterparty,
+              amount: DASH.formatMinor(payment.amount.minorUnits) + " " + payment.amount.currency,
+            })}
+          </p>
+
+          <UI.Field
+            id="sign-payment-code"
+            label={t("dashboard.signDialog.codeLabel")}
+            hint={devCode ? t("dashboard.signDialog.devHint", { code: devCode }) : undefined}
+          >
+            <UI.TextInput
+              id="sign-payment-code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={code}
+              onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+            />
+          </UI.Field>
+
+          {error ? (
+            <div className="dash-balance-line is-short" role="alert">
+              {error.message}
+              {attemptsLeft != null ? " · " + t("dashboard.signDialog.attemptsLeft", { n: attemptsLeft }) : ""}
+            </div>
+          ) : null}
+
+          <div className="dash-dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onClose}>{t("dashboard.payDialog.cancel")}</UI.Button>
+            <UI.Button type="button" variant="primary" disabled={busy || code.length !== 6} onClick={() => onSubmit(payment.paymentId, code)}>
+              {busy ? t("dashboard.signDialog.signing") : t("dashboard.signDialog.confirm")}
+            </UI.Button>
+          </div>
+        </UI.Plate>
+      </div>
+    );
+  };
+
+  DASH.AddFundsDialog = function AddFundsDialog({ account, busy, error, onClose, onSubmit }) {
+    const [amount, setAmount] = useState("");
+    const amountMinor = DASH.parseMinor(amount);
+    const ready = Boolean(account) && amountMinor > 0 && !busy;
+
+    return (
+      <div className="dash-dialog-backdrop" onClick={onClose}>
+        <UI.Plate className="dash-dialog elev-lg" role="dialog" aria-modal="true" aria-labelledby="add-funds-title" onClick={(event) => event.stopPropagation()}>
+          <h2 id="add-funds-title" style={{ margin: 0 }}>{t("dashboard.addFunds.title")}</h2>
+          <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
+            {account
+              ? t("dashboard.addFunds.subtitle", { account: accountLabel(account) })
+              : t("dashboard.addFunds.noAccount")}
+          </p>
+
+          {account ? (
+            <UI.Field id="add-funds-amount" label={t("dashboard.payDialog.amount")}>
+              <UI.TextInput
+                id="add-funds-amount"
+                inputMode="decimal"
+                value={amount}
+                placeholder="0,00"
+                onChange={(event) => setAmount(event.target.value)}
+              />
+            </UI.Field>
+          ) : null}
+
+          <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>{t("dashboard.addFunds.note")}</p>
+
+          {error ? (
+            <div className="dash-balance-line is-short" role="alert">{error.message}</div>
+          ) : null}
+
+          <div className="dash-dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onClose}>{t("dashboard.payDialog.cancel")}</UI.Button>
+            <UI.Button type="button" variant="primary" disabled={!ready} onClick={() => onSubmit(amountMinor)}>
+              {busy ? t("dashboard.payDialog.sending") : t("dashboard.addFunds.submit")}
+            </UI.Button>
+          </div>
+        </UI.Plate>
+      </div>
+    );
+  };
+
+  const EXCHANGE_TARGETS = ["EUR", "USD"];
+  const RATE_SCALE = 1000000;
+
+  DASH.ExchangeDialog = function ExchangeDialog({ accounts, busy, error, onClose, onSubmit }) {
+    const ronAccounts = accounts.filter((account) => account.cur === "RON");
+    const [sourceId, setSourceId] = useState(ronAccounts.length ? ronAccounts[0].id : "");
+    const [targetCurrency, setTargetCurrency] = useState(EXCHANGE_TARGETS[0]);
+    const [amount, setAmount] = useState("");
+    const [rate, setRate] = useState(null);
+    const [rateLoading, setRateLoading] = useState(false);
+    const [rateError, setRateError] = useState(null);
+
+    const source = ronAccounts.find((account) => account.id === sourceId) || ronAccounts[0] || null;
+    const amountMinor = DASH.parseMinor(amount);
+    const shortfall = source && amountMinor != null && amountMinor > source.minor ? amountMinor - source.minor : null;
+
+    useEffect(() => {
+      let cancelled = false;
+      setRateLoading(true);
+      setRateError(null);
+      api
+        .exchangeRate("RON", targetCurrency)
+        .then((response) => {
+          if (!cancelled) setRate(response);
+        })
+        .catch((err) => {
+          if (!cancelled) setRateError(err);
+        })
+        .finally(() => {
+          if (!cancelled) setRateLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [targetCurrency]);
+
+    const targetAmountMinor = rate && amountMinor > 0
+      ? Math.round((amountMinor * rate.rateMicro) / RATE_SCALE)
+      : null;
+
+    const ready = Boolean(source) && amountMinor > 0 && shortfall == null && Boolean(rate) && !busy;
+
+    const submit = () => {
+      onSubmit({ sourceAccountId: source.id, targetCurrency, amountMinor });
+    };
+
+    return (
+      <div className="dash-dialog-backdrop" onClick={onClose}>
+        <UI.Plate className="dash-dialog elev-lg" role="dialog" aria-modal="true" aria-labelledby="exchange-title" onClick={(event) => event.stopPropagation()}>
+          <h2 id="exchange-title" style={{ margin: 0 }}>{t("dashboard.exchange.title")}</h2>
+          <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>{t("dashboard.exchange.subtitle")}</p>
+
+          {!ronAccounts.length ? (
+            <div className="dash-balance-line is-short" role="alert">{t("dashboard.exchange.noRonAccount")}</div>
+          ) : (
+            <React.Fragment>
+              <UI.Field id="exchange-from" label={t("dashboard.exchange.from")}>
+                <UI.Select id="exchange-from" value={source.id} onChange={(event) => setSourceId(event.target.value)}>
+                  {ronAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>{accountLabel(account)}</option>
+                  ))}
+                </UI.Select>
+              </UI.Field>
+
+              <BalanceLine account={source} shortfallMinor={shortfall} />
+
+              <UI.Field id="exchange-to" label={t("dashboard.exchange.to")}>
+                <UI.Select id="exchange-to" value={targetCurrency} onChange={(event) => setTargetCurrency(event.target.value)}>
+                  {EXCHANGE_TARGETS.map((code) => <option key={code} value={code}>{code}</option>)}
+                </UI.Select>
+              </UI.Field>
+
+              <UI.Field id="exchange-amount" label={t("dashboard.exchange.amount", { currency: "RON" })}>
+                <UI.TextInput
+                  id="exchange-amount"
+                  className={shortfall == null ? undefined : "is-invalid"}
+                  aria-invalid={shortfall == null ? undefined : "true"}
+                  inputMode="decimal"
+                  value={amount}
+                  placeholder="0,00"
+                  onChange={(event) => setAmount(event.target.value)}
+                />
+              </UI.Field>
+
+              <div className="dash-balance-line" role="status">
+                {rateLoading
+                  ? t("dashboard.exchange.rateLoading")
+                  : rateError
+                    ? t("dashboard.exchange.rateUnavailable")
+                    : rate
+                      ? t("dashboard.exchange.rateNote", {
+                          rate: (rate.rateMicro / RATE_SCALE).toFixed(4).replace(".", ","),
+                          target: targetCurrency,
+                        })
+                      : ""}
+              </div>
+
+              {targetAmountMinor != null ? (
+                <div className="dash-balance-line" role="status">
+                  {t("dashboard.exchange.youReceive", {
+                    amount: DASH.formatMinor(targetAmountMinor) + " " + targetCurrency,
+                  })}
+                </div>
+              ) : null}
+            </React.Fragment>
+          )}
+
+          {error ? (
+            <div className="dash-balance-line is-short" role="alert">{error.message}</div>
+          ) : null}
+
+          <div className="dash-dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onClose}>{t("dashboard.payDialog.cancel")}</UI.Button>
+            <UI.Button type="button" variant="primary" disabled={!ready} onClick={submit}>
+              {busy ? t("dashboard.payDialog.sending") : t("dashboard.exchange.submit")}
+            </UI.Button>
           </div>
         </UI.Plate>
       </div>

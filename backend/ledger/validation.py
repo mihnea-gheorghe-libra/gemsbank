@@ -3,7 +3,7 @@ import re
 from backend.helpers.errors import ValidationError
 
 CURRENCY_PATTERN = re.compile(r"^[A-Z]{3}$")
-SUPPORTED_CURRENCIES = frozenset({"RON", "EUR"})
+SUPPORTED_CURRENCIES = frozenset({"RON", "EUR", "USD"})
 MAX_MINOR_UNITS = 10**12
 
 

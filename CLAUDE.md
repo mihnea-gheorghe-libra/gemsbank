@@ -28,7 +28,9 @@ Schema migrations in `ops/` are applied by hand — see `README.md`.
    enforced by a DB constraint, not just Python.
 3. **The journal is append-only.** Corrections are reversals. Never update or delete an entry.
 4. **Balances are derived** from journal lines. Snapshots are read models that must be rebuildable.
-5. **One money door**: the ledger's `post_transaction`. Only payments calls it.
+5. **One money door**: the ledger's `post_transaction`. Only `payments` and `exchange` call it —
+   both go through the same function, so there is still exactly one place money moves from. A new
+   feature does not get to call it without the same explicit approval `exchange` got; see README.
 6. **One write path**: `bus.execute(command, actor, idempotency_key)` in `backend/command_bus.py`.
    HTTP handlers are thin callers. So will agents be.
 7. **Every write is idempotent** (DB-unique key, stored response replayed) and **audited** (actor,

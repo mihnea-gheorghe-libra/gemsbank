@@ -11,6 +11,7 @@ from backend.helpers.errors import IllegalTransitionError, ValidationError
 class AccountKind(StrEnum):
     CURRENT = "current"
     SAVINGS = "savings"
+    INVEST = "invest"
 
 
 class AccountStatus(StrEnum):
