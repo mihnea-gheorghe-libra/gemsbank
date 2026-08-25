@@ -1,9 +1,12 @@
+from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from backend.accounts.service import AccountsService, get_accounts_service
+from backend.agents.analytics_service import AnalyticsService, get_analytics_service
+from backend.agents.service import SupportService, get_support_service
 from backend.auth.service import (
     AuthService,
     RequestAccountClosure,
@@ -16,12 +19,13 @@ from backend.auth.service import (
     RevokeSession,
     SignIn,
     SignOut,
-    VerifyPin,
     UpdatePreferences,
+    VerifyPin,
     VerifyResetCode,
     VerifySecureChange,
     get_auth_service,
 )
+from backend.capabilities.service import get_capabilities_service
 from backend.cards.service import (
     BlockCardPermanently,
     CardsService,
@@ -36,10 +40,11 @@ from backend.cards.service import (
     get_cards_service,
 )
 from backend.command_bus import bus
-from backend.investments.service import InvestmentsService, get_investments_service
 from backend.database.mongo import get_db
+from backend.goals.service import CreateGoal
 from backend.helpers.context import Actor
 from backend.helpers.errors import AuthenticationError
+from backend.investments.service import InvestmentsService, get_investments_service
 from backend.onboarding.service import (
     CompleteOnboarding,
     OnboardingService,
@@ -162,12 +167,26 @@ class LimitRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class AskAgentRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+
+
+class GoalRequest(BaseModel):
+    account_id: str = Field(alias="accountId", min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=80)
+    target_minor: int = Field(alias="targetMinorUnits", gt=0)
+    target_date: date = Field(alias="targetDate")
+    model_config = {"populate_by_name": True}
+
+
 ServiceDep = Annotated[OnboardingService, Depends(get_onboarding_service)]
 AuthDep = Annotated[AuthService, Depends(get_auth_service)]
 AccountsDep = Annotated[AccountsService, Depends(get_accounts_service)]
 PaymentsDep = Annotated[PaymentsService, Depends(get_payments_service)]
 CardsServiceDep = Annotated[CardsService, Depends(get_cards_service)]
 InvestmentsDep = Annotated[InvestmentsService, Depends(get_investments_service)]
+SupportDep = Annotated[SupportService, Depends(get_support_service)]
+AnalyticsDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key")]
 BearerToken = Annotated[str | None, Header(alias="Authorization")]
 
@@ -178,6 +197,8 @@ accounts_router = APIRouter(prefix="/accounts", tags=["accounts"])
 payments_router = APIRouter(prefix="/payments", tags=["payments"])
 cards_router = APIRouter(prefix="/cards", tags=["cards"])
 investments_router = APIRouter(prefix="/investments", tags=["investments"])
+goals_router = APIRouter(prefix="/goals", tags=["goals"])
+agents_router = APIRouter(prefix="/agents", tags=["agents"])
 
 
 def _actor() -> Actor:
@@ -238,7 +259,10 @@ async def system_status() -> dict[str, Any]:
 
 @api_router.get("/capabilities", tags=["platform"])
 async def capabilities() -> dict[str, Any]:
-    return {"commands": bus.registered_commands()}
+    return {
+        "commands": bus.registered_commands(),
+        "capabilities": [c.describe() for c in get_capabilities_service().all()],
+    }
 
 
 @onboarding_router.post("", status_code=201)
@@ -630,9 +654,42 @@ async def market_snapshot(
     return await service.market(range, force=refresh)
 
 
+@agents_router.post("/support/ask")
+async def ask_support(
+    actor: CurrentActor, support: SupportDep, payload: AskAgentRequest
+) -> dict[str, Any]:
+    answer = await support.ask(actor.id, payload.question)
+    return {"answer": answer.answer, "capabilitiesUsed": answer.capabilities_used}
+
+
+@agents_router.post("/analytics/ask")
+async def ask_analytics(
+    actor: CurrentActor, analytics: AnalyticsDep, payload: AskAgentRequest
+) -> dict[str, Any]:
+    answer = await analytics.ask(actor.id, payload.question)
+    return {"answer": answer.answer, "capabilitiesUsed": answer.capabilities_used}
+
+
+@goals_router.post("", status_code=201)
+async def create_goal(
+    actor: CurrentActor,
+    payload: GoalRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = CreateGoal(
+        account_id=payload.account_id,
+        name=payload.name,
+        target_minor=payload.target_minor,
+        target_date=payload.target_date,
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
 api_router.include_router(onboarding_router)
 api_router.include_router(auth_router)
 api_router.include_router(accounts_router)
 api_router.include_router(payments_router)
 api_router.include_router(cards_router)
 api_router.include_router(investments_router)
+api_router.include_router(goals_router)
+api_router.include_router(agents_router)

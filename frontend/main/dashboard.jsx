@@ -30,14 +30,6 @@
     return { role: "ai", kind: "text", text: t("dashboard.chat.answerDefault") };
   }
 
-  function answerForFreeText(text) {
-    const lower = text.toLowerCase();
-    if (/pay|plat|trimit|transfer|send/.test(lower)) return answerFor("pay");
-    if (/recurring|subscription|abonament|recuren/.test(lower)) return answerFor("recurring");
-    if (/grocer|cumpar|cheltu|spend|cost/.test(lower)) return answerFor("groceries");
-    return answerFor(null);
-  }
-
   DASHBOARD.Dashboard = function Dashboard({ username, theme, onTheme, lang, onLang, onSignOut }) {
     const [screen, setScreen] = useState("home");
     const [balanceHidden, setBalanceHidden] = useState(true);
@@ -89,6 +81,7 @@
     const [pinPromptTarget, setPinPromptTarget] = useState(null);
     const [micOn, setMicOn] = useState(false);
     const [draft, setDraft] = useState("");
+    const [chatBusy, setChatBusy] = useState(false);
     const [messages, setMessages] = useState([
       { role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) },
     ]);
@@ -112,27 +105,49 @@
 
     const navigate = useCallback((key) => {
       if (SCREENS.indexOf(key) >= 0) {
+        if (key === "chat" && screen !== "chat") {
+          setMessages([{ role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) }]);
+        }
         setScreen(key);
         setBalanceHidden(true);
       }
-    }, []);
+    }, [screen]);
 
     const toggleBalance = useCallback(() => {
       setBalanceHidden((hidden) => !hidden);
     }, []);
 
     const pushExchange = useCallback((userText, reply) => {
-      setMessages((list) => list.concat([{ role: "user", kind: "text", text: userText }, reply]));
+      setMessages((list) => {
+        const base = screen === "chat" ? list : [];
+        return base.concat([{ role: "user", kind: "text", text: userText }, reply]);
+      });
       setScreen("chat");
       setBalanceHidden(true);
-    }, []);
+    }, [screen]);
 
     const sendDraft = useCallback(() => {
       const text = draft.trim();
-      if (!text) return;
-      pushExchange(text, answerForFreeText(text));
+      if (!text || chatBusy) return;
+      setMessages((list) => list.concat([{ role: "user", kind: "text", text }]));
+      setScreen("chat");
+      setBalanceHidden(true);
       setDraft("");
-    }, [draft, pushExchange]);
+      setChatBusy(true);
+      api
+        .askSupport(text)
+        .then((result) => {
+          setMessages((list) =>
+            list.concat([{ role: "ai", kind: "text", text: result.answer, aiGenerated: true }])
+          );
+        })
+        .catch(() => {
+          setMessages((list) =>
+            list.concat([{ role: "ai", kind: "text", text: t("dashboard.chat.errorNote") }])
+          );
+        })
+        .finally(() => setChatBusy(false));
+    }, [draft, chatBusy]);
 
     const onDockPrompt = useCallback((key) => {
       const prompt = DATA.chatPrompts[key];
@@ -715,6 +730,7 @@
             {screen === "chat" ? (
               <SCR.ChatScreen
                 messages={messages}
+                busy={chatBusy}
                 draft={draft}
                 onDraftChange={(event) => setDraft(event.target.value)}
                 onSend={sendDraft}

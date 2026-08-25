@@ -1767,7 +1767,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   };
 
-  SCR.ChatScreen = function ChatScreen({ messages, draft, onDraftChange, onSend, onKeyDown, micOn, onToggleMic, onPromptClick, onConfirmTx, username }) {
+  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, onToggleMic, onPromptClick, onConfirmTx, username }) {
     const prompts = [
       { key: "pay", label: t("dashboard.chat.promptPay") },
       { key: "recurring", label: t("dashboard.chat.promptRecurring") },
@@ -1835,17 +1835,33 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                           <DASH.Bars items={DATA.groceryBars} />
                         </UI.Plate>
                       ) : null}
+
+                      {message.aiGenerated ? (
+                        <div className="dash-ai-disclaimer">
+                          <UI.Icon name="Sparkles" size={13} />
+                          {t("dashboard.chat.aiDisclaimer")}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 )}
               </div>
             ))}
+
+            {busy ? (
+              <div className="dash-msg">
+                <div className="dash-msg-ai">
+                  <span className="dash-msg-ai-dot" aria-hidden="true" />
+                  <div className="dash-msg-ai-body text-muted">{t("dashboard.chat.thinking")}</div>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div style={{ paddingTop: 16 }}>
             <div className="dash-prompts-row">
               {prompts.map((prompt) => (
-                <UI.Button key={prompt.key} type="button" variant="secondary" onClick={() => onPromptClick(prompt.key)}>{prompt.label}</UI.Button>
+                <UI.Button key={prompt.key} type="button" variant="secondary" disabled={busy} onClick={() => onPromptClick(prompt.key)}>{prompt.label}</UI.Button>
               ))}
             </div>
             <UI.Plate className="dash-chat-input-row">
@@ -1854,13 +1870,14 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                 value={draft}
                 onChange={onDraftChange}
                 onKeyDown={onKeyDown}
+                disabled={busy}
                 placeholder={t("dashboard.chat.inputPlaceholder")}
                 aria-label={t("dashboard.chat.inputPlaceholder")}
               />
-              <UI.Button type="button" variant="secondary" aria-pressed={micOn} onClick={onToggleMic}>
+              <UI.Button type="button" variant="secondary" aria-pressed={micOn} disabled={busy} onClick={onToggleMic}>
                 {micOn ? t("dashboard.chat.micOn") : t("dashboard.chat.micOff")}
               </UI.Button>
-              <UI.Button type="button" variant="primary" onClick={onSend}>{t("dashboard.chat.send")}</UI.Button>
+              <UI.Button type="button" variant="primary" disabled={busy} onClick={onSend}>{t("dashboard.chat.send")}</UI.Button>
             </UI.Plate>
             <div className="dash-chat-hint">{t("dashboard.chat.orchestratorNote")}</div>
           </div>
