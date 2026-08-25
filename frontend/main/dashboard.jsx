@@ -785,7 +785,6 @@
                 ttsOn={ttsOn}
                 onToggleTts={() => setTtsOn((value) => !value)}
                 onSignOut={onSignOut}
-                onGoChat={() => navigate("chat")}
                 me={me}
                 onMeChange={setMe}
               />
