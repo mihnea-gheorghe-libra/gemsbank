@@ -576,6 +576,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     onOpenAccount,
   }) {
     const investedMinor = holdings.reduce((sum, holding) => sum + DASH.holdingValue(holding), 0) + (investCashMinor || 0);
+    const ownedHoldings = holdings.filter((holding) => DASH.holdingValue(holding) > 0);
     const [focusId, setFocusId] = useState(null);
     const [chartRange, setChartRange] = useState("month");
 
@@ -706,7 +707,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
             <div className="dash-holdings-table-wrap">
               <table className="dash-table">
                 <tbody>
-                {holdings.map((holding) => (
+                {ownedHoldings.map((holding) => (
                   <tr
                     key={holding.id}
                     className={UI.classNames(
