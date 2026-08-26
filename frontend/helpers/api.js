@@ -180,5 +180,7 @@
       send("/agents/support/ask", { method: "POST", json: { question } }),
     askAnalytics: (question) =>
       send("/agents/analytics/ask", { method: "POST", json: { question } }),
+    askPaymentsAgent: (question) =>
+      send("/agents/payments/ask", { method: "POST", json: { question } }),
   };
 })();

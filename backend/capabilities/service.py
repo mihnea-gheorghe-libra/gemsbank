@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from backend.auth.service import get_auth_service
 from backend.capabilities import analytics
+from backend.capabilities import payments as payments_capabilities
 from backend.capabilities.registry import (
     Capability,
     CapabilityRegistry,
@@ -196,6 +197,36 @@ def get_capabilities_service() -> CapabilityRegistry:
             side_effect=SideEffect.READ,
             required_scope="analytics:read",
             resolver=analytics.resolve_what_changed,
+        )
+    )
+    registry.register(
+        Capability(
+            name="payments.balances.get",
+            input_schema=payments_capabilities.BalancesInput,
+            output_schema=payments_capabilities.BalancesOutput,
+            side_effect=SideEffect.READ,
+            required_scope="accounts:read",
+            resolver=payments_capabilities.resolve_balances,
+        )
+    )
+    registry.register(
+        Capability(
+            name="payments.beneficiaries.list",
+            input_schema=payments_capabilities.BeneficiariesInput,
+            output_schema=payments_capabilities.BeneficiariesOutput,
+            side_effect=SideEffect.READ,
+            required_scope="beneficiaries:read",
+            resolver=payments_capabilities.resolve_beneficiaries,
+        )
+    )
+    registry.register(
+        Capability(
+            name="payments.transfer.propose",
+            input_schema=payments_capabilities.TransferProposalInput,
+            output_schema=payments_capabilities.TransferProposalOutput,
+            side_effect=SideEffect.MONEY_MOVING,
+            required_scope="payments:propose",
+            resolver=payments_capabilities.resolve_transfer_proposal,
         )
     )
     return registry

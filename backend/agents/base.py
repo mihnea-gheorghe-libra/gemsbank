@@ -3,11 +3,13 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
+from pydantic import ValidationError as PydanticValidationError
+
 from backend.agents.adapters import ChatCompleter
-from backend.capabilities.registry import CapabilityRegistry, SideEffect
+from backend.capabilities.registry import Capability, CapabilityRegistry, SideEffect
 from backend.database.records import AuditRecord
 from backend.helpers.context import Actor, get_correlation_id, log_event, new_id
-from backend.helpers.errors import ValidationError
+from backend.helpers.errors import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,7 @@ AuditSink = Callable[[AuditRecord, Actor, str], Awaitable[None]]
 class AgentAnswer:
     answer: str
     capabilities_used: list[str] = field(default_factory=list)
+    proposals: list[dict[str, object]] = field(default_factory=list)
 
 
 class ToolCallingAgent:
@@ -31,17 +34,58 @@ class ToolCallingAgent:
         capabilities: CapabilityRegistry,
         tool_names: frozenset[str],
         audit: AuditSink,
+        proposal_tool_names: frozenset[str] = frozenset(),
     ) -> None:
         self._name = name
         self._system_prompt = system_prompt
         self._chat = chat
         self._capabilities = capabilities
         self._tool_names = tool_names
+        self._proposal_tool_names = proposal_tool_names
         self._audit = audit
 
     @property
     def tool_names(self) -> frozenset[str]:
         return self._tool_names
+
+    @property
+    def proposal_tool_names(self) -> frozenset[str]:
+        return self._proposal_tool_names
+
+    def _may_call(self, capability: Capability) -> bool:
+        if capability.name in self._tool_names:
+            return capability.side_effect is SideEffect.READ
+        if capability.name in self._proposal_tool_names:
+            return capability.side_effect is SideEffect.MONEY_MOVING
+        return False
+
+    def _granted_capability(self, name: str) -> Capability | None:
+        try:
+            capability = self._capabilities.get(name)
+        except NotFoundError:
+            return None
+        if not self._may_call(capability):
+            raise ValidationError(
+                f"{self._name} may not call that capability.",
+                details={"capability": name},
+            )
+        return capability
+
+    def _tool_error(self, call_id: str, code: str, message: str) -> dict[str, object]:
+        return {
+            "role": "tool",
+            "tool_call_id": call_id,
+            "content": json.dumps({"error": code, "message": message}),
+        }
+
+    def _unknown_capability(self, call_id: str, requested: str) -> dict[str, object]:
+        allowed = sorted(self._tool_names | self._proposal_tool_names)
+        return self._tool_error(
+            call_id,
+            "no_such_capability",
+            f"There is no capability called '{requested}'. "
+            f"The exact names available are: {', '.join(allowed)}.",
+        )
 
     def _tool_defs(self) -> list[dict[str, object]]:
         return [
@@ -54,7 +98,7 @@ class ToolCallingAgent:
                 },
             }
             for capability in self._capabilities.all()
-            if capability.name in self._tool_names and capability.side_effect is SideEffect.READ
+            if self._may_call(capability)
         ]
 
     async def ask(self, actor: Actor, question: str) -> AgentAnswer:
@@ -66,6 +110,7 @@ class ToolCallingAgent:
         ]
         tools = self._tool_defs()
         used: list[str] = []
+        proposals: list[dict[str, object]] = []
 
         for _ in range(MAX_TOOL_ROUNDS):
             result = await self._chat.complete(messages, tools)
@@ -80,6 +125,7 @@ class ToolCallingAgent:
                             "question": question,
                             "answer": result.content or "",
                             "capabilitiesUsed": used,
+                            "proposals": proposals,
                         },
                     ),
                     actor,
@@ -92,32 +138,61 @@ class ToolCallingAgent:
                     subject=actor.subject_id(),
                     runId=run_id,
                     capabilities=used,
+                    proposals=len(proposals),
                 )
-                return AgentAnswer(answer=result.content or "", capabilities_used=used)
+                return AgentAnswer(
+                    answer=result.content or "",
+                    capabilities_used=used,
+                    proposals=proposals,
+                )
 
             messages.append(result.message)
             for call in result.tool_calls:
-                if call.name not in self._tool_names:
-                    raise ValidationError(
-                        f"{self._name} may not call that capability.",
-                        details={"capability": call.name},
+                capability = self._granted_capability(call.name)
+                if capability is None:
+                    log_event(
+                        logger,
+                        f"agents.{self._name}.unknown_capability",
+                        actor=actor.label(),
+                        runId=run_id,
+                        requested=call.name,
                     )
-                capability = self._capabilities.get(call.name)
-                if capability.side_effect is not SideEffect.READ:
-                    raise ValidationError(
-                        f"{self._name} may only call read-only capabilities.",
-                        details={"capability": capability.name},
+                    messages.append(self._unknown_capability(call.id, call.name))
+                    continue
+                try:
+                    arguments = json.loads(call.arguments or "{}")
+                    payload = capability.input_schema.model_validate(arguments)
+                except (json.JSONDecodeError, PydanticValidationError) as exc:
+                    log_event(
+                        logger,
+                        f"agents.{self._name}.capability_arguments_rejected",
+                        actor=actor.label(),
+                        runId=run_id,
+                        requested=call.name,
                     )
-                arguments = json.loads(call.arguments or "{}")
-                payload = capability.input_schema.model_validate(arguments)
+                    messages.append(
+                        self._tool_error(
+                            call.id,
+                            "invalid_arguments",
+                            f"Those arguments do not fit {call.name}: {exc}",
+                        )
+                    )
+                    continue
                 output = await capability.resolve(actor, payload)
                 used.append(capability.name)
+                is_proposal = capability.side_effect is SideEffect.MONEY_MOVING
+                if is_proposal:
+                    proposals.append(output.model_dump(by_alias=True))
                 await self._audit(
                     AuditRecord(
                         action=f"capability.{capability.name}",
                         entity_type="capability",
                         entity_id=capability.name,
-                        after={"subject": actor.subject_id(), "runId": run_id},
+                        after={
+                            "subject": actor.subject_id(),
+                            "runId": run_id,
+                            "proposalOnly": is_proposal or None,
+                        },
                     ),
                     actor,
                     correlation_id,

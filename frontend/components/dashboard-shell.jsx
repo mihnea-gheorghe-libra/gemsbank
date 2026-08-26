@@ -218,10 +218,10 @@
 
   DASH.NewPaymentDialog = function NewPaymentDialog({ payType, onPayType, accounts, templates, prefill, holderName, busy, error, onClose, onSubmit }) {
     const [fromId, setFromId] = useState(() => (prefill && prefill.fromId) || accounts[0].id);
-    const [toId, setToId] = useState("");
+    const [toId, setToId] = useState((prefill && prefill.toId) || "");
     const [beneficiary, setBeneficiary] = useState((prefill && prefill.beneficiary) || "");
     const [iban, setIban] = useState((prefill && prefill.iban) || "");
-    const [amount, setAmount] = useState("");
+    const [amount, setAmount] = useState((prefill && prefill.amount) || "");
     const [reference, setReference] = useState((prefill && prefill.reference) || "");
     const [saveTemplate, setSaveTemplate] = useState(false);
     const [templateName, setTemplateName] = useState("");

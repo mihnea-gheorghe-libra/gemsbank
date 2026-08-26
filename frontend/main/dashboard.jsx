@@ -23,8 +23,22 @@
   };
 
   function agentForScreen(originScreen) {
-    return originScreen === "analytics" ? "analytics" : "support";
+    if (originScreen === "analytics") return "analytics";
+    if (originScreen === "payments" || originScreen === "home") return "payments";
+    return "support";
   }
+
+  const AGENT_SEED_KEYS = {
+    analytics: "seedAnalytics",
+    payments: "seedPayments",
+    support: "seed",
+  };
+
+  const AGENT_ASK = {
+    analytics: (question) => api.askAnalytics(question),
+    payments: (question) => api.askPaymentsAgent(question),
+    support: (question) => api.askSupport(question),
+  };
 
   function answerFor(promptKey) {
     if (promptKey === "pay") return { role: "ai", kind: "tx", text: t("dashboard.chat.answerPay") };
@@ -204,7 +218,7 @@
       if (SCREENS.indexOf(key) >= 0) {
         if (key === "chat" && screen !== "chat") {
           const agent = agentForScreen(screen);
-          const seedKey = agent === "analytics" ? "seedAnalytics" : "seed";
+          const seedKey = AGENT_SEED_KEYS[agent] || "seed";
           setChatAgent(agent);
           setMessages([{ role: "ai", kind: "text", text: t("dashboard.chat." + seedKey, { balance: DATA.totalBalance }) }]);
         }
@@ -230,25 +244,39 @@
     const sendDraft = useCallback(() => {
       const text = draft.trim();
       if (!text || chatBusy) return;
+      const agent = screen === "chat" ? chatAgent : agentForScreen(screen);
+      if (agent !== chatAgent) setChatAgent(agent);
       setMessages((list) => list.concat([{ role: "user", kind: "text", text }]));
       setScreen("chat");
       setBalanceHidden(true);
       setDraft("");
       setChatBusy(true);
-      const ask = chatAgent === "analytics" ? api.askAnalytics : api.askSupport;
+      const ask = AGENT_ASK[agent] || api.askSupport;
       ask(text)
         .then((result) => {
+          const proposal = (result.proposals || []).filter(
+            (item) => item && item.status === "proposed"
+          )[0];
           setMessages((list) =>
-            list.concat([{ role: "ai", kind: "text", text: result.answer, aiGenerated: true }])
+            list.concat([
+              proposal
+                ? { role: "ai", kind: "proposal", text: result.answer, proposal, aiGenerated: true }
+                : { role: "ai", kind: "text", text: result.answer, aiGenerated: true },
+            ])
           );
         })
-        .catch(() => {
-          setMessages((list) =>
-            list.concat([{ role: "ai", kind: "text", text: t("dashboard.chat.errorNote") }])
-          );
+        .catch((error) => {
+          const retryAfter = error && error.details && error.details.retryAfterSeconds;
+          const note =
+            error && error.code === "rate_limited"
+              ? t("dashboard.chat.rateLimitedNote", {
+                  minutes: Math.max(1, Math.ceil((retryAfter || 60) / 60)),
+                })
+              : t("dashboard.chat.errorNote");
+          setMessages((list) => list.concat([{ role: "ai", kind: "text", text: note }]));
         })
         .finally(() => setChatBusy(false));
-    }, [draft, chatBusy, chatAgent]);
+    }, [draft, chatBusy, chatAgent, screen]);
 
     const onDockPrompt = useCallback((key) => {
       const prompt = DATA.chatPrompts[key];
@@ -259,6 +287,7 @@
     const confirmTx = useCallback(() => {
       setMessages((list) => list.concat([{ role: "ai", kind: "text", text: t("dashboard.chat.txConfirmedNote") }]));
     }, []);
+
 
     const applyCard = useCallback((updated) => {
       setCards((list) => list.map((card) => (card.cardId === updated.cardId ? updated : card)));
@@ -515,6 +544,20 @@
       setPayType(prefill && prefill.payType ? prefill.payType : "iban");
       setPayOpen(true);
     }, []);
+
+    const confirmProposal = useCallback((proposal) => {
+      if (!proposal) return;
+      const internal = Boolean(proposal.targetAccountId);
+      openPayment({
+        payType: internal ? "internal" : "iban",
+        fromId: proposal.sourceAccountId,
+        toId: proposal.targetAccountId || "",
+        beneficiary: proposal.counterparty || "",
+        iban: internal ? "" : proposal.targetIban || "",
+        reference: proposal.reference || "",
+        amount: DASH.formatMinor(proposal.amountMinorUnits),
+      });
+    }, [openPayment]);
 
     const closePayment = useCallback(() => {
       setPayOpen(false);
@@ -934,11 +977,12 @@
                 draft={draft}
                 onDraftChange={(event) => setDraft(event.target.value)}
                 onSend={sendDraft}
-                onKeyDown={(event) => { if (event.key === "Enter") sendDraft(); }}
+                onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) sendDraft(); }}
                 micOn={micOn}
                 onToggleMic={() => setMicOn((value) => !value)}
                 onPromptClick={onDockPrompt}
                 onConfirmTx={confirmTx}
+                onConfirmProposal={confirmProposal}
                 username={firstName}
               />
             ) : null}
@@ -1027,7 +1071,7 @@
 
         {payOpen ? (
           <DASH.NewPaymentDialog
-            key={payPrefill ? payPrefill.iban : "blank"}
+            key={payPrefill ? (payPrefill.iban || payPrefill.toId || "prefill") : "blank"}
             payType={payType}
             onPayType={setPayType}
             accounts={accounts}

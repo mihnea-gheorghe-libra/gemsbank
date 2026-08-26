@@ -7,7 +7,7 @@
   const t = GEMS.i18n.t;
   const DATA = GEMS.dashboardData;
   const api = GEMS.api;
-  const { useState, useEffect } = React;
+  const { useState, useEffect, useRef } = React;
 
   const QUICK_ACTIONS = [
     { icon: "Send", key: "transact", go: "payments" },
@@ -1833,7 +1833,16 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   };
 
-  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, onToggleMic, onPromptClick, onConfirmTx, username }) {
+  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, onToggleMic, onPromptClick, onConfirmTx, onConfirmProposal, username }) {
+    const inputRef = useRef(null);
+
+    useEffect(() => {
+      if (busy || !inputRef.current) return;
+      const active = document.activeElement;
+      if (active && active !== document.body && active !== inputRef.current) return;
+      inputRef.current.focus();
+    }, [busy]);
+
     const prompts = [
       { key: "pay", label: t("dashboard.chat.promptPay") },
       { key: "recurring", label: t("dashboard.chat.promptRecurring") },
@@ -1868,6 +1877,46 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                           <div style={{ display: "flex", gap: 8 }}>
                             <UI.Button type="button" variant="primary" style={{ flex: 1 }} onClick={onConfirmTx}>{t("dashboard.chat.txConfirm")}</UI.Button>
                             <UI.Button type="button" variant="secondary">{t("dashboard.chat.txEdit")}</UI.Button>
+                          </div>
+                        </UI.Plate>
+                      ) : null}
+
+                      {message.kind === "proposal" && message.proposal ? (
+                        <UI.Plate className="dash-tx-card">
+                          <UI.Kicker style={{ marginBottom: 4 }}>{t("dashboard.chat.proposalTitle")}</UI.Kicker>
+                          <div className="dash-tx-amount">
+                            {DASH.formatMinor(message.proposal.amountMinorUnits)} {message.proposal.currency}
+                          </div>
+                          <div className="dash-tx-grid">
+                            <span className="text-muted">{t("dashboard.chat.txTo")}</span>
+                            <span>{message.proposal.counterparty}</span>
+                            <span className="text-muted">{t("dashboard.chat.txIban")}</span>
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                              {message.proposal.targetIbanMasked || message.proposal.targetIban}
+                            </span>
+                            <span className="text-muted">{t("dashboard.chat.txFrom")}</span>
+                            <span>{message.proposal.sourceLabel} · {message.proposal.sourceIbanMasked}</span>
+                            <span className="text-muted">{t("dashboard.chat.proposalReference")}</span>
+                            <span>{message.proposal.reference}</span>
+                            <span className="text-muted">{t("dashboard.chat.proposalBalanceAfter")}</span>
+                            <span>
+                              {DASH.formatMinor(message.proposal.balanceAfterMinorUnits)} {message.proposal.currency}
+                            </span>
+                          </div>
+                          <p className="dash-proposal-note">
+                            {message.proposal.requiresSignature
+                              ? t("dashboard.chat.proposalNeedsSignature")
+                              : t("dashboard.chat.proposalNotSent")}
+                          </p>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <UI.Button
+                              type="button"
+                              variant="primary"
+                              style={{ flex: 1 }}
+                              onClick={() => onConfirmProposal && onConfirmProposal(message.proposal)}
+                            >
+                              {t("dashboard.chat.proposalReview")}
+                            </UI.Button>
                           </div>
                         </UI.Plate>
                       ) : null}
@@ -1932,11 +1981,11 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
             </div>
             <UI.Plate className="dash-chat-input-row">
               <input
+                ref={inputRef}
                 className="dash-chat-input"
                 value={draft}
                 onChange={onDraftChange}
                 onKeyDown={onKeyDown}
-                disabled={busy}
                 placeholder={t("dashboard.chat.inputPlaceholder")}
                 aria-label={t("dashboard.chat.inputPlaceholder")}
               />

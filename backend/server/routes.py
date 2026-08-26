@@ -6,6 +6,10 @@ from pydantic import BaseModel, Field
 
 from backend.accounts.service import AccountsService, get_accounts_service
 from backend.agents.analytics_service import AnalyticsService, get_analytics_service
+from backend.agents.payments_service import (
+    PaymentsAgentService,
+    get_payments_agent_service,
+)
 from backend.agents.service import SupportService, get_support_service
 from backend.accounts.service import AccountKind, AccountsService, OpenAccount, get_accounts_service
 from backend.exchange.service import ConvertCurrency, ExchangeService, get_exchange_service
@@ -201,6 +205,7 @@ CardsServiceDep = Annotated[CardsService, Depends(get_cards_service)]
 InvestmentsDep = Annotated[InvestmentsService, Depends(get_investments_service)]
 SupportDep = Annotated[SupportService, Depends(get_support_service)]
 AnalyticsDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
+PaymentsAgentDep = Annotated[PaymentsAgentService, Depends(get_payments_agent_service)]
 ExchangeDep = Annotated[ExchangeService, Depends(get_exchange_service)]
 
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key")]
@@ -719,6 +724,18 @@ async def ask_analytics(
 ) -> dict[str, Any]:
     answer = await analytics.ask(actor.id, payload.question)
     return {"answer": answer.answer, "capabilitiesUsed": answer.capabilities_used}
+
+
+@agents_router.post("/payments/ask")
+async def ask_payments_agent(
+    actor: CurrentActor, agent: PaymentsAgentDep, payload: AskAgentRequest
+) -> dict[str, Any]:
+    answer = await agent.ask(actor.id, payload.question)
+    return {
+        "answer": answer.answer,
+        "capabilitiesUsed": answer.capabilities_used,
+        "proposals": answer.proposals,
+    }
 
 
 @goals_router.post("", status_code=201)
