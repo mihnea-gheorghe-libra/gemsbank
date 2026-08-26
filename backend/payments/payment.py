@@ -102,18 +102,15 @@ class Payment(BaseModel):
             )
         if now > self.signature.expires_at:
             raise ValidationError(
-                "The signature code expired. Start the payment again.",
+                "The signing window expired. Start the payment again.",
                 details={"field": "code"},
             )
         if not matches:
             self.signature.attempts += 1
             self._touch()
             raise ValidationError(
-                "Incorrect signature code.",
-                details={
-                    "field": "code",
-                    "attemptsLeft": max(max_attempts - self.signature.attempts, 0),
-                },
+                "Incorrect PIN.",
+                details={"field": "code"},
             )
         self.signature = None
         self.status = PaymentStatus.DRAFT

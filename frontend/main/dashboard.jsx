@@ -582,9 +582,7 @@
       setSignBusy(true);
       setSignFormError(null);
       try {
-        await api.verifyPin(username, pin);
-        const devCode = signingPayment && signingPayment.stepUp ? signingPayment.stepUp.devCode : null;
-        await api.signTransfer(paymentId, devCode);
+        await api.signTransfer(paymentId, pin);
         setSigningPayment(null);
         await loadPaymentsData();
       } catch (err) {
@@ -592,7 +590,7 @@
       } finally {
         setSignBusy(false);
       }
-    }, [loadPaymentsData, username, signingPayment]);
+    }, [loadPaymentsData]);
 
     const useTemplate = useCallback((template) => {
       const match = accounts.find((account) => account.cur === template.cur) || accounts[0];

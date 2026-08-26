@@ -385,6 +385,12 @@ class AuthService:
             ],
         )
 
+    async def verify_user_pin(self, user_id: str, pin: str) -> bool:
+        user = await self._users.get(user_id)
+        if user is None:
+            return False
+        return self._hasher.verify(pin, user.pin_hash)
+
     async def _handle_verify_pin(
         self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
     ) -> CommandResult:
