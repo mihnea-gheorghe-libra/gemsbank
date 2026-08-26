@@ -9,6 +9,7 @@
   const { useState, useCallback, useEffect } = React;
 
   const SCREENS = ["home", "payments", "chat", "portfolio", "cards", "analytics", "settings"];
+  const REAL_ACCOUNT_KINDS = ["current", "savings", "invest"];
 
   const ANSWER_KEYS = {
     pendingSign: "answerPendingSign",
@@ -38,6 +39,57 @@
     return answerFor(null);
   }
 
+  function formatApiDate(iso) {
+    const moment = new Date(iso);
+    if (isNaN(moment.getTime())) return iso;
+    return new Intl.DateTimeFormat("ro-RO", { day: "2-digit", month: "2-digit", year: "numeric" })
+      .format(moment)
+      .replace(/\//g, ".");
+  }
+
+  function mapAccountRow(account) {
+    return {
+      id: account.accountId,
+      cur: account.currency,
+      typeKey: account.kind,
+      minor: account.balance.minorUnits,
+      iban: account.iban,
+      ibanShort: account.ibanMasked,
+    };
+  }
+
+  function mapMovementRow(row) {
+    return {
+      date: formatApiDate(row.postedAt),
+      who: row.counterparty,
+      ref: row.reference,
+      iban: "",
+      categoryKey: row.category,
+      statusKey: row.status,
+      minor: Math.abs(row.amount.minorUnits),
+      currency: row.amount.currency,
+      direction: row.direction === "credit" ? "in" : "out",
+      channel: "transfer",
+      accountId: row.accountId,
+    };
+  }
+
+  function mapPendingSignatureRow(payment) {
+    return {
+      date: formatApiDate(payment.createdAt),
+      who: payment.counterparty,
+      ref: payment.reference,
+      iban: payment.iban || "",
+      categoryKey: payment.category,
+      statusKey: "awaiting_signature",
+      minor: payment.amount.minorUnits,
+      currency: payment.amount.currency,
+      direction: "out",
+      channel: "transfer",
+      accountId: payment.sourceAccountId,
+    };
+  }
+
   DASHBOARD.Dashboard = function Dashboard({ username, theme, onTheme, lang, onLang, onSignOut }) {
     const [screen, setScreen] = useState("home");
     const [balanceHidden, setBalanceHidden] = useState(true);
@@ -57,12 +109,13 @@
     const [deposits, setDeposits] = useState(DATA.deposits);
     const [credits] = useState(DATA.credits);
     const [holdings, setHoldings] = useState(DATA.holdings);
-    const [investCashMinor, setInvestCashMinor] = useState(DATA.investCashMinor);
+    const [investCashMinor, setInvestCashMinor] = useState(null);
     const [market, setMarket] = useState(null);
     const [marketLoading, setMarketLoading] = useState(false);
     const [marketError, setMarketError] = useState(null);
     const [creditApplications, setCreditApplications] = useState([]);
     const [openAccountShown, setOpenAccountShown] = useState(false);
+    const [openAccountInitialType, setOpenAccountInitialType] = useState(null);
     const [depositMove, setDepositMove] = useState(null);
     const [trade, setTrade] = useState(null);
     const [creditShown, setCreditShown] = useState(false);
@@ -93,6 +146,18 @@
       { role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) },
     ]);
     const [me, setMe] = useState(null);
+    const [payBusy, setPayBusy] = useState(false);
+    const [payFormError, setPayFormError] = useState(null);
+    const [signingPayment, setSigningPayment] = useState(null);
+    const [signBusy, setSignBusy] = useState(false);
+    const [signFormError, setSignFormError] = useState(null);
+    const [openAccountBusy, setOpenAccountBusy] = useState(false);
+    const [openAccountError, setOpenAccountError] = useState(null);
+    const [addFundsShown, setAddFundsShown] = useState(false);
+    const [addFundsError, setAddFundsError] = useState(null);
+    const [exchangeShown, setExchangeShown] = useState(false);
+    const [exchangeBusy, setExchangeBusy] = useState(false);
+    const [exchangeError, setExchangeError] = useState(null);
 
     useEffect(() => {
       let cancelled = false;
@@ -106,6 +171,25 @@
         cancelled = true;
       };
     }, [username]);
+
+    const loadPaymentsData = useCallback(async () => {
+      const [accountList, txList, pendingList] = await Promise.all([
+        api.listAccounts(),
+        api.listTransactions({}),
+        api.listPending(),
+      ]);
+      const mappedAccounts = accountList.accounts.map(mapAccountRow);
+      setAccounts(mappedAccounts);
+      setTransactions(pendingList.pending.map(mapPendingSignatureRow).concat(txList.transactions.map(mapMovementRow)));
+      setPending(pendingList.pending);
+
+      const investAccount = mappedAccounts.find((account) => account.typeKey === "invest");
+      setInvestCashMinor(investAccount ? investAccount.minor : null);
+    }, []);
+
+    useEffect(() => {
+      loadPaymentsData().catch(() => {});
+    }, [username, loadPaymentsData]);
 
     const displayName = (me && me.identity && me.identity.fullName) || (me && me.fullName) || username;
     const firstName = GEMS.people.firstName(displayName) || username;
@@ -179,7 +263,7 @@
       setMarketLoading(true);
       setMarketError(null);
       try {
-        setMarket(await api.marketSnapshot("6mo", force === true));
+        setMarket(await api.marketSnapshot("1y", force === true));
       } catch (err) {
         setMarketError(err);
       } finally {
@@ -394,6 +478,7 @@
     );
 
     const openPayment = useCallback((prefill) => {
+      setPayFormError(null);
       setPayPrefill(prefill || null);
       setPayType(prefill && prefill.payType ? prefill.payType : "iban");
       setPayOpen(true);
@@ -402,52 +487,58 @@
     const closePayment = useCallback(() => {
       setPayOpen(false);
       setPayPrefill(null);
+      setPayFormError(null);
     }, []);
 
-    const submitPayment = useCallback((payment) => {
-      const date = today();
+    const submitPayment = useCallback(async (payment) => {
+      setPayBusy(true);
+      setPayFormError(null);
+      try {
+        const response = await api.transfer({
+          sourceAccountId: payment.fromId,
+          targetAccountId: payment.payType === "internal" ? payment.toId : null,
+          iban: payment.payType === "internal" ? null : payment.iban,
+          counterparty: payment.beneficiary,
+          amountMinorUnits: payment.amountMinor,
+          reference: payment.reference,
+          category: null,
+          acknowledgePayeeMismatch: payment.acknowledgeMismatch === true,
+        });
 
-      setAccounts((list) =>
-        list.map((account) => {
-          if (account.id === payment.fromId) return Object.assign({}, account, { minor: account.minor - payment.amountMinor });
-          if (account.id === payment.toId) return Object.assign({}, account, { minor: account.minor + payment.amountMinor });
-          return account;
-        })
-      );
+        if (payment.template) setTemplates((list) => list.concat([payment.template]));
+        closePayment();
 
-      setTransactions((list) =>
-        [
-          {
-            date,
-            who: payment.beneficiary,
-            ref: payment.reference || t("dashboard.payDialog.title"),
-            iban: payment.iban,
-            categoryKey: "transfer",
-            statusKey: "pending",
-            minor: payment.amountMinor,
-            currency: payment.currency,
-            direction: "out",
-            channel: "transfer",
-            accountId: payment.fromId,
-          },
-        ].concat(list)
-      );
+        if (response.status === "awaiting_signature") {
+          setSignFormError(null);
+          setSigningPayment(response);
+        }
 
-      setPending((list) =>
-        list.concat([
-          {
-            num: String(list.length + 1).padStart(2, "0"),
-            who: payment.beneficiary,
-            note: payment.reference,
-            minor: payment.amountMinor,
-            currency: payment.currency,
-          },
-        ])
-      );
+        await loadPaymentsData();
+      } catch (err) {
+        setPayFormError(err);
+      } finally {
+        setPayBusy(false);
+      }
+    }, [closePayment, loadPaymentsData]);
 
-      if (payment.template) setTemplates((list) => list.concat([payment.template]));
-      closePayment();
-    }, [today, closePayment]);
+    const closeSign = useCallback(() => {
+      setSigningPayment(null);
+      setSignFormError(null);
+    }, []);
+
+    const submitSignature = useCallback(async (paymentId, code) => {
+      setSignBusy(true);
+      setSignFormError(null);
+      try {
+        await api.signTransfer(paymentId, code);
+        setSigningPayment(null);
+        await loadPaymentsData();
+      } catch (err) {
+        setSignFormError(err);
+      } finally {
+        setSignBusy(false);
+      }
+    }, [loadPaymentsData]);
 
     const useTemplate = useCallback((template) => {
       const match = accounts.find((account) => account.cur === template.cur) || accounts[0];
@@ -533,22 +624,110 @@
       setTransactions((list) => [Object.assign({ date: today(), statusKey: "booked", channel: "transfer" }, row)].concat(list));
     }, [today]);
 
-    const openAccount = useCallback(({ account, fundFromId, fundMinor }) => {
-      setAccounts((list) => list.concat([Object.assign({}, account, { minor: fundMinor })]));
-      if (fundFromId && fundMinor > 0) {
-        creditAccount(fundFromId, -fundMinor);
-        bookMovement({
-          who: DASH.accountLabel(account),
-          ref: t("dashboard.openAccount.movementRef"),
-          categoryKey: "transfer",
-          minor: fundMinor,
-          currency: account.cur,
-          direction: "out",
-          accountId: fundFromId,
-        });
+    const openAddFunds = useCallback(() => {
+      setAddFundsError(null);
+      setAddFundsShown(true);
+    }, []);
+
+    const closeAddFunds = useCallback(() => {
+      setAddFundsShown(false);
+      setAddFundsError(null);
+    }, []);
+
+    const submitAddFunds = useCallback((amountMinor) => {
+      const target = accounts.find((account) => account.typeKey === "current" && account.cur === "RON") || accounts[0];
+      if (!target) {
+        setAddFundsError({ message: t("dashboard.addFunds.noAccount") });
+        return;
       }
-      setOpenAccountShown(false);
-    }, [creditAccount, bookMovement]);
+      creditAccount(target.id, amountMinor);
+      bookMovement({
+        who: t("dashboard.addFunds.title"),
+        ref: t("dashboard.addFunds.title"),
+        categoryKey: "income",
+        minor: amountMinor,
+        currency: target.cur,
+        direction: "in",
+        accountId: target.id,
+      });
+      closeAddFunds();
+    }, [accounts, creditAccount, bookMovement, closeAddFunds]);
+
+    const openExchange = useCallback(() => {
+      setExchangeError(null);
+      setExchangeShown(true);
+    }, []);
+
+    const closeExchange = useCallback(() => {
+      setExchangeShown(false);
+      setExchangeError(null);
+    }, []);
+
+    const submitExchange = useCallback(async (payload) => {
+      setExchangeBusy(true);
+      setExchangeError(null);
+      try {
+        await api.exchange({
+          sourceAccountId: payload.sourceAccountId,
+          targetCurrency: payload.targetCurrency,
+          amountMinorUnits: payload.amountMinor,
+        });
+        setExchangeShown(false);
+        await loadPaymentsData();
+      } catch (err) {
+        setExchangeError(err);
+      } finally {
+        setExchangeBusy(false);
+      }
+    }, [loadPaymentsData]);
+
+    const openAccount = useCallback(async ({ account, fundFromId, fundMinor }) => {
+      if (REAL_ACCOUNT_KINDS.indexOf(account.typeKey) < 0) {
+        setAccounts((list) => list.concat([Object.assign({}, account, { minor: fundMinor })]));
+        if (fundFromId && fundMinor > 0) {
+          creditAccount(fundFromId, -fundMinor);
+          bookMovement({
+            who: DASH.accountLabel(account),
+            ref: t("dashboard.openAccount.movementRef"),
+            categoryKey: "transfer",
+            minor: fundMinor,
+            currency: account.cur,
+            direction: "out",
+            accountId: fundFromId,
+          });
+        }
+        setOpenAccountShown(false);
+        return;
+      }
+
+      setOpenAccountBusy(true);
+      setOpenAccountError(null);
+      try {
+        const opened = await api.openAccount(account.cur, account.typeKey);
+        let fundResponse = null;
+        if (fundFromId && fundMinor > 0) {
+          fundResponse = await api.transfer({
+            sourceAccountId: fundFromId,
+            targetAccountId: opened.accountId,
+            counterparty: displayName,
+            amountMinorUnits: fundMinor,
+            reference: t("dashboard.openAccount.movementRef"),
+            category: null,
+            acknowledgePayeeMismatch: false,
+          });
+        }
+        await loadPaymentsData();
+        setOpenAccountShown(false);
+        if (fundResponse && fundResponse.status === "awaiting_signature") {
+          setSignFormError(null);
+          setSigningPayment(fundResponse);
+        }
+      } catch (err) {
+        setOpenAccountError(err);
+      } finally {
+        setOpenAccountBusy(false);
+      }
+    }, [creditAccount, bookMovement, displayName, loadPaymentsData]);
 
     const newDeposit = useCallback(({ deposit, fromId, amountMinor }) => {
       setDeposits((list) => list.concat([deposit]));
@@ -618,9 +797,10 @@
       const buying = direction === "buy";
 
       if (buying) {
-        const fromCash = Math.min(investCashMinor, amountMinor);
+        const availableCash = investCashMinor || 0;
+        const fromCash = Math.min(availableCash, amountMinor);
         const fromAccount = amountMinor - fromCash;
-        setInvestCashMinor((cash) => cash - fromCash);
+        if (fromCash > 0) setInvestCashMinor((cash) => (cash || 0) - fromCash);
         if (fromAccount > 0) {
           creditAccount(accountId, -fromAccount);
           bookMovement({
@@ -683,12 +863,14 @@
 
           <main className="dash-content" aria-label={t("dashboard.tag." + screen)}>
             {screen === "home" ? (
-              <SCR.HomeScreen 
-                accounts={accounts} 
-                transactions={transactions} 
-                balanceHidden={balanceHidden} 
-                onToggleBalance={toggleBalance} 
-                onNavigate={navigate} 
+              <SCR.HomeScreen
+                accounts={accounts}
+                transactions={transactions}
+                balanceHidden={balanceHidden}
+                onToggleBalance={toggleBalance}
+                onNavigate={navigate}
+                onAddFunds={openAddFunds}
+                onExchange={openExchange}
               />
             ) : null}
             {screen === "payments" ? (
@@ -710,6 +892,7 @@
                 onUseTemplate={useTemplate}
                 onSettleShare={settleShare}
                 onDeleteSplit={deleteSplitBill}
+                onSign={(payment) => { setSignFormError(null); setSigningPayment(payment); }}
               />
             ) : null}
             {screen === "chat" ? (
@@ -738,7 +921,11 @@
                 marketLoading={marketLoading}
                 marketError={marketError}
                 onRefreshMarket={loadMarket}
-                onOpenAccount={() => setOpenAccountShown(true)}
+                onOpenAccount={(typeKey) => {
+                  setOpenAccountError(null);
+                  setOpenAccountInitialType(typeKey || null);
+                  setOpenAccountShown(true);
+                }}
                 onMoveDeposit={(deposit, direction) => setDepositMove({ deposit, direction })}
                 onCloseDeposit={closeDeposit}
                 onTrade={(holdingId, direction) => setTrade({ holdingId, direction })}
@@ -812,8 +999,22 @@
             accounts={accounts}
             templates={templates}
             prefill={payPrefill}
+            holderName={displayName}
+            busy={payBusy}
+            error={payFormError}
             onClose={closePayment}
             onSubmit={submitPayment}
+          />
+        ) : null}
+
+        {signingPayment ? (
+          <DASH.SignPaymentDialog
+            key={signingPayment.paymentId}
+            payment={signingPayment}
+            busy={signBusy}
+            error={signFormError}
+            onClose={closeSign}
+            onSubmit={submitSignature}
           />
         ) : null}
 
@@ -825,9 +1026,31 @@
           />
         ) : null}
 
+        {addFundsShown ? (
+          <DASH.AddFundsDialog
+            account={accounts.find((account) => account.typeKey === "current" && account.cur === "RON") || accounts[0] || null}
+            error={addFundsError}
+            onClose={closeAddFunds}
+            onSubmit={submitAddFunds}
+          />
+        ) : null}
+
+        {exchangeShown ? (
+          <DASH.ExchangeDialog
+            accounts={accounts}
+            busy={exchangeBusy}
+            error={exchangeError}
+            onClose={closeExchange}
+            onSubmit={submitExchange}
+          />
+        ) : null}
+
         {openAccountShown ? (
           <DASH.OpenAccountDialog
             accounts={accounts}
+            initialTypeKey={openAccountInitialType}
+            busy={openAccountBusy}
+            error={openAccountError}
             onClose={() => setOpenAccountShown(false)}
             onSubmit={openProduct}
           />

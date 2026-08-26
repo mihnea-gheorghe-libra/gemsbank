@@ -118,6 +118,24 @@
     return Math.max(1, Math.round((last - first) / (1000 * 60 * 60 * 24 * 30.44)));
   };
 
+  const RANGE_DAYS = { week: 7, month: 31, quarter: 93, half: 186 };
+
+  DASH.sliceSeriesByRange = function sliceSeriesByRange(series, range) {
+    if (!series || series.length < 2) return series;
+
+    if (range === "day") {
+      return series.slice(-2);
+    }
+
+    const days = RANGE_DAYS[range];
+    if (!days) return series;
+    const cutoff = new Date(series[series.length - 1].on);
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffIso = cutoff.toISOString().slice(0, 10);
+    const sliced = series.filter((point) => point.on >= cutoffIso);
+    return sliced.length >= 2 ? sliced : series;
+  };
+
   function AmountField({ id, label, value, onChange, account, shortfall }) {
     return (
       <div>
@@ -333,7 +351,7 @@
             textAnchor="end"
             className="dash-chart-tick"
           >
-            {DASH.formatMinor(geometry.high)}
+            {DASH.formatMinor(geometry.high)} RON
           </text>
           <text
             x={CHART.left - 8}
@@ -341,7 +359,7 @@
             textAnchor="end"
             className="dash-chart-tick"
           >
-            {DASH.formatMinor(geometry.low)}
+            {DASH.formatMinor(geometry.low)} RON
           </text>
 
           <text x={CHART.left} y={CHART.height - 8} className="dash-chart-tick">
@@ -355,6 +373,15 @@
           >
             {GEMS.i18n.isoToDisplayDate(series[lastIndex].on)}
           </text>
+
+          <line
+            x1={CHART.left}
+            x2={CHART.width - CHART.right}
+            y1={geometry.y(series[lastIndex].valueMinor)}
+            y2={geometry.y(series[lastIndex].valueMinor)}
+            className="dash-chart-current-line"
+            vectorEffect="non-scaling-stroke"
+          />
 
           {active == null ? null : (
             <line
@@ -446,20 +473,22 @@
     );
   }
 
-  DASH.OpenAccountDialog = function OpenAccountDialog({ accounts, onClose, onSubmit }) {
+  DASH.OpenAccountDialog = function OpenAccountDialog({ accounts, initialTypeKey, busy, error, onClose, onSubmit }) {
     const depositFor = (item) => (item.creates === "deposit" ? DATA.depositProducts[item.depositKind] : null);
     const defaultMonths = (item) => {
       const found = depositFor(item);
       return found && found.defaultMonths ? String(found.defaultMonths) : "";
     };
 
-    const [typeKey, setTypeKey] = useState(DATA.accountTypes[0].key);
+    const initialType = DATA.accountTypes.find((item) => item.key === initialTypeKey) || DATA.accountTypes[0];
+
+    const [typeKey, setTypeKey] = useState(initialType.key);
     const [cur, setCur] = useState("RON");
     const [fundFromId, setFundFromId] = useState("");
     const [amount, setAmount] = useState("");
     const [name, setName] = useState("");
     const [target, setTarget] = useState("");
-    const [months, setMonths] = useState(defaultMonths(DATA.accountTypes[0]));
+    const [months, setMonths] = useState(defaultMonths(initialType));
 
     const type = DATA.accountTypes.find((item) => item.key === typeKey) || DATA.accountTypes[0];
     const product = depositFor(type);
@@ -480,7 +509,8 @@
       && (!isGoal || targetMinor > 0)
       && (opensDeposit
         ? Boolean(from) && amountMinor > 0
-        : !from || amountMinor == null || amountMinor > 0);
+        : !from || amountMinor == null || amountMinor > 0)
+      && !busy;
 
     const selectType = (value) => {
       const next = DATA.accountTypes.find((item) => item.key === value) || DATA.accountTypes[0];
@@ -528,7 +558,7 @@
         title={t("dashboard.portfolio.openAccount")}
         subtitle={opensDeposit ? t("dashboard.deposit.subtitle") : t("dashboard.openAccount.subtitle")}
         onClose={onClose}
-        action={opensDeposit ? t("dashboard.deposit.submit") : t("dashboard.openAccount.submit")}
+        action={busy ? t("dashboard.payDialog.sending") : (opensDeposit ? t("dashboard.deposit.submit") : t("dashboard.openAccount.submit"))}
         actionDisabled={!ready}
         onAction={submit}
       >
@@ -618,6 +648,10 @@
             shortfall={shortfall}
           />
         ) : null}
+
+        {error ? (
+          <div className="dash-balance-line is-short" role="alert">{error.message}</div>
+        ) : null}
       </Dialog>
     );
   };
@@ -683,7 +717,7 @@
     const amountMinor = DASH.parseMinor(amount);
     const buying = direction === "buy";
 
-    const available = buying ? account.minor + investCashMinor : DASH.holdingValue(holding);
+    const available = buying ? account.minor + (investCashMinor || 0) : DASH.holdingValue(holding);
     const shortfall = amountMinor != null && amountMinor > available ? amountMinor - available : null;
     const ready = amountMinor > 0 && shortfall == null && account.cur === holding.cur;
 

@@ -137,7 +137,7 @@
   margin: 8px 0 2px;
   color: var(--color-heading);
 }
-.dash-quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dash-quick-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
 .dash-accounts-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .dash-account-tile { padding: 12px; background: var(--color-surface); color: var(--color-text); }
 .dash-account-amount { font-family: var(--font-heading); font-size: 22px; margin: 4px 0 2px; }
@@ -150,9 +150,9 @@
   text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--color-muted); padding: 8px; border-bottom: 1px solid var(--color-border);
 }
-.dash-table td { padding: 8px; border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); }
+.dash-table td { padding: 8px; border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); vertical-align: middle; }
 .dash-table tbody tr:hover { background: color-mix(in srgb, var(--color-primary) 4%, transparent); }
-.dash-table .amount-col { text-align: right; }
+.dash-table .amount-col { text-align: right; white-space: nowrap; }
 .dash-amt { font-family: var(--font-heading); font-size: 16px; }
 .dash-amt-in { color: var(--color-positive); }
 .dash-amt-out { color: var(--color-negative); }
@@ -279,7 +279,7 @@
 .dash-donut-row { display: flex; gap: 20px; align-items: center; }
 .dash-donut-legend { flex: 1; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
 .dash-donut-legend-row { display: flex; justify-content: space-between; gap: 10px; }
-.dash-trade-cell { white-space: nowrap; display: flex; gap: 6px; justify-content: flex-end; }
+.dash-trade-cell { white-space: nowrap; display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
 .dash-symbol { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; color: var(--color-muted); }
 .dash-change { font-size: 11px; color: var(--color-muted); }
 .dash-change.is-up { color: var(--color-positive); }
@@ -288,7 +288,13 @@
 
 .dash-chart-plate { padding: 14px; background: var(--color-surface); }
 .dash-chart-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.dash-chart-title-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .dash-chart-title { font-family: var(--font-heading); font-size: 16px; color: var(--color-heading); }
+.dash-chart-current { display: flex; align-items: baseline; gap: 6px; }
+.dash-chart-current-value { font-family: var(--font-heading); font-size: 14px; color: var(--color-heading); }
+.dash-chart-current-delta { font-size: 12px; color: var(--color-muted); }
+.dash-chart-current-delta.is-up { color: var(--color-positive); }
+.dash-chart-current-delta.is-down { color: var(--color-negative); }
 .dash-chart-sub { font-size: 11px; }
 .dash-chart-foot { font-size: 11px; margin-top: 6px; }
 
@@ -300,6 +306,7 @@
 .dash-chart-grid { stroke: var(--color-border); stroke-width: 1; }
 .dash-chart-line { fill: none; stroke: var(--color-primary); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .dash-chart-crosshair { stroke: var(--color-primary); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.7; }
+.dash-chart-current-line { stroke: var(--color-muted); stroke-width: 1; stroke-dasharray: 4 4; opacity: 0.6; }
 .dash-chart-dot { fill: var(--color-primary); stroke: var(--color-surface); stroke-width: 2; }
 .dash-chart-tick { fill: var(--color-muted); font-size: 10px; font-family: var(--font-mono); }
 
