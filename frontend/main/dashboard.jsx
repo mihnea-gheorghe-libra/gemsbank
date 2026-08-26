@@ -94,7 +94,7 @@
     const [screen, setScreen] = useState("home");
     const [balanceHidden, setBalanceHidden] = useState(true);
     const [ttsOn, setTtsOn] = useState(false);
-    const [dockOpen, setDockOpen] = useState(true);
+    const [dockOpen, setDockOpen] = useState(false);
     const [payOpen, setPayOpen] = useState(false);
     const [payType, setPayType] = useState("iban");
     const [payPrefill, setPayPrefill] = useState(null);

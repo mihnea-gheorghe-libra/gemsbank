@@ -38,6 +38,18 @@
     return kind.replace(/_([a-z])/g, (match, letter) => letter.toUpperCase());
   }
 
+  function formatCardKind(text) {
+    const parts = text.split(" · ");
+    if (parts.length === 2) {
+      return (
+        <React.Fragment>
+          <strong style={{ fontWeight: 700 }}>{parts[0]}</strong> · {parts[1]}
+        </React.Fragment>
+      );
+    }
+    return <strong style={{ fontWeight: 700 }}>{text}</strong>;
+  }
+
   function formatExpiry(iso) {
     if (!iso) return "";
     const [year, month] = iso.split("-");
@@ -947,7 +959,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                 const front = (
                   <div className="dash-card-tile" style={{ width: "100%", height: "100%" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <span className="dash-card-kind">{t("dashboard.cards.kind." + kindToI18nKey(row.kind))}</span>
+                      <span className="dash-card-kind">{formatCardKind(t("dashboard.cards.kind." + kindToI18nKey(row.kind)))}</span>
                       <UI.Tag variant="outline">{t("dashboard.cards.state." + row.state)}</UI.Tag>
                     </div>
                     <div>
@@ -961,57 +973,32 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                   </div>
                 );
 
-                if (isSelected) {
-                  return (
-                    <button
-                      key={row.cardId}
-                      type="button"
-                      className={UI.classNames(
-                        "dash-card-flip",
-                        flipped && "is-flipped",
-                        row.state === "frozen" && "is-frozen"
-                      )}
-                      onClick={() => onSelect(row.cardId)}
-                      aria-pressed={isSelected}
-                    >
-                      <div className="dash-card-flip-inner">
-                        <div className="dash-card-face-front">{front}</div>
-                        <div className="dash-card-face-back">
-                          <span className="dash-card-back-line">
-                            {mockFullNumber(row.cardId, row.numberMasked.slice(-4), row.kind)}
-                          </span>
-                          <span className="dash-card-back-line">
-                            {t("dashboard.cards.expLabel", { exp: formatExpiry(row.expiresOn) })}
-                          </span>
-                          <span className="dash-card-back-line">
-                            {cvv ? t("dashboard.cards.cvvLabel", { cvv }) : "•••"}
-                          </span>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                }
-
                 return (
                   <button
                     key={row.cardId}
                     type="button"
-                    className={UI.classNames("dash-card-tile", row.state === "frozen" && "is-frozen")}
+                    className={UI.classNames(
+                      "dash-card-flip",
+                      flipped && "is-flipped",
+                      row.state === "frozen" && "is-frozen"
+                    )}
                     onClick={() => onSelect(row.cardId)}
                     aria-pressed={isSelected}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <span className="dash-card-kind">{t("dashboard.cards.kind." + kindToI18nKey(row.kind))}</span>
-                      <UI.Tag variant="outline">{t("dashboard.cards.state." + row.state)}</UI.Tag>
-                    </div>
-                    <div>
-                      <div className="dash-card-num">{row.numberMasked}</div>
-                      <div className="dash-card-meta text-muted">
-                        <span>{row.owner}</span>
-                        <span>{formatExpiry(row.expiresOn)}</span>
+                    <div className="dash-card-flip-inner">
+                      <div className="dash-card-face-front">{front}</div>
+                      <div className="dash-card-face-back">
+                        <span className="dash-card-back-line">
+                          {mockFullNumber(row.cardId, row.numberMasked.slice(-4), row.kind)}
+                        </span>
+                        <span className="dash-card-back-line">
+                          {t("dashboard.cards.expLabel", { exp: formatExpiry(row.expiresOn) })}
+                        </span>
+                        <span className="dash-card-back-line">
+                          {cvv ? t("dashboard.cards.cvvLabel", { cvv }) : "•••"}
+                        </span>
                       </div>
                     </div>
-                    <MastercardMark />
                   </button>
                 );
               })}
