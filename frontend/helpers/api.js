@@ -172,5 +172,7 @@
         method: "POST",
         json: { username, limitMinor },
       }),
+    listInsights: (username) =>
+      send("/insights?username=" + encodeURIComponent(username || "")),
   };
 })();

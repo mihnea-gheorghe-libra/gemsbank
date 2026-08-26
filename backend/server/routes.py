@@ -57,6 +57,10 @@ from backend.payments.service import (
     SignPayment,
     get_payments_service,
 )
+from backend.vendors.service import (
+    VendorInsightsService,
+    get_vendor_insights_service,
+)
 
 
 class ContactRequest(BaseModel):
@@ -168,6 +172,9 @@ AccountsDep = Annotated[AccountsService, Depends(get_accounts_service)]
 PaymentsDep = Annotated[PaymentsService, Depends(get_payments_service)]
 CardsServiceDep = Annotated[CardsService, Depends(get_cards_service)]
 InvestmentsDep = Annotated[InvestmentsService, Depends(get_investments_service)]
+VendorInsightsDep = Annotated[
+    VendorInsightsService, Depends(get_vendor_insights_service)
+]
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key")]
 BearerToken = Annotated[str | None, Header(alias="Authorization")]
 
@@ -178,6 +185,7 @@ accounts_router = APIRouter(prefix="/accounts", tags=["accounts"])
 payments_router = APIRouter(prefix="/payments", tags=["payments"])
 cards_router = APIRouter(prefix="/cards", tags=["cards"])
 investments_router = APIRouter(prefix="/investments", tags=["investments"])
+insights_router = APIRouter(prefix="/insights", tags=["insights"])
 
 
 def _actor() -> Actor:
@@ -630,9 +638,20 @@ async def market_snapshot(
     return await service.market(range, force=refresh)
 
 
+@insights_router.get("")
+async def list_insights(
+    service: VendorInsightsDep,
+    username: str | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    board = await service.board_for_username(username, limit)
+    return board.model_dump()
+
+
 api_router.include_router(onboarding_router)
 api_router.include_router(auth_router)
 api_router.include_router(accounts_router)
 api_router.include_router(payments_router)
 api_router.include_router(cards_router)
 api_router.include_router(investments_router)
+api_router.include_router(insights_router)

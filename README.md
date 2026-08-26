@@ -160,6 +160,42 @@ backend/
     payment.py       the Payment state machine and the Beneficiary aggregate
     validation.py    reference, counterparty, category, cursor codec
     adapters.py      clock, limit policy, step-up stub, Verification-of-Payee stub
+  vendors/           analytics over payments — no money movement. Only service.py is reachable
+                     over HTTP; every other module is a manual batch job
+    payments_adapter.py  the only file under vendors/ that names a `payments` field. Holds
+                     the external-vendor filter, the field names, why each one is read the
+                     way it is, and a startup guard that warns when that schema drifts.
+                     `python -m backend.vendors.payments_adapter` prints the summary
+    extractor.py     external-vendor filter, counterparty normaliser, monthly stats pipeline
+                     into the rebuildable vendorMonthlyStats read model
+    user_prices.py   per (vendor, user, month) price read model into vendorUserMonthlyPrices,
+                     one median price per user-month so a personal baseline can be computed
+    detector.py      two price signals into vendorAlerts — predictive, from users whose own
+                     price rose against their own baseline or from a new shared price point,
+                     and confirmed, from the vendor median. Baselines prefer the same month
+                     last year so a seasonal tariff is not read as a price rise
+    decision_engine.py  vendorAlerts -> userNotifications: one pending document per affected
+                     user. Confidence follows the baseline alone — a year-old comparable is
+                     trusted, a cold-start one is not — and never the alert type, so a seasonal
+                     false positive cannot be promoted by arriving as a confirmed alert.
+                     Romanian copy is templated off the vendor's category
+    news_sources.py  the two article feeds — GNews (licensed, carries a summary) and Google
+                     News RSS (headline only, no key, broad) — normalised to one shape and
+                     merged on a folded title, since RSS links are Google redirects and never
+                     match a publisher URL
+    news_watcher.py  the external layer: a manual batch job that classifies those articles with
+                     Azure OpenAI into newsSignals. Three cost gates stand before every paid
+                     call — cross-source dedupe against already-seen, keyword filter over title
+                     and summary, per-run call budget. Nothing is merged into the internal
+                     signals yet
+    news_events.py   groups newsSignals into newsEvents by event, so several articles about
+                     one press announcement count as one confirmation and not as several
+                     independent ones. Never writes to newsSignals — the source articles stay
+                     traceable
+    service.py       the only HTTP-facing module under vendors/. Reads userNotifications for
+                     one signed-in user, deduplicates to the newest alert per vendor and caps
+                     the list. A user with no notifications of their own gets an empty list —
+                     it never substitutes another user's rows
   helpers/
     context.py       ids, Actor, correlation id, JSON logging
     crypto.py        Argon2id hasher, AES-GCM PIN cipher
@@ -489,6 +525,109 @@ Also missing, and worth knowing:
   registering through the wizard is currently the only way to get data.
 - **No automated tests.** The invariants in this section were verified by hand against a running
   stack. `PROMPT.md`'s definition of done wants them in `pytest`; they are not there yet.
+
+## Agent insights on the dashboard
+
+The AGENT INSIGHTS card reads `GET /api/insights?username=...`. That endpoint is scoped to the
+signed-in user and nothing else: a user with no notifications of their own gets an empty card.
+It never falls back to another user's rows — an earlier version did, and showed one synthetic
+user's bill as if it were yours.
+
+`userNotifications.userId` must therefore hold a real `users._id`. The synthetic cohort in
+`payments_seed_dev` / `payments_seed_seasonal` uses generated ids that match no real account, so
+those rows are unreachable by design. To give a real account its own history, seed it into its
+own source collection:
+
+```bash
+python -m ops.seed_vendor_payments --collection payments_seed_demo --batch vendor-demo-v1 \
+  --months 18 --increase-month-index 14 --seasonal --real-user gabriela --vendor-increase enel
+python -m backend.vendors.extractor       --source payments_seed_demo
+python -m backend.vendors.user_prices     --source payments_seed_demo
+python -m backend.vendors.detector        --source payments_seed_demo
+python -m backend.vendors.decision_engine --source payments_seed_demo
+```
+
+`--real-user` resolves the username against `users`, debits their real RON account, and fails
+loudly if either is missing — seeding a history for an account that does not exist is the bug
+this flag exists to prevent. The synthetic cohort is still generated alongside them, because
+`detector.py` needs at least `min_cohort_users` (2) per vendor before it will raise anything.
+
+`--vendor-increase KEY` applies that vendor's `tariff_increase` from the increase month onward.
+It is opt-in so a re-run without it reproduces the older collections byte for byte. Enel carries
+a 22% rise, and 18 months of history is what makes it visible for the right reason: the detector
+then has the same month last year to compare against, so the winter seasonal swing cancels out
+and only the tariff rise is left. With a short history the same data yields a `rolling_3_month`
+baseline, the alert comes out `low`, and it is suppressed.
+
+`vendor_insights_source` and `vendor_insights_limit` in `backend/config.py` select which source
+collection the card reads and how many vendors it shows. The card itself renders the first
+`INSIGHT_CARD_LIMIT` of those and offers "view all" when there is more — the backend decides
+which alerts and in what order, the frontend only decides how many fit. The full list collapses
+a predictive and a confirmed alert for the same vendor and month into one row: that is one price
+rise seen by two mechanisms, not two rises.
+
+One price rise is one notification. `vendorAlerts` and `newsEvents` keep every month and every
+article — the filter sits only where rows reach the user:
+
+- **A persistent rise is not re-sent every month.** A year-over-year baseline moves from month to
+  month even when the tariff behind it never changed again, so comparing baselines cannot tell a
+  reconfirmation from a new rise. `decision_engine.py` instead remembers the price state it last
+  notified per (user, vendor, currency) and suppresses a new row while *either* the absolute price
+  *or* the size of the step is materially unchanged — `repeat_price_tolerance` (3%) and
+  `repeat_step_tolerance` (12pp). A flat vendor is caught by the price test, a seasonal one whose
+  bill keeps sliding by the step test. Only when both have moved is it treated as a new rise.
+- **Later articles about a known announcement enrich it, they do not repeat it.** News events are
+  grouped once more into episodes — same vendor, compatible market and percent, within
+  `news_episode_window_days` (180). Dated and undated events are grouped separately, so a dated
+  foreign announcement never absorbs undated domestic coverage. Once an episode has notified a
+  user, further events in it add their publishers to that row's source list instead of creating
+  another.
+
+Both suppressions are recorded in the run report as `same_price_state_already_notified` and
+`same_news_episode_already_notified`, so nothing disappears silently.
+
+Money is never formatted in the backend. `decision_engine.py` writes `longText` / `longTextEn`
+with `{baseline}` and `{observed}` placeholders plus the minor-unit values, and the frontend
+fills them through `UI.formatMoney`, so the card follows the same locale rules as the
+transactions table — `1.234,00 RON` in Romanian, not `1,234.00`.
+
+## What backend/vendors/ assumes about `payments`
+
+`payments` belongs to the Payments & Cards track. `backend/vendors/` only ever reads it,
+never writes, and every assumption is centralised in `backend/vendors/payments_adapter.py`
+so a schema change breaks one file loudly instead of six quietly.
+
+A payment counts as "to an external vendor" when all of these hold:
+
+| condition | why |
+|---|---|
+| `status` is `posted` | only settled money belongs in a price statistic; a rejected payment would poison a vendor's max and median |
+| `targetAccountId` is `null` | the structural discriminator. `payments/service.py` asserts it is set before posting and money can only reach a GEMS account, so a posted payment with it set *is* an internal P2P transfer — guaranteed by code, not by user input |
+| `rail` is not `internal` | secondary check. System-assigned and enum-constrained, never typed by a customer. Excluded rather than whitelisted, so a new external rail is picked up automatically |
+| `amountMinorUnits` > 0 | integer minor units; the money core forbids floats |
+| `counterparty` is a non-empty string | it is the vendor identity, after folding |
+
+Fields read, and what each is used for:
+
+| field | used for |
+|---|---|
+| `userId` | per-user price history and cohort counts |
+| `targetAccountId` | the external-vendor discriminator above |
+| `rail` | secondary discriminator; also reported per vendor |
+| `status` | settlement filter |
+| `amountMinorUnits` | the price — min, max, median, per-user series |
+| `counterparty` | vendor identity, folded for diacritics, case and whitespace |
+| `category` | reported only |
+| `currency` | part of every grouping key, so RON and EUR never mix |
+| `createdAt` | the month a payment is bucketed into, in Europe/Bucharest |
+
+**`category` is deliberately not a discriminator.** It is chosen by the customer from a
+whitelist, and on real data 6 of 13 P2P transfers carry `utilities`, `entertainment`,
+`transport` or `groceries` rather than `transfer`. Filtering P2P on
+`category == "transfer"` misses about 46% of it.
+
+If any of this changes, `backend/vendors/` prints a loud warning at startup and keeps
+going — it never silently returns nothing. The fix is always in `payments_adapter.py`.
 
 ## Adding a feature
 

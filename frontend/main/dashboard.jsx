@@ -93,6 +93,8 @@
       { role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) },
     ]);
     const [me, setMe] = useState(null);
+    const [insights, setInsights] = useState([]);
+    const [insightHistory, setInsightHistory] = useState([]);
 
     useEffect(() => {
       let cancelled = false;
@@ -100,6 +102,22 @@
         .me()
         .then((response) => {
           if (!cancelled) setMe(response);
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [username]);
+
+    useEffect(() => {
+      let cancelled = false;
+      api
+        .listInsights(username)
+        .then((response) => {
+          if (!cancelled && response) {
+            setInsights(response.insights || []);
+            setInsightHistory(response.history || []);
+          }
         })
         .catch(() => {});
       return () => {
@@ -688,7 +706,10 @@
                 transactions={transactions} 
                 balanceHidden={balanceHidden} 
                 onToggleBalance={toggleBalance} 
-                onNavigate={navigate} 
+                onNavigate={navigate}
+                insights={insights}
+                insightHistory={insightHistory}
+                lang={lang}
               />
             ) : null}
             {screen === "payments" ? (
