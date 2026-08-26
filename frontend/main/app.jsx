@@ -59,7 +59,8 @@
           onRegistered={(name, prefs) => {
             setUsername(name);
             if (prefs) {
-              if (prefs.theme && prefs.theme !== theme) setTheme(prefs.theme);
+              // We intentionally do not overwrite the local theme with prefs.theme
+              // so that the user's choice on the login page is preserved.
               if (prefs.lang && prefs.lang !== lang) {
                 GEMS.i18n.setLocale(prefs.lang);
                 setLang(prefs.lang);
@@ -80,7 +81,8 @@
         onSignedIn={(name, prefs) => {
           setUsername(name);
           if (prefs) {
-            if (prefs.theme && prefs.theme !== theme) setTheme(prefs.theme);
+            // We intentionally do not overwrite the local theme with prefs.theme
+            // so that the user's choice on the login page is preserved.
             if (prefs.lang && prefs.lang !== lang) {
               GEMS.i18n.setLocale(prefs.lang);
               setLang(prefs.lang);

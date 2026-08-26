@@ -17,7 +17,7 @@
     },
     document: {
       title: "Upload your ID",
-      lede: "Front of your Romanian ID (classic format). OCR reads the fields for you to review.",
+      lede: "Front of your Romanian ID (classic format).",
       front: "DROP ID — FRONT",
       back: "DROP ID — BACK",
       backOptional: "optional in the demo",
