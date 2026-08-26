@@ -13,6 +13,7 @@ from backend.auth.service import (
     AuthService,
     RequestAccountClosure,
     RequestEmailChange,
+    RequestPasswordChange,
     RequestPasswordReset,
     RequestPhoneChange,
     RequestPinChange,
@@ -122,6 +123,14 @@ class PhoneChangeRequest(BaseModel):
 class PinChangeRequest(BaseModel):
     new_pin: str = Field(min_length=4, max_length=8, alias="newPin")
     new_pin_confirmation: str = Field(min_length=4, max_length=8, alias="newPinConfirmation")
+    model_config = {"populate_by_name": True}
+
+
+class PasswordChangeRequest(BaseModel):
+    new_password: str = Field(min_length=1, max_length=200, alias="newPassword")
+    new_password_confirmation: str = Field(
+        min_length=1, max_length=200, alias="newPasswordConfirmation"
+    )
     model_config = {"populate_by_name": True}
 
 
@@ -473,6 +482,19 @@ async def request_pin_change(
 ) -> dict[str, Any]:
     command = RequestPinChange(
         new_pin=payload.new_pin, new_pin_confirmation=payload.new_pin_confirmation
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@auth_router.post("/password/change", status_code=201)
+async def request_password_change(
+    actor: CurrentActor,
+    payload: PasswordChangeRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = RequestPasswordChange(
+        new_password=payload.new_password,
+        new_password_confirmation=payload.new_password_confirmation,
     )
     return await bus.execute(command, actor, idempotency_key)
 

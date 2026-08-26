@@ -1444,6 +1444,41 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   }
 
+  function PasswordChangeDialog({ busy, error, onSubmit, onDismiss }) {
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmation, setConfirmation] = useState("");
+    return (
+      <UI.Dialog labelledBy="password-change-title" onDismiss={onDismiss}>
+        <h2 id="password-change-title" className="dialog-title">{t("dashboard.settings.passwordDialog.title")}</h2>
+        <form noValidate onSubmit={(event) => { event.preventDefault(); onSubmit(newPassword, confirmation); }}>
+          <UI.Field id="password-new" label={t("dashboard.settings.passwordDialog.newPassword")} error={error ? error.message : null}>
+            <UI.TextInput
+              id="password-new"
+              type="password"
+              autoComplete="new-password"
+              autoFocus
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+            />
+          </UI.Field>
+          <UI.Field id="password-confirm" label={t("dashboard.settings.passwordDialog.confirmPassword")}>
+            <UI.TextInput
+              id="password-confirm"
+              type="password"
+              autoComplete="new-password"
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+            />
+          </UI.Field>
+          <div className="dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onDismiss}>{t("dashboard.settings.pinDialog.cancel")}</UI.Button>
+            <UI.Button type="submit" variant="primary" disabled={busy}>{t("dashboard.settings.passwordDialog.submit")}</UI.Button>
+          </div>
+        </form>
+      </UI.Dialog>
+    );
+  }
+
   function SessionsDialog({ onDismiss }) {
     const [sessions, setSessions] = useState(null);
     const [error, setError] = useState(null);
@@ -1627,6 +1662,14 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     const [pinOtpError, setPinOtpError] = useState(null);
     const [pinNotice, setPinNotice] = useState(null);
 
+    const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+    const [passwordBusy, setPasswordBusy] = useState(false);
+    const [passwordError, setPasswordError] = useState(null);
+    const [passwordCase, setPasswordCase] = useState(null);
+    const [passwordOtpBusy, setPasswordOtpBusy] = useState(false);
+    const [passwordOtpError, setPasswordOtpError] = useState(null);
+    const [passwordNotice, setPasswordNotice] = useState(null);
+
     const [sessionsOpen, setSessionsOpen] = useState(false);
     const [closeAccountOpen, setCloseAccountOpen] = useState(false);
     const [contactDialogOpen, setContactDialogOpen] = useState(false);
@@ -1730,6 +1773,36 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
         });
     }
 
+    function submitNewPassword(newPassword, confirmation) {
+      setPasswordBusy(true);
+      setPasswordError(null);
+      api
+        .requestPasswordChange(newPassword, confirmation)
+        .then((response) => {
+          setPasswordDialogOpen(false);
+          setPasswordCase({ caseId: response.recoveryCaseId, delivery: response.delivery });
+        })
+        .catch((err) => setPasswordError(err))
+        .finally(() => setPasswordBusy(false));
+    }
+
+    function submitPasswordOtp(code) {
+      if (!passwordCase) return;
+      setPasswordOtpBusy(true);
+      setPasswordOtpError(null);
+      api
+        .verifySecureChange(passwordCase.caseId, code)
+        .then(() => {
+          setPasswordCase(null);
+          setPasswordOtpBusy(false);
+          setPasswordNotice(t("dashboard.settings.otp.successPassword"));
+        })
+        .catch((err) => {
+          setPasswordOtpError(err);
+          setPasswordOtpBusy(false);
+        });
+    }
+
     return (
       <div>
         <h3 style={{ margin: "0 0 18px" }}>{t("dashboard.nav.settings")}</h3>
@@ -1749,16 +1822,6 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                   id="set-birth"
                   readOnly
                   value={identity ? GEMS.i18n.isoToDisplayDate(identity.birthDate) : placeholder}
-                />
-              </UI.Field>
-              <UI.Field id="set-cnp" label={t("dashboard.settings.cnp")}>
-                <UI.TextInput id="set-cnp" readOnly value={identity ? identity.cnpMasked : placeholder} />
-              </UI.Field>
-              <UI.Field id="set-document" label={t("dashboard.settings.document")}>
-                <UI.TextInput
-                  id="set-document"
-                  readOnly
-                  value={identity ? identity.documentNumberMasked : placeholder}
                 />
               </UI.Field>
               <UI.Field id="set-phone" label={t("dashboard.settings.phone")}>
@@ -1788,11 +1851,13 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.settings.security")}</UI.Kicker>
             <div className="dash-settings-list">
               <div className="dash-settings-row"><span className="dash-settings-label"><UI.Icon name="KeyRound" size={15} />{t("dashboard.settings.changePin")}</span><UI.Button type="button" variant="secondary" onClick={() => { setPinError(null); setPinDialogOpen(true); }}>{t("dashboard.settings.update")}</UI.Button></div>
+              <div className="dash-settings-row"><span className="dash-settings-label"><UI.Icon name="Lock" size={15} />{t("dashboard.settings.changePassword")}</span><UI.Button type="button" variant="secondary" onClick={() => { setPasswordError(null); setPasswordDialogOpen(true); }}>{t("dashboard.settings.update")}</UI.Button></div>
               <div className="dash-settings-row"><span className="dash-settings-label"><UI.Icon name="ShieldCheck" size={15} />{t("dashboard.settings.twoFactor")}</span><UI.Tag variant="accent">{t("dashboard.settings.authenticator")}</UI.Tag></div>
               <div className="dash-settings-row"><span className="dash-settings-label"><UI.Icon name="Fingerprint" size={15} />{t("dashboard.settings.passkeys")}</span><UI.Tag variant="accent">{t("dashboard.settings.passkeysCount")}</UI.Tag></div>
               <div className="dash-settings-row"><span className="dash-settings-label"><UI.Icon name="Smartphone" size={15} />{t("dashboard.settings.sessions")}</span><UI.Button type="button" variant="secondary" onClick={() => setSessionsOpen(true)}>{t("dashboard.settings.review")}</UI.Button></div>
             </div>
             {pinNotice ? <p className="text-muted" style={{ fontSize: 12, marginTop: 10 }}>{pinNotice}</p> : null}
+            {passwordNotice ? <p className="text-muted" style={{ fontSize: 12, marginTop: 10 }}>{passwordNotice}</p> : null}
           </UI.Plate>
 
           <UI.Plate className="elev-sm" style={{ padding: 18 }}>
@@ -1861,6 +1926,26 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
             error={pinOtpError}
             onSubmit={submitPinOtp}
             onDismiss={() => setPinCase(null)}
+          />
+        ) : null}
+
+        {passwordDialogOpen ? (
+          <PasswordChangeDialog
+            busy={passwordBusy}
+            error={passwordError}
+            onSubmit={submitNewPassword}
+            onDismiss={() => setPasswordDialogOpen(false)}
+          />
+        ) : null}
+
+        {passwordCase ? (
+          <OtpDialog
+            titleId="password-otp-title"
+            delivery={passwordCase.delivery}
+            busy={passwordOtpBusy}
+            error={passwordOtpError}
+            onSubmit={submitPasswordOtp}
+            onDismiss={() => setPasswordCase(null)}
           />
         ) : null}
 

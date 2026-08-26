@@ -251,6 +251,15 @@
   <script>
     (function () {
       var root = document.documentElement;
+
+      var theme = "light";
+      try {
+        if (window.localStorage.getItem("gems.theme") === "dark") theme = "dark";
+      } catch (err) {
+        theme = "light";
+      }
+      root.setAttribute("data-theme", theme);
+
       var buttons = { en: document.getElementById("lang-en"), ro: document.getElementById("lang-ro") };
 
       function apply(lang) {

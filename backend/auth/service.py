@@ -109,6 +109,13 @@ class RequestPinChange(Command):
     new_pin_confirmation: str
 
 
+class RequestPasswordChange(Command):
+    command_name: ClassVar[str] = "auth.password_change.request"
+
+    new_password: str
+    new_password_confirmation: str
+
+
 class VerifySecureChange(Command):
     command_name: ClassVar[str] = "auth.secure_change.verify"
 
@@ -230,6 +237,7 @@ class AuthService:
         command_bus.register(RequestEmailChange, self._handle_request_email_change)
         command_bus.register(RequestPhoneChange, self._handle_request_phone_change)
         command_bus.register(RequestPinChange, self._handle_request_pin_change)
+        command_bus.register(RequestPasswordChange, self._handle_request_password_change)
         command_bus.register(VerifySecureChange, self._handle_verify_secure_change)
         command_bus.register(RequestAccountClosure, self._handle_account_closure_request)
         command_bus.register(RevokeSession, self._handle_revoke_session)
@@ -681,6 +689,23 @@ class AuthService:
             session=session,
         )
 
+    async def _handle_request_password_change(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, RequestPasswordChange)
+        user = await self._current_user(context)
+        new_password = validation.validate_new_password(
+            command.new_password, command.new_password_confirmation
+        )
+        return await self._start_secure_change(
+            user,
+            RecoveryKind.PASSWORD_CHANGE,
+            {"newPassword": new_password},
+            purpose="schimbarea parolei",
+            subject="Confirmă schimbarea parolei — GEMS",
+            session=session,
+        )
+
     async def _handle_verify_secure_change(
         self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
     ) -> CommandResult:
@@ -710,6 +735,8 @@ class AuthService:
         elif case.kind == RecoveryKind.PIN_CHANGE:
             new_pin = case.payload["newPin"]
             user.change_pin(self._hasher.hash(new_pin), self._cipher.encrypt(new_pin, user.id))
+        elif case.kind == RecoveryKind.PASSWORD_CHANGE:
+            user.change_password(self._hasher.hash(case.payload["newPassword"]))
 
         await self._users.save(user, session=session)
         await self._cases.save(case, session=session)
