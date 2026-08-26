@@ -2,6 +2,7 @@
   const GEMS = (window.GEMS = window.GEMS || {});
   const DASH = (GEMS.dashboardUi = GEMS.dashboardUi || {});
   const UI = GEMS.ui;
+  const AUTH = GEMS.auth;
   const t = GEMS.i18n.t;
   const DATA = GEMS.dashboardData;
   const api = GEMS.api;
@@ -9,10 +10,6 @@
 
   function accountLabel(account) {
     return t("dashboard.accountType." + account.typeKey) + " · " + account.cur + " · " + account.ibanShort;
-  }
-
-  function accountBalanceOption(account) {
-    return accountLabel(account) + " — " + DASH.formatMinor(account.minor) + " " + account.cur;
   }
 
   const NAV_ICONS = {
@@ -321,7 +318,7 @@
                 <UI.Select id="pay-to" value={toId} onChange={(event) => setToId(event.target.value)}>
                   <option value="">{t("dashboard.payDialog.choose")}</option>
                   {internalTargets.map((account) => (
-                    <option key={account.id} value={account.id}>{accountBalanceOption(account)}</option>
+                    <option key={account.id} value={account.id}>{accountLabel(account)}</option>
                   ))}
                 </UI.Select>
               </UI.Field>
@@ -376,7 +373,9 @@
             </div>
           ) : null}
 
-          <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>{t("dashboard.payDialog.agentCheck")}</p>
+          {payType === "iban" ? (
+            <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>{t("dashboard.payDialog.agentCheck")}</p>
+          ) : null}
 
           {mismatch ? (
             <label className="dash-check">
@@ -401,9 +400,7 @@
   };
 
   DASH.SignPaymentDialog = function SignPaymentDialog({ payment, busy, error, onClose, onSubmit }) {
-    const [code, setCode] = useState("");
-    const devCode = payment.stepUp && payment.stepUp.devCode;
-    const attemptsLeft = error && error.details ? error.details.attemptsLeft : null;
+    const [pin, setPin] = useState("");
 
     return (
       <div className="dash-dialog-backdrop" onClick={onClose}>
@@ -416,31 +413,21 @@
             })}
           </p>
 
-          <UI.Field
-            id="sign-payment-code"
+          <AUTH.DigitGroup
             label={t("dashboard.signDialog.codeLabel")}
-            hint={devCode ? t("dashboard.signDialog.devHint", { code: devCode }) : undefined}
-          >
-            <UI.TextInput
-              id="sign-payment-code"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              value={code}
-              onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-            />
-          </UI.Field>
+            length={6}
+            value={pin}
+            onChange={setPin}
+            autoFocus
+          />
 
           {error ? (
-            <div className="dash-balance-line is-short" role="alert">
-              {error.message}
-              {attemptsLeft != null ? " · " + t("dashboard.signDialog.attemptsLeft", { n: attemptsLeft }) : ""}
-            </div>
+            <div className="dash-balance-line is-short" role="alert">{error.message}</div>
           ) : null}
 
           <div className="dash-dialog-actions">
             <UI.Button type="button" variant="secondary" onClick={onClose}>{t("dashboard.payDialog.cancel")}</UI.Button>
-            <UI.Button type="button" variant="primary" disabled={busy || code.length !== 6} onClick={() => onSubmit(payment.paymentId, code)}>
+            <UI.Button type="button" variant="primary" disabled={busy || pin.length !== 6} onClick={() => onSubmit(payment.paymentId, pin)}>
               {busy ? t("dashboard.signDialog.signing") : t("dashboard.signDialog.confirm")}
             </UI.Button>
           </div>

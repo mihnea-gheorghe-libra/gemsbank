@@ -278,13 +278,11 @@
         continueBtn: "Continue to signature",
       },
       signDialog: {
-        title: "Confirm with your signature code",
+        title: "Confirm with your PIN",
         subtitle: "{who} · {amount}",
-        codeLabel: "6-digit code",
-        devHint: "Demo mode, no real channel configured — code is {code}.",
+        codeLabel: "PIN",
         signing: "Signing…",
         confirm: "Sign and send",
-        attemptsLeft: "{n} attempts left",
       },
       addFunds: {
         title: "Add funds",
@@ -1097,13 +1095,11 @@
         continueBtn: "Continuă spre semnătură",
       },
       signDialog: {
-        title: "Confirmă cu codul de semnătură",
+        title: "Confirmă cu codul PIN",
         subtitle: "{who} · {amount}",
-        codeLabel: "Cod din 6 cifre",
-        devHint: "Mod demo, fără canal real configurat — codul este {code}.",
+        codeLabel: "PIN",
         signing: "Se semnează…",
         confirm: "Semnează și trimite",
-        attemptsLeft: "{n} încercări rămase",
       },
       addFunds: {
         title: "Adaugă fonduri",
