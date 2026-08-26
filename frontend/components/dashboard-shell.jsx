@@ -373,10 +373,6 @@
             </div>
           ) : null}
 
-          {payType === "iban" ? (
-            <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>{t("dashboard.payDialog.agentCheck")}</p>
-          ) : null}
-
           {mismatch ? (
             <label className="dash-check">
               <input type="checkbox" checked={acknowledgeMismatch} onChange={(event) => setAcknowledgeMismatch(event.target.checked)} />
