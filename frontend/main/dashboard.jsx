@@ -990,6 +990,12 @@
                 marketError={marketError}
                 onRefreshMarket={loadMarket}
                 onTrade={(holdingId, direction) => setTrade({ holdingId, direction })}
+                onOpenAccount={(typeKey) => {
+                  setScreen("accounts");
+                  setOpenAccountError(null);
+                  setOpenAccountInitialType(typeKey || null);
+                  setOpenAccountShown(true);
+                }}
               />
             ) : null}
             {screen === "cards" ? (

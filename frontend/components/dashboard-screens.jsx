@@ -573,6 +573,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     marketError,
     onRefreshMarket,
     onTrade,
+    onOpenAccount,
   }) {
     const investedMinor = holdings.reduce((sum, holding) => sum + DASH.holdingValue(holding), 0) + (investCashMinor || 0);
     const [focusId, setFocusId] = useState(null);
@@ -1012,14 +1013,49 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                     <div className="dash-card-flip-inner">
                       <div className="dash-card-face-front">{front}</div>
                       <div className="dash-card-face-back">
-                        <span className="dash-card-back-line">
+                        <span className="dash-card-back-line" style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           {DASH.mockFullNumber(row.cardId, row.numberMasked.slice(-4), row.kind)}
+                          <button
+                            type="button"
+                            className="dash-copy-btn"
+                            aria-label="Copy card number"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(DASH.mockFullNumber(row.cardId, row.numberMasked.slice(-4), row.kind).replace(/\s/g, ''));
+                            }}
+                          >
+                            <UI.Icon name="Copy" size={14} />
+                          </button>
                         </span>
-                        <span className="dash-card-back-line">
+                        <span className="dash-card-back-line" style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           {t("dashboard.cards.expLabel", { exp: formatExpiry(row.expiresOn) })}
+                          <button
+                            type="button"
+                            className="dash-copy-btn"
+                            aria-label="Copy expiry"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(formatExpiry(row.expiresOn));
+                            }}
+                          >
+                            <UI.Icon name="Copy" size={14} />
+                          </button>
                         </span>
-                        <span className="dash-card-back-line">
+                        <span className="dash-card-back-line" style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           {cvv ? t("dashboard.cards.cvvLabel", { cvv }) : "•••"}
+                          {cvv ? (
+                            <button
+                              type="button"
+                              className="dash-copy-btn"
+                              aria-label="Copy CVV"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(cvv);
+                              }}
+                            >
+                              <UI.Icon name="Copy" size={14} />
+                            </button>
+                          ) : null}
                         </span>
                       </div>
                     </div>
