@@ -16,6 +16,7 @@
     home: "LayoutGrid",
     payments: "ArrowLeftRight",
     chat: "MessageCircle",
+    accounts: "Wallet",
     portfolio: "PieChart",
     cards: "CreditCard",
     analytics: "BarChart3",
@@ -763,7 +764,7 @@
           onClick={(event) => event.stopPropagation()}
         >
           <h2 id="issue-card-dialog-title" style={{ margin: 0 }}>{t("dashboard.cards.issueDialog.title")}</h2>
-          <DASH.SegmentedControl options={options} value={kind} onChange={onKind} label={t("dashboard.cards.issueDialog.title")} />
+          <DASH.SegmentedControl className="dash-seg-full" options={options} value={kind} onChange={onKind} label={t("dashboard.cards.issueDialog.title")} />
 
           <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
             {kind === "physical" ? t("dashboard.cards.issueDialog.physicalNote") : t("dashboard.cards.issueDialog.virtualNote")}
@@ -797,7 +798,9 @@
           ) : (
             <div className="dash-history-list">
               {cards.map((card) => (
-                <div key={card.cardId} className="dash-history-row">{card.numberMasked}</div>
+                <div key={card.cardId} className="dash-history-row" style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.1em" }}>
+                  {DASH.mockFullNumber(card.cardId, card.numberMasked.slice(-4), card.kind)}
+                </div>
               ))}
             </div>
           )}

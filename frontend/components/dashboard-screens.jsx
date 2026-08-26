@@ -59,7 +59,7 @@
   // Cosmetic only — derived client-side from the card id, never sent to or
   // stored by the backend, which never generates or keeps a full PAN
   // (backend/cards/adapters.py — only a random last-4 exists, anywhere).
-  function mockFullNumber(cardId, last4, kind) {
+  DASH.mockFullNumber = function mockFullNumber(cardId, last4, kind) {
     let hash = 0;
     for (let i = 0; i < cardId.length; i++) {
       hash = (hash * 31 + cardId.charCodeAt(i)) >>> 0;
@@ -383,53 +383,21 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
       </div>
     );
   };
-
-  SCR.PortfolioScreen = function PortfolioScreen({
+  SCR.AccountsScreen = function AccountsScreen({
     accounts,
     deposits,
     credits,
-    holdings,
-    investCashMinor,
     creditApplications,
-    market,
-    marketLoading,
-    marketError,
-    onRefreshMarket,
     onOpenAccount,
     onMoveDeposit,
     onCloseDeposit,
-    onTrade,
     onApplyCredit,
     onWithdrawApplication,
   }) {
-    const investedMinor = holdings.reduce((sum, holding) => sum + DASH.holdingValue(holding), 0) + (investCashMinor || 0);
-    const [focusId, setFocusId] = useState(null);
-    const [chartRange, setChartRange] = useState("month");
-
-    const focused = holdings.find((holding) => holding.id === focusId) || null;
-    const totalSeries = DASH.portfolioSeries(holdings, investCashMinor);
-    const rawSeries = focused ? DASH.instrumentSeries(focused) : totalSeries;
-    const series = DASH.sliceSeriesByRange(rawSeries, chartRange);
-    const windowChangeBps = DASH.seriesChangeBps(totalSeries);
-    const chartChangeBps = DASH.seriesChangeBps(series);
-    const currentPoint = rawSeries.length ? rawSeries[rawSeries.length - 1] : null;
-    const currentDelta = rawSeries.length > 1
-      ? currentPoint.valueMinor - rawSeries[rawSeries.length - 2].valueMinor
-      : null;
-
-    const rangeOptions = [
-      { value: "day", label: t("dashboard.invest.range.day") },
-      { value: "week", label: t("dashboard.invest.range.week") },
-      { value: "month", label: t("dashboard.invest.range.month") },
-      { value: "quarter", label: t("dashboard.invest.range.quarter") },
-      { value: "half", label: t("dashboard.invest.range.half") },
-      { value: "year", label: t("dashboard.invest.range.year") },
-    ];
-
     return (
       <div>
         <div className="dash-screen-head">
-          <h3 style={{ margin: 0 }}>{t("dashboard.portfolio.title")}</h3>
+          <h3 style={{ margin: 0 }}>{t("dashboard.accounts.title")}</h3>
           <UI.Button type="button" variant="primary" onClick={() => onOpenAccount()}>{t("dashboard.portfolio.openAccount")}</UI.Button>
         </div>
 
@@ -437,7 +405,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
           {accounts.map((account) => (
             <UI.Plate key={account.id} className="elev-sm" style={{ padding: 14 }}>
               <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
-                {account.cur} · {t("dashboard.accountType." + account.typeKey)}
+                {account.cur} &middot; {t("dashboard.accountType." + account.typeKey)}
               </div>
               <div className="dash-account-amount">{formatMinor(account.minor)}</div>
               <div className="text-muted" style={{ fontSize: 11 }}>{account.iban}</div>
@@ -593,8 +561,50 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
             ) : null}
           </UI.Plate>
         </div>
+      </div>
+    );
+  };
 
-        <UI.Plate className="elev-sm" style={{ padding: 16, marginTop: 20 }}>
+  SCR.PortfolioScreen = function PortfolioScreen({
+    holdings,
+    investCashMinor,
+    market,
+    marketLoading,
+    marketError,
+    onRefreshMarket,
+    onTrade,
+  }) {
+    const investedMinor = holdings.reduce((sum, holding) => sum + DASH.holdingValue(holding), 0) + (investCashMinor || 0);
+    const [focusId, setFocusId] = useState(null);
+    const [chartRange, setChartRange] = useState("month");
+
+    const focused = holdings.find((holding) => holding.id === focusId) || null;
+    const totalSeries = DASH.portfolioSeries(holdings, investCashMinor);
+    const rawSeries = focused ? DASH.instrumentSeries(focused) : totalSeries;
+    const series = DASH.sliceSeriesByRange(rawSeries, chartRange);
+    const windowChangeBps = DASH.seriesChangeBps(totalSeries);
+    const chartChangeBps = DASH.seriesChangeBps(series);
+    const currentPoint = rawSeries.length ? rawSeries[rawSeries.length - 1] : null;
+    const currentDelta = rawSeries.length > 1
+      ? currentPoint.valueMinor - rawSeries[rawSeries.length - 2].valueMinor
+      : null;
+
+    const rangeOptions = [
+      { value: "day", label: t("dashboard.invest.range.day") },
+      { value: "week", label: t("dashboard.invest.range.week") },
+      { value: "month", label: t("dashboard.invest.range.month") },
+      { value: "quarter", label: t("dashboard.invest.range.quarter") },
+      { value: "half", label: t("dashboard.invest.range.half") },
+      { value: "year", label: t("dashboard.invest.range.year") },
+    ];
+
+    return (
+      <div>
+        <div className="dash-screen-head">
+          <h3 style={{ margin: 0 }}>{t("dashboard.portfolio.title")}</h3>
+        </div>
+
+        <UI.Plate className="elev-sm" style={{ padding: 16 }}>
           <div className="dash-kicker-row">
             <UI.Kicker>
               {windowChangeBps == null
@@ -919,8 +929,10 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     onCancelLoginPin,
     onSetAtmLimit,
     onSetOnlineLimit,
+    secureTimer,
   }) {
     const [editingLimit, setEditingLimit] = useState(null);
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const card = cards.find((row) => row.cardId === selectedCardId) || null;
     const disabled = busy || !card || card.state === "blocked";
     const monthlySpendMinor = monthlyCardSpendMinor(transactions);
@@ -1001,7 +1013,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                       <div className="dash-card-face-front">{front}</div>
                       <div className="dash-card-face-back">
                         <span className="dash-card-back-line">
-                          {mockFullNumber(row.cardId, row.numberMasked.slice(-4), row.kind)}
+                          {DASH.mockFullNumber(row.cardId, row.numberMasked.slice(-4), row.kind)}
                         </span>
                         <span className="dash-card-back-line">
                           {t("dashboard.cards.expLabel", { exp: formatExpiry(row.expiresOn) })}
@@ -1030,7 +1042,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                     disabled={busy || card.state === "blocked"}
                     onClick={onTogglePin}
                   >
-                    {pinShown && pin ? t("dashboard.cards.pinLabel", { pin: pin.split("").join(" ") }) : t("dashboard.cards.showPin")}
+                    {pinShown ? t("dashboard.cards.hidePin") + (secureTimer ? ` (${secureTimer}s)` : "") : t("dashboard.cards.showPin")}
                   </UI.Button>
                   <UI.Button
                     type="button"
@@ -1039,7 +1051,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                     disabled={busy || card.state === "blocked"}
                     onClick={onToggleDetails}
                   >
-                    {detailsShown ? t("dashboard.cards.hideDetails") : t("dashboard.cards.showDetails")}
+                    {detailsShown ? t("dashboard.cards.hideDetails") + (secureTimer ? ` (${secureTimer}s)` : "") : t("dashboard.cards.showDetails")}
                   </UI.Button>
                   <UI.Button
                     type="button"
@@ -1075,7 +1087,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                     variant="secondary"
                     style={{ justifyContent: "space-between", color: "var(--color-negative)" }}
                     disabled={disabled}
-                    onClick={onDelete}
+                    onClick={() => setDeleteConfirmOpen(true)}
                   >
                     {t("dashboard.cards.deleteCard")}
                   </UI.Button>
@@ -1108,6 +1120,32 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
             onDismiss={onCancelLoginPin}
             onSubmit={onConfirmLoginPin}
           />
+        ) : null}
+        {deleteConfirmOpen ? (
+          <UI.Dialog labelledBy="delete-confirm-title" onDismiss={() => setDeleteConfirmOpen(false)}>
+            <h2 id="delete-confirm-title" className="dialog-title">
+              {t("dashboard.cards.deleteCard")}
+            </h2>
+            <p className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
+              {t("dashboard.cards.confirmDelete")}
+            </p>
+            <div style={{ display: "flex", gap: 8, marginTop: 24 }}>
+              <UI.Button
+                type="button"
+                variant="primary"
+                style={{ flex: 1, background: "var(--color-negative)", color: "white" }}
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  onDelete();
+                }}
+              >
+                {t("dashboard.cards.confirm")}
+              </UI.Button>
+              <UI.Button type="button" variant="secondary" onClick={() => setDeleteConfirmOpen(false)}>
+                {t("dashboard.cards.cancel")}
+              </UI.Button>
+            </div>
+          </UI.Dialog>
         ) : null}
       </div>
     );

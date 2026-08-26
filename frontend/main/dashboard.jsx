@@ -8,7 +8,7 @@
   const DATA = GEMS.dashboardData;
   const { useState, useCallback, useEffect } = React;
 
-  const SCREENS = ["home", "payments", "chat", "portfolio", "cards", "analytics", "settings"];
+  const SCREENS = ["home", "payments", "chat", "accounts", "portfolio", "cards", "analytics", "settings"];
   const REAL_ACCOUNT_KINDS = ["current", "savings", "invest"];
 
   const ANSWER_KEYS = {
@@ -164,6 +164,26 @@
     const [exchangeShown, setExchangeShown] = useState(false);
     const [exchangeBusy, setExchangeBusy] = useState(false);
     const [exchangeError, setExchangeError] = useState(null);
+    const [secureTimer, setSecureTimer] = useState(0);
+
+    useEffect(() => {
+      if (detailsShown || pinShown) {
+        setSecureTimer(30);
+        const interval = setInterval(() => {
+          setSecureTimer((prev) => {
+            if (prev <= 1) {
+              setDetailsShown(false);
+              setPinShown(false);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+        return () => clearInterval(interval);
+      } else {
+        setSecureTimer(0);
+      }
+    }, [detailsShown, pinShown]);
 
     useEffect(() => {
       let cancelled = false;
@@ -380,7 +400,6 @@
 
     const deleteCard = useCallback(async () => {
       if (!selectedCardId) return;
-      if (!window.confirm(t("dashboard.cards.confirmDelete"))) return;
       setCardBusy(true);
       setCardsError(null);
       try {
@@ -471,6 +490,7 @@
     const cancelLoginPin = useCallback(() => {
       setPinPromptOpen(false);
       setPinPromptError(null);
+      setPinShown(false);
     }, []);
 
     const setCardAtmLimit = useCallback(async (minor) => {
@@ -944,18 +964,12 @@
                 username={firstName}
               />
             ) : null}
-            {screen === "portfolio" ? (
-              <SCR.PortfolioScreen
+            {screen === "accounts" ? (
+              <SCR.AccountsScreen
                 accounts={accounts}
                 deposits={deposits}
                 credits={credits}
-                holdings={pricedHoldings}
-                investCashMinor={investCashMinor}
                 creditApplications={creditApplications}
-                market={market}
-                marketLoading={marketLoading}
-                marketError={marketError}
-                onRefreshMarket={loadMarket}
                 onOpenAccount={(typeKey) => {
                   setOpenAccountError(null);
                   setOpenAccountInitialType(typeKey || null);
@@ -963,9 +977,19 @@
                 }}
                 onMoveDeposit={(deposit, direction) => setDepositMove({ deposit, direction })}
                 onCloseDeposit={closeDeposit}
-                onTrade={(holdingId, direction) => setTrade({ holdingId, direction })}
                 onApplyCredit={() => setCreditShown(true)}
                 onWithdrawApplication={withdrawApplication}
+              />
+            ) : null}
+            {screen === "portfolio" ? (
+              <SCR.PortfolioScreen
+                holdings={pricedHoldings}
+                investCashMinor={investCashMinor}
+                market={market}
+                marketLoading={marketLoading}
+                marketError={marketError}
+                onRefreshMarket={loadMarket}
+                onTrade={(holdingId, direction) => setTrade({ holdingId, direction })}
               />
             ) : null}
             {screen === "cards" ? (
@@ -996,6 +1020,7 @@
                 onCancelLoginPin={cancelLoginPin}
                 onSetAtmLimit={setCardAtmLimit}
                 onSetOnlineLimit={setCardOnlineLimit}
+                secureTimer={secureTimer}
               />
             ) : null}
             {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} /> : null}
