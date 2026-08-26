@@ -7,13 +7,12 @@
   const t = GEMS.i18n.t;
   const DATA = GEMS.dashboardData;
   const api = GEMS.api;
-  const { useState, useEffect } = React;
+  const { useState, useEffect, useRef } = React;
 
   const QUICK_ACTIONS = [
     { icon: "Send", key: "transact", go: "payments" },
     { icon: "Plus", key: "addFunds", go: "portfolio" },
     { icon: "ArrowLeftRight", key: "exchange", go: "portfolio" },
-    { icon: "QrCode", key: "scanQr", go: "payments" },
   ];
 
   const formatMinor = DASH.formatMinor;
@@ -22,7 +21,7 @@
     all: () => true,
     income: (row) => row.direction === "in",
     spending: (row) => row.direction === "out",
-    pending: (row) => row.statusKey === "pending",
+    pending: (row) => row.statusKey === "awaiting_signature",
     cards: (row) => row.channel === "card",
   };
 
@@ -39,6 +38,18 @@
     return kind.replace(/_([a-z])/g, (match, letter) => letter.toUpperCase());
   }
 
+  function formatCardKind(text) {
+    const parts = text.split(" · ");
+    if (parts.length === 2) {
+      return (
+        <React.Fragment>
+          <strong style={{ fontWeight: 700 }}>{parts[0]}</strong> · {parts[1]}
+        </React.Fragment>
+      );
+    }
+    return <strong style={{ fontWeight: 700 }}>{text}</strong>;
+  }
+
   function formatExpiry(iso) {
     if (!iso) return "";
     const [year, month] = iso.split("-");
@@ -48,7 +59,7 @@
   // Cosmetic only — derived client-side from the card id, never sent to or
   // stored by the backend, which never generates or keeps a full PAN
   // (backend/cards/adapters.py — only a random last-4 exists, anywhere).
-  function mockFullNumber(cardId, last4, kind) {
+  DASH.mockFullNumber = function mockFullNumber(cardId, last4, kind) {
     let hash = 0;
     for (let i = 0; i < cardId.length; i++) {
       hash = (hash * 31 + cardId.charCodeAt(i)) >>> 0;
@@ -147,12 +158,15 @@
     );
   }
 
-  SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onNavigate, insights, insightHistory, lang }) {
+  SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onNavigate, onAddFunds, onExchange, insights, insightHistory, lang }) {
     const { useState } = React;
     const [showAllInsights, setShowAllInsights] = useState(false);
     const allInsights = insightHistory || [];
     const visibleInsights = (insights || []).slice(0, INSIGHT_CARD_LIMIT);
     const hasMoreInsights = allInsights.length > visibleInsights.length;
+    const totalBalanceMinor = accounts
+      .filter((account) => account.cur === "RON")
+      .reduce((sum, account) => sum + account.minor, 0);
 
     return (
       <div className="dash-grid-home">
@@ -165,7 +179,7 @@
             </UI.Button>
           </div>
           <div className="dash-balance-figure">
-            {balanceHidden ? "•••••••• RON" : DATA.totalBalance + " RON"}
+            {balanceHidden ? "•••••••• RON" : formatMinor(totalBalanceMinor) + " RON"}
           </div>
           <div className="text-muted" style={{ fontSize: 12 }}>
             {balanceHidden ? t("dashboard.home.balanceHiddenSub") : t("dashboard.home.balanceSub")}
@@ -175,7 +189,17 @@
 
           <div className="dash-quick-grid">
             {QUICK_ACTIONS.map((action) => (
-              <UI.Button key={action.key} type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 10, minHeight: 46 }} onClick={() => onNavigate(action.go)}>
+              <UI.Button
+                key={action.key}
+                type="button"
+                variant="secondary"
+                style={{ justifyContent: "flex-start", gap: 10, minHeight: 46 }}
+                onClick={() => {
+                  if (action.key === "addFunds") return onAddFunds();
+                  if (action.key === "exchange") return onExchange();
+                  return onNavigate(action.go);
+                }}
+              >
                 <UI.Icon name={action.icon} size={16} style={{ color: "var(--color-primary)" }} />
                 {t("dashboard.home.quick." + action.key)}
               </UI.Button>
@@ -189,7 +213,7 @@
             <a href="#" onClick={(event) => { event.preventDefault(); onNavigate("portfolio"); }}>{t("dashboard.home.openAccount")}</a>
           </div>
           <div className="dash-accounts-tiles">
-            {accounts.slice(0, 3).map((account, index) => (
+            {accounts.map((account, index) => (
               <UI.Plate key={index} className="dash-account-tile">
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
                   {account.cur} · {t("dashboard.accountType." + account.typeKey)}
@@ -274,6 +298,7 @@
     onUseTemplate,
     onSettleShare,
     onDeleteSplit,
+    onSign,
   }) {
     const filters = Object.keys(TX_FILTERS);
     const visible = transactions.filter((row) => TX_FILTERS[filter](row) && matchesQuery(row, query));
@@ -293,22 +318,30 @@
           </div>
         </div>
 
-        <UI.Plate className="elev-sm" style={{ padding: 16, marginBottom: 18 }}>
-          <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.payments.pendingTitle")}</UI.Kicker>
-          <div className="dash-pending-grid">
-            {DATA.pending.map((row, index) => (
-              <div className="dash-pending-row" key={index}>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--color-primary)" }}>{row.num}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>{row.who}</div>
-                  <div className="text-muted" style={{ fontSize: 11 }}>{t("dashboard.payments.note." + row.noteKey)}</div>
+        {pending.length ? (
+          <UI.Plate className="elev-sm" style={{ padding: 16, marginBottom: 18 }}>
+            <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.payments.pendingTitle")}</UI.Kicker>
+            <div className="dash-pending-grid">
+              {pending.map((row, index) => (
+                <div className="dash-pending-row" key={row.paymentId}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--color-primary)" }}>
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>{row.counterparty}</div>
+                    <div className="text-muted" style={{ fontSize: 11 }}>{row.reference}</div>
+                  </div>
+                  <div style={{ fontFamily: "var(--font-heading)", fontSize: 18 }}>
+                    {formatMinor(row.amount.minorUnits)} {row.amount.currency}
+                  </div>
+                  <UI.Button type="button" variant="secondary" onClick={() => onSign(row)}>
+                    {t("dashboard.payments.sign")}
+                  </UI.Button>
                 </div>
-                <div style={{ fontFamily: "var(--font-heading)", fontSize: 18 }}>{row.amount} RON</div>
-                <UI.Button type="button" variant="secondary">{t("dashboard.payments.sign")}</UI.Button>
-              </div>
-            ))}
-          </div>
-        </UI.Plate>
+              ))}
+            </div>
+          </UI.Plate>
+        ) : null}
 
         <UI.Plate className="elev-sm" style={{ padding: 16, marginBottom: 18 }}>
           <div className="dash-kicker-row">
@@ -432,46 +465,29 @@
       </div>
     );
   };
-
-  SCR.PortfolioScreen = function PortfolioScreen({
+  SCR.AccountsScreen = function AccountsScreen({
     accounts,
     deposits,
     credits,
-    holdings,
-    investCashMinor,
     creditApplications,
-    market,
-    marketLoading,
-    marketError,
-    onRefreshMarket,
     onOpenAccount,
     onMoveDeposit,
     onCloseDeposit,
-    onTrade,
     onApplyCredit,
     onWithdrawApplication,
   }) {
-    const investedMinor = holdings.reduce((sum, holding) => sum + DASH.holdingValue(holding), 0) + investCashMinor;
-    const [focusId, setFocusId] = useState(null);
-
-    const focused = holdings.find((holding) => holding.id === focusId) || null;
-    const totalSeries = DASH.portfolioSeries(holdings, investCashMinor);
-    const series = focused ? DASH.instrumentSeries(focused) : totalSeries;
-    const windowChangeBps = DASH.seriesChangeBps(totalSeries);
-    const focusChangeBps = focused ? DASH.seriesChangeBps(series) : null;
-
     return (
       <div>
         <div className="dash-screen-head">
-          <h3 style={{ margin: 0 }}>{t("dashboard.portfolio.title")}</h3>
-          <UI.Button type="button" variant="primary" onClick={onOpenAccount}>{t("dashboard.portfolio.openAccount")}</UI.Button>
+          <h3 style={{ margin: 0 }}>{t("dashboard.accounts.title")}</h3>
+          <UI.Button type="button" variant="primary" onClick={() => onOpenAccount()}>{t("dashboard.portfolio.openAccount")}</UI.Button>
         </div>
 
         <div className="dash-portfolio-tiles">
           {accounts.map((account) => (
             <UI.Plate key={account.id} className="elev-sm" style={{ padding: 14 }}>
               <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
-                {account.cur} · {t("dashboard.accountType." + account.typeKey)}
+                {account.cur} &middot; {t("dashboard.accountType." + account.typeKey)}
               </div>
               <div className="dash-account-amount">{formatMinor(account.minor)}</div>
               <div className="text-muted" style={{ fontSize: 11 }}>{account.iban}</div>
@@ -627,8 +643,52 @@
             ) : null}
           </UI.Plate>
         </div>
+      </div>
+    );
+  };
 
-        <UI.Plate className="elev-sm" style={{ padding: 16, marginTop: 20 }}>
+  SCR.PortfolioScreen = function PortfolioScreen({
+    holdings,
+    investCashMinor,
+    market,
+    marketLoading,
+    marketError,
+    onRefreshMarket,
+    onTrade,
+    onOpenAccount,
+  }) {
+    const investedMinor = holdings.reduce((sum, holding) => sum + DASH.holdingValue(holding), 0) + (investCashMinor || 0);
+    const ownedHoldings = holdings.filter((holding) => DASH.holdingValue(holding) > 0);
+    const [focusId, setFocusId] = useState(null);
+    const [chartRange, setChartRange] = useState("month");
+
+    const focused = holdings.find((holding) => holding.id === focusId) || null;
+    const totalSeries = DASH.portfolioSeries(holdings, investCashMinor);
+    const rawSeries = focused ? DASH.instrumentSeries(focused) : totalSeries;
+    const series = DASH.sliceSeriesByRange(rawSeries, chartRange);
+    const windowChangeBps = DASH.seriesChangeBps(totalSeries);
+    const chartChangeBps = DASH.seriesChangeBps(series);
+    const currentPoint = rawSeries.length ? rawSeries[rawSeries.length - 1] : null;
+    const currentDelta = rawSeries.length > 1
+      ? currentPoint.valueMinor - rawSeries[rawSeries.length - 2].valueMinor
+      : null;
+
+    const rangeOptions = [
+      { value: "day", label: t("dashboard.invest.range.day") },
+      { value: "week", label: t("dashboard.invest.range.week") },
+      { value: "month", label: t("dashboard.invest.range.month") },
+      { value: "quarter", label: t("dashboard.invest.range.quarter") },
+      { value: "half", label: t("dashboard.invest.range.half") },
+      { value: "year", label: t("dashboard.invest.range.year") },
+    ];
+
+    return (
+      <div>
+        <div className="dash-screen-head">
+          <h3 style={{ margin: 0 }}>{t("dashboard.portfolio.title")}</h3>
+        </div>
+
+        <UI.Plate className="elev-sm" style={{ padding: 16 }}>
           <div className="dash-kicker-row">
             <UI.Kicker>
               {windowChangeBps == null
@@ -636,7 +696,7 @@
                 : t("dashboard.portfolio.investmentsWithChange", {
                     total: formatMinor(investedMinor),
                     change: DASH.formatChangeBps(windowChangeBps),
-                    months: DASH.seriesMonths(series),
+                    months: DASH.seriesMonths(totalSeries),
                   })}
             </UI.Kicker>
             <UI.Button type="button" variant="secondary" onClick={() => onTrade(null, "buy")}>
@@ -655,8 +715,26 @@
             <UI.Plate className="dash-chart-plate">
               <div className="dash-chart-head">
                 <div>
-                  <div className="dash-chart-title">
-                    {focused ? focused.name : t("dashboard.invest.totalTitle")}
+                  <div className="dash-chart-title-row">
+                    <div className="dash-chart-title">
+                      {focused ? focused.name : t("dashboard.invest.totalTitle")}
+                    </div>
+                    {currentPoint ? (
+                      <div className="dash-chart-current" title={t("dashboard.invest.currentPrice")}>
+                        <span className="dash-chart-current-value">{formatMinor(currentPoint.valueMinor)} RON</span>
+                        {currentDelta == null ? null : (
+                          <span
+                            className={UI.classNames(
+                              "dash-chart-current-delta",
+                              currentDelta > 0 && "is-up",
+                              currentDelta < 0 && "is-down"
+                            )}
+                          >
+                            {(currentDelta > 0 ? "+" : currentDelta < 0 ? "−" : "") + formatMinor(Math.abs(currentDelta))}
+                          </span>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="text-muted dash-chart-sub">
                     {focused
@@ -667,26 +745,31 @@
                       : t("dashboard.invest.totalSub")}
                   </div>
                 </div>
-                {focused ? (
-                  <UI.Button type="button" variant="secondary" onClick={() => setFocusId(null)}>
-                    {t("dashboard.invest.backToTotal")}
-                  </UI.Button>
-                ) : null}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <DASH.PeriodPicker
+                    options={rangeOptions}
+                    value={chartRange}
+                    onChange={setChartRange}
+                    label={t("dashboard.invest.rangeLabel")}
+                  />
+                  {focused ? (
+                    <UI.Button type="button" variant="secondary" onClick={() => setFocusId(null)}>
+                      {t("dashboard.invest.backToTotal")}
+                    </UI.Button>
+                  ) : null}
+                </div>
               </div>
 
               {series.length > 1 ? (
                 <DASH.PriceChart
-                  key={focusId || "total"}
+                  key={(focusId || "total") + ":" + chartRange}
                   series={series}
                   dimmed={marketLoading}
                   label={t("dashboard.invest.chartLabel", {
                     what: focused ? focused.name : t("dashboard.invest.totalTitle"),
                     from: GEMS.i18n.isoToDisplayDate(series[0].on),
                     to: GEMS.i18n.isoToDisplayDate(series[series.length - 1].on),
-                    change:
-                      DASH.seriesChangeBps(series) == null
-                        ? "—"
-                        : DASH.formatChangeBps(DASH.seriesChangeBps(series)),
+                    change: chartChangeBps == null ? "—" : DASH.formatChangeBps(chartChangeBps),
                   })}
                 />
               ) : (
@@ -695,17 +778,18 @@
                 </div>
               )}
 
-              {focused && focusChangeBps != null ? (
+              {series.length > 1 && chartChangeBps != null ? (
                 <div className="dash-chart-foot text-muted">
                   {t("dashboard.invest.windowChange", {
-                    change: DASH.formatChangeBps(focusChangeBps),
+                    change: DASH.formatChangeBps(chartChangeBps),
                   })}
                 </div>
               ) : null}
             </UI.Plate>
-            <table className="dash-table">
-              <tbody>
-                {holdings.map((holding) => (
+            <div className="dash-holdings-table-wrap">
+              <table className="dash-table">
+                <tbody>
+                {ownedHoldings.map((holding) => (
                   <tr
                     key={holding.id}
                     className={UI.classNames(
@@ -729,7 +813,7 @@
                     </td>
                     <td className="text-muted" style={{ fontSize: 12 }}>{DASH.formatUnits(holding)}</td>
                     <td className="amount-col">
-                      <div>{formatMinor(DASH.holdingValue(holding))}</div>
+                      <div>{formatMinor(DASH.holdingValue(holding))} RON</div>
                       {holding.changeBps == null ? null : (
                         <div
                           className={UI.classNames(
@@ -760,11 +844,20 @@
                 <tr>
                   <td>{t("dashboard.invest.cash")}</td>
                   <td className="text-muted" style={{ fontSize: 12 }}>—</td>
-                  <td className="amount-col">{formatMinor(investCashMinor)}</td>
-                  <td />
+                  <td className="amount-col">
+                    {investCashMinor == null ? null : formatMinor(investCashMinor) + " RON"}
+                  </td>
+                  <td className="amount-col dash-trade-cell">
+                    {investCashMinor == null ? (
+                      <UI.Button type="button" variant="secondary" onClick={() => onOpenAccount("invest")}>
+                        {t("dashboard.invest.openInvestAccount")}
+                      </UI.Button>
+                    ) : null}
+                  </td>
                 </tr>
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
           </div>
         </UI.Plate>
       </div>
@@ -882,8 +975,20 @@
     );
   }
 
+  function monthlyCardSpendMinor(transactions) {
+    const now = new Date();
+    return transactions
+      .filter((row) => {
+        if (row.channel !== "card" || row.direction !== "out" || row.statusKey !== "booked") return false;
+        const [day, month, year] = row.date.split(".").map(Number);
+        return month === now.getMonth() + 1 && year === now.getFullYear();
+      })
+      .reduce((sum, row) => sum + row.minor, 0);
+  }
+
   SCR.CardsScreen = function CardsScreen({
     cards,
+    transactions,
     loading,
     error,
     selectedCardId,
@@ -908,13 +1013,13 @@
     onCancelLoginPin,
     onSetAtmLimit,
     onSetOnlineLimit,
+    secureTimer,
   }) {
     const [editingLimit, setEditingLimit] = useState(null);
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const card = cards.find((row) => row.cardId === selectedCardId) || null;
     const disabled = busy || !card || card.state === "blocked";
-    // Demo has no real spend feed yet — this month's online spend is a fixed
-    // mock; only the limit (denominator) is live, from the card's own state.
-    const monthlySpendMinor = 184000;
+    const monthlySpendMinor = monthlyCardSpendMinor(transactions);
     const onlineLimitMinor = card ? card.onlineLimitMinor : 0;
     const monthlySpendPct = onlineLimitMinor > 0
       ? Math.min(100, Math.round((monthlySpendMinor / onlineLimitMinor) * 100))
@@ -962,7 +1067,7 @@
                 const front = (
                   <div className="dash-card-tile" style={{ width: "100%", height: "100%" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <span className="dash-card-kind">{t("dashboard.cards.kind." + kindToI18nKey(row.kind))}</span>
+                      <span className="dash-card-kind">{formatCardKind(t("dashboard.cards.kind." + kindToI18nKey(row.kind)))}</span>
                       <UI.Tag variant="outline">{t("dashboard.cards.state." + row.state)}</UI.Tag>
                     </div>
                     <div>
@@ -976,57 +1081,67 @@
                   </div>
                 );
 
-                if (isSelected) {
-                  return (
-                    <button
-                      key={row.cardId}
-                      type="button"
-                      className={UI.classNames(
-                        "dash-card-flip",
-                        flipped && "is-flipped",
-                        row.state === "frozen" && "is-frozen"
-                      )}
-                      onClick={() => onSelect(row.cardId)}
-                      aria-pressed={isSelected}
-                    >
-                      <div className="dash-card-flip-inner">
-                        <div className="dash-card-face-front">{front}</div>
-                        <div className="dash-card-face-back">
-                          <span className="dash-card-back-line">
-                            {mockFullNumber(row.cardId, row.numberMasked.slice(-4), row.kind)}
-                          </span>
-                          <span className="dash-card-back-line">
-                            {t("dashboard.cards.expLabel", { exp: formatExpiry(row.expiresOn) })}
-                          </span>
-                          <span className="dash-card-back-line">
-                            {cvv ? t("dashboard.cards.cvvLabel", { cvv }) : "•••"}
-                          </span>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                }
-
                 return (
                   <button
                     key={row.cardId}
                     type="button"
-                    className={UI.classNames("dash-card-tile", row.state === "frozen" && "is-frozen")}
+                    className={UI.classNames(
+                      "dash-card-flip",
+                      flipped && "is-flipped",
+                      row.state === "frozen" && "is-frozen"
+                    )}
                     onClick={() => onSelect(row.cardId)}
                     aria-pressed={isSelected}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <span className="dash-card-kind">{t("dashboard.cards.kind." + kindToI18nKey(row.kind))}</span>
-                      <UI.Tag variant="outline">{t("dashboard.cards.state." + row.state)}</UI.Tag>
-                    </div>
-                    <div>
-                      <div className="dash-card-num">{row.numberMasked}</div>
-                      <div className="dash-card-meta text-muted">
-                        <span>{row.owner}</span>
-                        <span>{formatExpiry(row.expiresOn)}</span>
+                    <div className="dash-card-flip-inner">
+                      <div className="dash-card-face-front">{front}</div>
+                      <div className="dash-card-face-back">
+                        <span className="dash-card-back-line" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          {DASH.mockFullNumber(row.cardId, row.numberMasked.slice(-4), row.kind)}
+                          <button
+                            type="button"
+                            className="dash-copy-btn"
+                            aria-label="Copy card number"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(DASH.mockFullNumber(row.cardId, row.numberMasked.slice(-4), row.kind).replace(/\s/g, ''));
+                            }}
+                          >
+                            <UI.Icon name="Copy" size={14} />
+                          </button>
+                        </span>
+                        <span className="dash-card-back-line" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          {t("dashboard.cards.expLabel", { exp: formatExpiry(row.expiresOn) })}
+                          <button
+                            type="button"
+                            className="dash-copy-btn"
+                            aria-label="Copy expiry"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(formatExpiry(row.expiresOn));
+                            }}
+                          >
+                            <UI.Icon name="Copy" size={14} />
+                          </button>
+                        </span>
+                        <span className="dash-card-back-line" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          {cvv ? t("dashboard.cards.cvvLabel", { cvv }) : "•••"}
+                          {cvv ? (
+                            <button
+                              type="button"
+                              className="dash-copy-btn"
+                              aria-label="Copy CVV"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(cvv);
+                              }}
+                            >
+                              <UI.Icon name="Copy" size={14} />
+                            </button>
+                          ) : null}
+                        </span>
                       </div>
                     </div>
-                    <MastercardMark />
                   </button>
                 );
               })}
@@ -1046,7 +1161,7 @@
                     disabled={busy || card.state === "blocked"}
                     onClick={onTogglePin}
                   >
-                    {pinShown && pin ? t("dashboard.cards.pinLabel", { pin: pin.split("").join(" ") }) : t("dashboard.cards.showPin")}
+                    {pinShown ? t("dashboard.cards.hidePin") + (secureTimer ? ` (${secureTimer}s)` : "") : t("dashboard.cards.showPin")}
                   </UI.Button>
                   <UI.Button
                     type="button"
@@ -1055,7 +1170,7 @@
                     disabled={busy || card.state === "blocked"}
                     onClick={onToggleDetails}
                   >
-                    {detailsShown ? t("dashboard.cards.hideDetails") : t("dashboard.cards.showDetails")}
+                    {detailsShown ? t("dashboard.cards.hideDetails") + (secureTimer ? ` (${secureTimer}s)` : "") : t("dashboard.cards.showDetails")}
                   </UI.Button>
                   <UI.Button
                     type="button"
@@ -1091,7 +1206,7 @@
                     variant="secondary"
                     style={{ justifyContent: "space-between", color: "var(--color-negative)" }}
                     disabled={disabled}
-                    onClick={onDelete}
+                    onClick={() => setDeleteConfirmOpen(true)}
                   >
                     {t("dashboard.cards.deleteCard")}
                   </UI.Button>
@@ -1124,6 +1239,32 @@
             onDismiss={onCancelLoginPin}
             onSubmit={onConfirmLoginPin}
           />
+        ) : null}
+        {deleteConfirmOpen ? (
+          <UI.Dialog labelledBy="delete-confirm-title" onDismiss={() => setDeleteConfirmOpen(false)}>
+            <h2 id="delete-confirm-title" className="dialog-title">
+              {t("dashboard.cards.deleteCard")}
+            </h2>
+            <p className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
+              {t("dashboard.cards.confirmDelete")}
+            </p>
+            <div style={{ display: "flex", gap: 8, marginTop: 24 }}>
+              <UI.Button
+                type="button"
+                variant="primary"
+                style={{ flex: 1, background: "var(--color-negative)", color: "white" }}
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  onDelete();
+                }}
+              >
+                {t("dashboard.cards.confirm")}
+              </UI.Button>
+              <UI.Button type="button" variant="secondary" onClick={() => setDeleteConfirmOpen(false)}>
+                {t("dashboard.cards.cancel")}
+              </UI.Button>
+            </div>
+          </UI.Dialog>
         ) : null}
       </div>
     );
@@ -1422,6 +1563,41 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   }
 
+  function PasswordChangeDialog({ busy, error, onSubmit, onDismiss }) {
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmation, setConfirmation] = useState("");
+    return (
+      <UI.Dialog labelledBy="password-change-title" onDismiss={onDismiss}>
+        <h2 id="password-change-title" className="dialog-title">{t("dashboard.settings.passwordDialog.title")}</h2>
+        <form noValidate onSubmit={(event) => { event.preventDefault(); onSubmit(newPassword, confirmation); }}>
+          <UI.Field id="password-new" label={t("dashboard.settings.passwordDialog.newPassword")} error={error ? error.message : null}>
+            <UI.TextInput
+              id="password-new"
+              type="password"
+              autoComplete="new-password"
+              autoFocus
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+            />
+          </UI.Field>
+          <UI.Field id="password-confirm" label={t("dashboard.settings.passwordDialog.confirmPassword")}>
+            <UI.TextInput
+              id="password-confirm"
+              type="password"
+              autoComplete="new-password"
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+            />
+          </UI.Field>
+          <div className="dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onDismiss}>{t("dashboard.settings.pinDialog.cancel")}</UI.Button>
+            <UI.Button type="submit" variant="primary" disabled={busy}>{t("dashboard.settings.passwordDialog.submit")}</UI.Button>
+          </div>
+        </form>
+      </UI.Dialog>
+    );
+  }
+
   function SessionsDialog({ onDismiss }) {
     const [sessions, setSessions] = useState(null);
     const [error, setError] = useState(null);
@@ -1580,7 +1756,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   }
 
-  SCR.SettingsScreen = function SettingsScreen({ lang, onLang, theme, onTheme, ttsOn, onToggleTts, onSignOut, onGoChat, me, onMeChange }) {
+  SCR.SettingsScreen = function SettingsScreen({ lang, onLang, theme, onTheme, ttsOn, onToggleTts, onSignOut, me, onMeChange }) {
     const langs = [
       { value: "ro", label: "Română" },
       { value: "en", label: "English" },
@@ -1604,6 +1780,14 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     const [pinOtpBusy, setPinOtpBusy] = useState(false);
     const [pinOtpError, setPinOtpError] = useState(null);
     const [pinNotice, setPinNotice] = useState(null);
+
+    const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+    const [passwordBusy, setPasswordBusy] = useState(false);
+    const [passwordError, setPasswordError] = useState(null);
+    const [passwordCase, setPasswordCase] = useState(null);
+    const [passwordOtpBusy, setPasswordOtpBusy] = useState(false);
+    const [passwordOtpError, setPasswordOtpError] = useState(null);
+    const [passwordNotice, setPasswordNotice] = useState(null);
 
     const [sessionsOpen, setSessionsOpen] = useState(false);
     const [closeAccountOpen, setCloseAccountOpen] = useState(false);
@@ -1708,6 +1892,36 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
         });
     }
 
+    function submitNewPassword(newPassword, confirmation) {
+      setPasswordBusy(true);
+      setPasswordError(null);
+      api
+        .requestPasswordChange(newPassword, confirmation)
+        .then((response) => {
+          setPasswordDialogOpen(false);
+          setPasswordCase({ caseId: response.recoveryCaseId, delivery: response.delivery });
+        })
+        .catch((err) => setPasswordError(err))
+        .finally(() => setPasswordBusy(false));
+    }
+
+    function submitPasswordOtp(code) {
+      if (!passwordCase) return;
+      setPasswordOtpBusy(true);
+      setPasswordOtpError(null);
+      api
+        .verifySecureChange(passwordCase.caseId, code)
+        .then(() => {
+          setPasswordCase(null);
+          setPasswordOtpBusy(false);
+          setPasswordNotice(t("dashboard.settings.otp.successPassword"));
+        })
+        .catch((err) => {
+          setPasswordOtpError(err);
+          setPasswordOtpBusy(false);
+        });
+    }
+
     return (
       <div>
         <h3 style={{ margin: "0 0 18px" }}>{t("dashboard.nav.settings")}</h3>
@@ -1727,16 +1941,6 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                   id="set-birth"
                   readOnly
                   value={identity ? GEMS.i18n.isoToDisplayDate(identity.birthDate) : placeholder}
-                />
-              </UI.Field>
-              <UI.Field id="set-cnp" label={t("dashboard.settings.cnp")}>
-                <UI.TextInput id="set-cnp" readOnly value={identity ? identity.cnpMasked : placeholder} />
-              </UI.Field>
-              <UI.Field id="set-document" label={t("dashboard.settings.document")}>
-                <UI.TextInput
-                  id="set-document"
-                  readOnly
-                  value={identity ? identity.documentNumberMasked : placeholder}
                 />
               </UI.Field>
               <UI.Field id="set-phone" label={t("dashboard.settings.phone")}>
@@ -1766,11 +1970,13 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.settings.security")}</UI.Kicker>
             <div className="dash-settings-list">
               <div className="dash-settings-row"><span className="dash-settings-label"><UI.Icon name="KeyRound" size={15} />{t("dashboard.settings.changePin")}</span><UI.Button type="button" variant="secondary" onClick={() => { setPinError(null); setPinDialogOpen(true); }}>{t("dashboard.settings.update")}</UI.Button></div>
+              <div className="dash-settings-row"><span className="dash-settings-label"><UI.Icon name="Lock" size={15} />{t("dashboard.settings.changePassword")}</span><UI.Button type="button" variant="secondary" onClick={() => { setPasswordError(null); setPasswordDialogOpen(true); }}>{t("dashboard.settings.update")}</UI.Button></div>
               <div className="dash-settings-row"><span className="dash-settings-label"><UI.Icon name="ShieldCheck" size={15} />{t("dashboard.settings.twoFactor")}</span><UI.Tag variant="accent">{t("dashboard.settings.authenticator")}</UI.Tag></div>
               <div className="dash-settings-row"><span className="dash-settings-label"><UI.Icon name="Fingerprint" size={15} />{t("dashboard.settings.passkeys")}</span><UI.Tag variant="accent">{t("dashboard.settings.passkeysCount")}</UI.Tag></div>
               <div className="dash-settings-row"><span className="dash-settings-label"><UI.Icon name="Smartphone" size={15} />{t("dashboard.settings.sessions")}</span><UI.Button type="button" variant="secondary" onClick={() => setSessionsOpen(true)}>{t("dashboard.settings.review")}</UI.Button></div>
             </div>
             {pinNotice ? <p className="text-muted" style={{ fontSize: 12, marginTop: 10 }}>{pinNotice}</p> : null}
+            {passwordNotice ? <p className="text-muted" style={{ fontSize: 12, marginTop: 10 }}>{passwordNotice}</p> : null}
           </UI.Plate>
 
           <UI.Plate className="elev-sm" style={{ padding: 18 }}>
@@ -1793,7 +1999,6 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
           <UI.Plate className="elev-sm" style={{ padding: 18 }}>
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.settings.support")}</UI.Kicker>
             <div className="dash-settings-list">
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={onGoChat}><UI.Icon name="MessageCircle" size={15} />{t("dashboard.settings.chatSupport")}</UI.Button>
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={() => setContactDialogOpen(true)}><UI.Icon name="Headset" size={15} />{t("dashboard.settings.customerService")}</UI.Button>
               <UI.Button
                 type="button"
@@ -1843,6 +2048,26 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
           />
         ) : null}
 
+        {passwordDialogOpen ? (
+          <PasswordChangeDialog
+            busy={passwordBusy}
+            error={passwordError}
+            onSubmit={submitNewPassword}
+            onDismiss={() => setPasswordDialogOpen(false)}
+          />
+        ) : null}
+
+        {passwordCase ? (
+          <OtpDialog
+            titleId="password-otp-title"
+            delivery={passwordCase.delivery}
+            busy={passwordOtpBusy}
+            error={passwordOtpError}
+            onSubmit={submitPasswordOtp}
+            onDismiss={() => setPasswordCase(null)}
+          />
+        ) : null}
+
         {sessionsOpen ? <SessionsDialog onDismiss={() => setSessionsOpen(false)} /> : null}
         {closeAccountOpen ? <CloseAccountDialog onDismiss={() => setCloseAccountOpen(false)} /> : null}
         {contactDialogOpen ? <ContactDialog onDismiss={() => setContactDialogOpen(false)} /> : null}
@@ -1850,7 +2075,16 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   };
 
-  SCR.ChatScreen = function ChatScreen({ messages, draft, onDraftChange, onSend, onKeyDown, micOn, onToggleMic, onPromptClick, onConfirmTx, username }) {
+  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, onToggleMic, onPromptClick, onConfirmTx, onConfirmProposal, onRequestHuman, handoffBusy, handoffSent, username }) {
+    const inputRef = useRef(null);
+
+    useEffect(() => {
+      if (busy || !inputRef.current) return;
+      const active = document.activeElement;
+      if (active && active !== document.body && active !== inputRef.current) return;
+      inputRef.current.focus();
+    }, [busy]);
+
     const prompts = [
       { key: "pay", label: t("dashboard.chat.promptPay") },
       { key: "recurring", label: t("dashboard.chat.promptRecurring") },
@@ -1889,6 +2123,46 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                         </UI.Plate>
                       ) : null}
 
+                      {message.kind === "proposal" && message.proposal ? (
+                        <UI.Plate className="dash-tx-card">
+                          <UI.Kicker style={{ marginBottom: 4 }}>{t("dashboard.chat.proposalTitle")}</UI.Kicker>
+                          <div className="dash-tx-amount">
+                            {DASH.formatMinor(message.proposal.amountMinorUnits)} {message.proposal.currency}
+                          </div>
+                          <div className="dash-tx-grid">
+                            <span className="text-muted">{t("dashboard.chat.txTo")}</span>
+                            <span>{message.proposal.counterparty}</span>
+                            <span className="text-muted">{t("dashboard.chat.txIban")}</span>
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                              {message.proposal.targetIbanMasked || message.proposal.targetIban}
+                            </span>
+                            <span className="text-muted">{t("dashboard.chat.txFrom")}</span>
+                            <span>{message.proposal.sourceLabel} · {message.proposal.sourceIbanMasked}</span>
+                            <span className="text-muted">{t("dashboard.chat.proposalReference")}</span>
+                            <span>{message.proposal.reference}</span>
+                            <span className="text-muted">{t("dashboard.chat.proposalBalanceAfter")}</span>
+                            <span>
+                              {DASH.formatMinor(message.proposal.balanceAfterMinorUnits)} {message.proposal.currency}
+                            </span>
+                          </div>
+                          <p className="dash-proposal-note">
+                            {message.proposal.requiresSignature
+                              ? t("dashboard.chat.proposalNeedsSignature")
+                              : t("dashboard.chat.proposalNotSent")}
+                          </p>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <UI.Button
+                              type="button"
+                              variant="primary"
+                              style={{ flex: 1 }}
+                              onClick={() => onConfirmProposal && onConfirmProposal(message.proposal)}
+                            >
+                              {t("dashboard.chat.proposalReview")}
+                            </UI.Button>
+                          </div>
+                        </UI.Plate>
+                      ) : null}
+
                       {message.kind === "table" ? (
                         <UI.Plate className="dash-table-card">
                           <table className="dash-table">
@@ -1918,21 +2192,38 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                           <DASH.Bars items={DATA.groceryBars} />
                         </UI.Plate>
                       ) : null}
+
+                      {message.aiGenerated ? (
+                        <div className="dash-ai-disclaimer">
+                          <UI.Icon name="Sparkles" size={13} />
+                          {t("dashboard.chat.aiDisclaimer")}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 )}
               </div>
             ))}
+
+            {busy ? (
+              <div className="dash-msg">
+                <div className="dash-msg-ai">
+                  <span className="dash-msg-ai-dot" aria-hidden="true" />
+                  <div className="dash-msg-ai-body text-muted">{t("dashboard.chat.thinking")}</div>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div style={{ paddingTop: 16 }}>
             <div className="dash-prompts-row">
               {prompts.map((prompt) => (
-                <UI.Button key={prompt.key} type="button" variant="secondary" onClick={() => onPromptClick(prompt.key)}>{prompt.label}</UI.Button>
+                <UI.Button key={prompt.key} type="button" variant="secondary" disabled={busy} onClick={() => onPromptClick(prompt.key)}>{prompt.label}</UI.Button>
               ))}
             </div>
             <UI.Plate className="dash-chat-input-row">
               <input
+                ref={inputRef}
                 className="dash-chat-input"
                 value={draft}
                 onChange={onDraftChange}
@@ -1940,12 +2231,22 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                 placeholder={t("dashboard.chat.inputPlaceholder")}
                 aria-label={t("dashboard.chat.inputPlaceholder")}
               />
-              <UI.Button type="button" variant="secondary" aria-pressed={micOn} onClick={onToggleMic}>
+              <UI.Button type="button" variant="secondary" aria-pressed={micOn} disabled={busy} onClick={onToggleMic}>
                 {micOn ? t("dashboard.chat.micOn") : t("dashboard.chat.micOff")}
               </UI.Button>
-              <UI.Button type="button" variant="primary" onClick={onSend}>{t("dashboard.chat.send")}</UI.Button>
+              <UI.Button type="button" variant="primary" disabled={busy} onClick={onSend}>{t("dashboard.chat.send")}</UI.Button>
             </UI.Plate>
-            <div className="dash-chat-hint">{t("dashboard.chat.orchestratorNote")}</div>
+            <div className="dash-chat-hint">
+              <span>{t("dashboard.chat.orchestratorNote")}</span>
+              <button
+                type="button"
+                className="dash-handoff-link"
+                onClick={onRequestHuman}
+                disabled={handoffBusy || handoffSent}
+              >
+                {handoffSent ? t("dashboard.chat.handoffSent") : t("dashboard.chat.handoffAsk")}
+              </button>
+            </div>
           </div>
         </div>
 

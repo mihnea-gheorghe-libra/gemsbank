@@ -127,6 +127,11 @@
         method: "POST",
         json: { newPin, newPinConfirmation },
       }),
+    requestPasswordChange: (newPassword, newPasswordConfirmation) =>
+      send("/auth/password/change", {
+        method: "POST",
+        json: { newPassword, newPasswordConfirmation },
+      }),
     verifySecureChange: (caseId, code) =>
       send("/auth/secure-change/" + caseId + "/verify", { method: "POST", json: { code } }),
     requestAccountClosure: (pin) =>
@@ -134,6 +139,9 @@
     updatePreferences: (prefs) => send("/auth/preferences", { method: "PUT", json: { prefs } }),
 
     listAccounts: () => send("/accounts"),
+    openAccount: (currency, kind) => send("/accounts", { method: "POST", json: { currency, kind } }),
+    exchangeRate: (from, to) => send("/exchange/rate" + query({ from, to })),
+    exchange: (payload) => send("/exchange/convert", { method: "POST", json: payload }),
     paymentsSummary: () => send("/payments/summary"),
     listTransactions: (params) => send("/payments/transactions" + query(params)),
     listPending: () => send("/payments/pending"),
@@ -174,5 +182,16 @@
       }),
     listInsights: (username) =>
       send("/insights?username=" + encodeURIComponent(username || "")),
+
+    askSupport: (question) =>
+      send("/agents/support/ask", { method: "POST", json: { question } }),
+    askAnalytics: (question) =>
+      send("/agents/analytics/ask", { method: "POST", json: { question } }),
+    askPaymentsAgent: (question) =>
+      send("/agents/payments/ask", { method: "POST", json: { question } }),
+    askGems: (question, history, screen) =>
+      send("/agents/ask", { method: "POST", json: { question, history, screen } }),
+    requestHandoff: (question, reason, history) =>
+      send("/agents/handoff", { method: "POST", json: { question, reason, history } }),
   };
 })();

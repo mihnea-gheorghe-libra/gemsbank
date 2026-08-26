@@ -201,8 +201,17 @@ For each of these: build nothing. A feature folder appears the day its first lin
   FX from public providers and converts to RON minor units. It moves no money: no command, no
   journal entry, no outbox event, and Buy/Sell on the Portfolio screen remain React state. Real
   ledger-backed trading stays out of scope.
-- **FX conversion, display only** — the USD→RON conversion above is presentational, applied to
-  market prices. Accounts still hold exactly one currency and no payment converts between them.
+- **FX conversion, display only, for investments** — the USD→RON conversion in
+  `backend/investments/` is presentational, applied to market prices. It moves no money.
+- **Currency exchange** — `backend/exchange/` exists; see README. A customer can convert RON into
+  EUR or USD (and back) at a live rate, opening the target-currency account on the fly if needed.
+  This is real, ledger-backed money movement, explicitly requested and approved as a deviation —
+  it does **not** mean payments convert currency: `payments.transfer` still requires the source
+  and target account to share a currency (`guard_same_currency`), unchanged. Exchange is the one
+  sanctioned place where an account's currency boundary is crossed, and it does so as two
+  correlated, single-currency journal transactions against a `house:fx` suspense account per
+  currency — never a mixed-currency entry, so rule 2 (double-entry, sums to zero *per currency*)
+  still holds.
 
 ### Definition of done for v0
 

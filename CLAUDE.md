@@ -17,7 +17,16 @@ docker compose up --build     # mongo + api; the api also serves frontend/ at /a
 docker compose logs -f api
 ruff check backend
 mypy backend
+
+pip install -r backend/requirements.txt   # once; the suite needs pytest + pytest-asyncio
+pytest                        # everything, from the repo root — no Docker, no Mongo, no network
+pytest -m live_llm            # the graded prompt evals; needs Mongo + AZURE_OPENAI_* credentials
 ```
+
+`pytest` from the repo root runs both test roots (`tests/` and `backend/tests/`) and must be green
+before you push. It is hermetic: `backend/tests/conftest.py` pins every setting the suite reads, so
+it does not matter whose `.env` is on disk or what the working directory is. Do not make a test
+depend on `.env`; add the value there instead.
 
 Schema migrations in `ops/` are applied by hand — see `README.md`.
 
@@ -28,7 +37,9 @@ Schema migrations in `ops/` are applied by hand — see `README.md`.
    enforced by a DB constraint, not just Python.
 3. **The journal is append-only.** Corrections are reversals. Never update or delete an entry.
 4. **Balances are derived** from journal lines. Snapshots are read models that must be rebuildable.
-5. **One money door**: the ledger's `post_transaction`. Only payments calls it.
+5. **One money door**: the ledger's `post_transaction`. Only `payments` and `exchange` call it —
+   both go through the same function, so there is still exactly one place money moves from. A new
+   feature does not get to call it without the same explicit approval `exchange` got; see README.
 6. **One write path**: `bus.execute(command, actor, idempotency_key)` in `backend/command_bus.py`.
    HTTP handlers are thin callers. So will agents be.
 7. **Every write is idempotent** (DB-unique key, stored response replayed) and **audited** (actor,

@@ -12,6 +12,7 @@ from backend.accounts.service import (
     get_accounts_service,
     normalise_iban,
 )
+from backend.auth.service import AuthService, get_auth_service
 from backend.command_bus import Command, CommandBus, CommandResult, bus
 from backend.config import Settings, settings
 from backend.database.records import AuditRecord, DomainEvent
@@ -62,6 +63,8 @@ DENIAL_MESSAGES = {
     "over_per_transaction_limit": "That is above the single-payment limit on this account.",
     "over_daily_limit": "That would take you past the payment limit for today.",
 }
+
+UNLIMITED_SIGN_ATTEMPTS = 2**31
 
 
 class MakeTransfer(Command):
@@ -152,6 +155,7 @@ class PaymentsService:
         step_up: StepUp,
         payees: PayeeVerifier,
         hasher: PasswordHasher,
+        auth: AuthService,
         clock: Clock,
         config: Settings,
     ) -> None:
@@ -163,6 +167,7 @@ class PaymentsService:
         self._step_up = step_up
         self._payees = payees
         self._hasher = hasher
+        self._auth = auth
         self._clock = clock
         self._config = config
 
@@ -334,14 +339,17 @@ class PaymentsService:
                 },
             )
 
-        payee_check = PayeeVerification(
-            await self._payees.verify(counterparty, target.holder_name)
-        )
-        if payee_check is PayeeVerification.NO_MATCH and not command.acknowledge_payee_mismatch:
-            raise ValidationError(
-                "That name does not match the account holder. Check it, then confirm to send.",
-                details={"field": "counterparty", "payeeCheck": payee_check.value},
+        if command.target_account_id:
+            payee_check = PayeeVerification.MATCH
+        else:
+            payee_check = PayeeVerification(
+                await self._payees.verify(counterparty, target.holder_name)
             )
+            if payee_check is PayeeVerification.NO_MATCH and not command.acknowledge_payee_mismatch:
+                raise ValidationError(
+                    "That name does not match the account holder. Check it, then confirm to send.",
+                    details={"field": "counterparty", "payeeCheck": payee_check.value},
+                )
 
         payment = Payment(
             user_id=user_id,
@@ -410,11 +418,12 @@ class PaymentsService:
         payment = await self._load_owned(command.payment_id, context.actor.id)
         before = payment.status.value
 
-        code = validate_signature_code(command.code)
-        challenge = payment.signature
-        matches = challenge is not None and self._hasher.verify(code, challenge.code_hash)
+        pin = validate_signature_code(command.code)
+        matches = payment.signature is not None and await self._auth.verify_user_pin(
+            context.actor.id, pin
+        )
         try:
-            payment.sign(matches, self._config.step_up_max_attempts, self._clock.now())
+            payment.sign(matches, UNLIMITED_SIGN_ATTEMPTS, self._clock.now())
         except DomainError:
             await self._payments.save(payment)
             raise
@@ -521,6 +530,7 @@ def get_payments_service() -> PaymentsService:
         step_up=DevCodeStepUp(settings),
         payees=InternalPayeeVerifier(),
         hasher=Argon2idHasher(),
+        auth=get_auth_service(),
         clock=SystemClock(),
         config=settings,
     )

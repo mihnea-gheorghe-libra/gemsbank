@@ -12,7 +12,6 @@
     body { padding: 0; }
     .help-shell { max-width: 860px; margin: 0 auto; padding: 32px 24px 64px; }
     .help-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
-    .help-wordmark { font-family: var(--font-heading); font-size: 22px; letter-spacing: 0.2em; color: var(--color-heading); }
     .help-lang-toggle { display: inline-flex; border: 1px solid var(--color-border); border-radius: var(--radius-pill); overflow: hidden; }
     .help-lang-toggle button {
       appearance: none; border: 0; font: inherit; cursor: pointer;
@@ -50,7 +49,18 @@
 <body>
   <div class="help-shell">
     <div class="help-topbar">
-      <span class="help-wordmark">GEMS</span>
+      <span class="brand-logo">
+        <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="brand-logo-mark" aria-hidden="true">
+          <polygon points="12,2 22,11 12,22 2,11" />
+          <polyline points="7,6.5 17,6.5" />
+          <polyline points="7,6.5 12,22" />
+          <polyline points="17,6.5 12,22" />
+        </svg>
+        <span class="brand-logo-word" style="font-size: 22px">
+          <span class="brand-logo-name">GEMS</span>
+          <span class="brand-logo-suffix">BANK</span>
+        </span>
+      </span>
       <div class="help-lang-toggle" role="radiogroup" aria-label="Language / Limbă">
         <button type="button" id="lang-en" aria-pressed="true">English</button>
         <button type="button" id="lang-ro" aria-pressed="false">Română</button>
@@ -241,6 +251,15 @@
   <script>
     (function () {
       var root = document.documentElement;
+
+      var theme = "light";
+      try {
+        if (window.localStorage.getItem("gems.theme") === "dark") theme = "dark";
+      } catch (err) {
+        theme = "light";
+      }
+      root.setAttribute("data-theme", theme);
+
       var buttons = { en: document.getElementById("lang-en"), ro: document.getElementById("lang-ro") };
 
       function apply(lang) {

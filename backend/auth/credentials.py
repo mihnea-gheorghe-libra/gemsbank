@@ -24,6 +24,7 @@ class RecoveryStatus(StrEnum):
 
 class RecoveryKind(StrEnum):
     PASSWORD_RESET = "password_reset"
+    PASSWORD_CHANGE = "password_change"
     EMAIL_CHANGE = "email_change"
     PHONE_CHANGE = "phone_change"
     PIN_CHANGE = "pin_change"
