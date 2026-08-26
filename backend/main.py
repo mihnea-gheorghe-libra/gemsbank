@@ -11,9 +11,11 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.accounts.service import get_accounts_service
 from backend.auth.service import get_auth_service
+from backend.capabilities.service import get_capabilities_service
 from backend.cards.service import get_cards_service
 from backend.config import settings
 from backend.database.mongo import close_client, ensure_indexes
+from backend.goals.service import get_goals_service
 from backend.helpers.context import (
     CORRELATION_HEADER,
     configure_logging,
@@ -22,7 +24,10 @@ from backend.helpers.context import (
 )
 from backend.exchange.service import get_exchange_service
 from backend.helpers.errors import DomainError
-from backend.investments.service import close_investments_clients, get_investments_service
+from backend.investments.service import (
+    close_investments_clients,
+    get_investments_service,
+)
 from backend.onboarding.service import get_onboarding_service
 from backend.payments.service import get_payments_service
 from backend.server.routes import api_router
@@ -39,6 +44,8 @@ async def lifespan(app: FastAPI):
     get_auth_service()
     get_cards_service()
     get_investments_service()
+    get_capabilities_service()
+    get_goals_service()
     get_exchange_service()
     await ensure_indexes()
     yield

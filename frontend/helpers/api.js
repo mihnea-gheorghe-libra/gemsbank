@@ -175,5 +175,10 @@
         method: "POST",
         json: { username, limitMinor },
       }),
+
+    askSupport: (question) =>
+      send("/agents/support/ask", { method: "POST", json: { question } }),
+    askAnalytics: (question) =>
+      send("/agents/analytics/ask", { method: "POST", json: { question } }),
   };
 })();

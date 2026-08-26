@@ -3,6 +3,7 @@
 
   const en = {
     brand: "GEMS",
+    brandSuffix: "BANK",
     screenTag: "ONBOARDING & KYC",
     backToSignIn: "Back to sign in",
     signInSoon: "Sign in — coming soon",
@@ -664,6 +665,7 @@
         promptSettingsPin: "How do I change my PIN?",
         promptSettings2fa: "How do I enable two-factor authentication?",
         seed: "Hi, I'm your GEMS agent. Across 4 active accounts you hold {balance} RON. Nothing needs your signature right now — two direct debits land on Thursday.",
+        seedAnalytics: "Hi, I'm GEMS Analytics. Ask me about your cashflow forecast, a savings goal, a month recap, or what changed between two months.",
         answerPay: "I drafted the transfer to Ionescu John. Check it and sign — nothing moves until you confirm.",
         answerRecurring: "You have 5 recurring payments totalling 412,97 RON a month.",
         answerGroceries: "Groceries averaged 1.180 RON a month over the last six — August is tracking 9% below that.",
@@ -676,6 +678,9 @@
         answerSettingsPin: "Go to Settings → Security → Change PIN. You'll set a new PIN and confirm it by email.",
         answerSettings2fa: "Two-factor authentication is already active via an authenticator app — review it under Settings → Security.",
         answerDefault: "I can move money, explain a charge, open a deposit, or set a spending cap. Ask in plain Romanian or English.",
+        thinking: "GEMS is thinking…",
+        errorNote: "GEMS Support couldn't answer that just now. Try again in a moment.",
+        aiDisclaimer: "AI-generated answer, based only on the GEMS FAQ, user guide and your own account settings — always double-check before acting on it.",
         balanceSpoken: "Your total balance is {balance} lei across four accounts",
         txDraftTitle: "DRAFT PAYMENT — AWAITING CONFIRMATION",
         txAmount: "500,00 RON",
@@ -817,6 +822,7 @@
 
   const ro = {
     brand: "GEMS",
+    brandSuffix: "BANK",
     screenTag: "ÎNROLARE & KYC",
     backToSignIn: "Înapoi la autentificare",
     signInSoon: "Autentificare — în curând",
@@ -1483,6 +1489,7 @@
         promptSettingsPin: "Cum îmi schimb PIN-ul?",
         promptSettings2fa: "Cum activez autentificarea în doi factori?",
         seed: "Salut, sunt agentul tău GEMS. În 4 conturi active ai {balance} RON. Nimic nu are nevoie de semnătura ta acum — două debitări directe ajung joi.",
+        seedAnalytics: "Salut, sunt GEMS Analytics. Întreabă-mă despre prognoza de cashflow, un obiectiv de economisire, recapitularea unei luni sau ce s-a schimbat între două luni.",
         answerPay: "Am pregătit transferul către Ionescu John. Verifică-l și semnează — nimic nu se mută până nu confirmi.",
         answerRecurring: "Ai 5 plăți recurente însumând 412,97 RON pe lună.",
         answerGroceries: "Cumpărăturile au fost în medie 1.180 RON pe lună în ultimele șase — august este cu 9% sub această medie.",
@@ -1495,6 +1502,9 @@
         answerSettingsPin: "Mergi la Setări → Securitate → Schimbă PIN-ul. Vei seta un PIN nou și îl vei confirma prin email.",
         answerSettings2fa: "Autentificarea în doi factori este deja activă printr-o aplicație de autentificare — o poți revizui la Setări → Securitate.",
         answerDefault: "Pot muta bani, explica o cheltuială, deschide un depozit sau seta un plafon. Întreabă în română sau engleză.",
+        thinking: "GEMS analizează…",
+        errorNote: "GEMS Support nu a putut răspunde chiar acum. Încearcă din nou peste puțin.",
+        aiDisclaimer: "Răspuns generat de AI, bazat doar pe FAQ, ghidul de utilizare GEMS și setările propriului cont — verifică întotdeauna înainte de a acționa.",
         balanceSpoken: "Soldul tău total este {balance} lei în patru conturi",
         txDraftTitle: "PLATĂ PREGĂTITĂ — ÎN AȘTEPTAREA CONFIRMĂRII",
         txAmount: "500,00 RON",

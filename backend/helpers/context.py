@@ -57,6 +57,9 @@ class Actor(BaseModel):
     def label(self) -> str:
         return f"{self.kind}:{self.id}"
 
+    def subject_id(self) -> str:
+        return self.on_behalf_of or self.id
+
 
 class ActorContext(BaseModel):
     actor: Actor

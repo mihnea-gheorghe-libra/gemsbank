@@ -28,7 +28,7 @@
   DASH.Sidebar = function Sidebar({ screen, onNavigate, onSignOut }) {
     return (
       <nav className="dash-sidebar" aria-label={t("dashboard.navLabel")}>
-        <div className="dash-sidebar-brand">{t("brand")}</div>
+        <div className="dash-sidebar-brand"><UI.Logo size={22} /></div>
 
         {DATA.navItems.map((item) => {
           const active = item.key === screen;

@@ -146,11 +146,32 @@ select.input { cursor: pointer; padding-right: 10px; }
   z-index: 1;
 }
 
-.onb-wordmark {
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.brand-logo-mark {
+  flex: none;
+  color: var(--color-primary);
+}
+.brand-logo-word {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+}
+.brand-logo-name {
   font-family: var(--font-heading);
-  font-size: 20px;
-  letter-spacing: 0.2em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   color: var(--color-heading);
+}
+.brand-logo-suffix {
+  font-family: var(--font-heading);
+  font-size: 0.55em;
+  letter-spacing: 0.35em;
+  color: var(--color-muted);
+  margin-top: 2px;
 }
 
 .onb-grid {

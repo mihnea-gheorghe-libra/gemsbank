@@ -148,7 +148,7 @@
     return (
       <div className="onb-shell">
         <header className="onb-topbar">
-          <span className="onb-wordmark">{t("brand")}</span>
+          <UI.Logo size={20} />
           <span className="auth-screen-tag">{t("auth.screenTag")}</span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 16, alignItems: "center" }}>
             <div style={{ display: "flex", gap: 4 }}>

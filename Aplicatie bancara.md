@@ -91,3 +91,8 @@ Efectiv un fel de aplicatia **Libra Internet Bank cu sold, tranzactii, agenti, e
 --grad incredere, metrici de ... pentru ci
 --scos buton back sign in
 --Ecran separat pentru reveal la pin dupa ce introduci parola, apoi inchizi si te da in dashboard
+
+agent ai
+- web scrapping 
+- support
+- 

@@ -1,9 +1,10 @@
 import re
-from datetime import date, datetime, timezone
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClientSession
-from pymongo import ASCENDING, DESCENDING
+from pymongo import ASCENDING, DESCENDING, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from backend.accounts.account import Account, AccountKind, AccountStatus
@@ -19,8 +20,10 @@ from backend.auth.credentials import (
 from backend.cards.card import Card, CardKind, CardState
 from backend.database.mongo import (
     accounts_collection,
+    agent_rate_limits_collection,
     beneficiaries_collection,
     cards_collection,
+    goals_collection,
     journal_collection,
     kyc_cases_collection,
     payments_collection,
@@ -28,6 +31,7 @@ from backend.database.mongo import (
     sessions_collection,
     users_collection,
 )
+from backend.goals.goal import Goal
 from backend.helpers.errors import ConflictError
 from backend.ledger.journal import JournalEntry, JournalTransaction, TransactionKind
 from backend.onboarding.kyc import (
@@ -459,6 +463,78 @@ class MongoAccountRepository:
     async def list_for_user(self, user_id: str) -> list[Account]:
         found = accounts_collection().find({"userId": user_id}).sort("openedAt", ASCENDING)
         return [_account_from_bson(raw) async for raw in found]
+
+
+def _goal_to_bson(goal: Goal) -> dict[str, Any]:
+    return {
+        "_id": goal.id,
+        "userId": goal.user_id,
+        "accountId": goal.account_id,
+        "name": goal.name,
+        "targetMinorUnits": goal.target_minor,
+        "currency": goal.currency,
+        "targetDate": datetime.combine(goal.target_date, datetime.min.time(), tzinfo=timezone.utc),
+        "createdAt": goal.created_at,
+    }
+
+
+def _goal_from_bson(raw: dict[str, Any]) -> Goal:
+    return Goal(
+        id=raw["_id"],
+        user_id=raw["userId"],
+        account_id=raw["accountId"],
+        name=raw["name"],
+        target_minor=raw["targetMinorUnits"],
+        currency=raw["currency"],
+        target_date=raw["targetDate"].date(),
+        created_at=raw["createdAt"],
+    )
+
+
+class MongoGoalRepository:
+    async def add(self, goal: Goal, session: AsyncIOMotorClientSession | None = None) -> None:
+        try:
+            await goals_collection().insert_one(_goal_to_bson(goal), session=session)
+        except DuplicateKeyError as exc:
+            raise ConflictError(
+                "You already have a goal. GEMS supports one active goal per user for now.",
+                details={"field": "goalId"},
+            ) from exc
+
+    async def get(self, goal_id: str) -> Goal | None:
+        raw = await goals_collection().find_one({"_id": goal_id})
+        return _goal_from_bson(raw) if raw else None
+
+    async def get_for_user(self, user_id: str) -> Goal | None:
+        raw = await goals_collection().find_one({"userId": user_id})
+        return _goal_from_bson(raw) if raw else None
+
+
+@dataclass(slots=True, frozen=True)
+class RateLimitHit:
+    count: int
+    window_start: datetime
+
+
+class MongoRateLimitStore:
+    async def bump(self, doc_id: str, now: datetime, window_seconds: int) -> RateLimitHit:
+        window_cutoff = now - timedelta(seconds=window_seconds)
+        collection = agent_rate_limits_collection()
+
+        document = await collection.find_one_and_update(
+            {"_id": doc_id, "windowStart": {"$gt": window_cutoff}},
+            {"$inc": {"count": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if document is None:
+            document = await collection.find_one_and_update(
+                {"_id": doc_id},
+                {"$set": {"windowStart": now, "count": 1}},
+                upsert=True,
+                return_document=ReturnDocument.AFTER,
+            )
+
+        return RateLimitHit(count=document["count"], window_start=document["windowStart"])
 
 
 def _journal_to_bson(transaction: JournalTransaction) -> dict[str, Any]:
