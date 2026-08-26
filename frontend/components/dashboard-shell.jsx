@@ -451,14 +451,9 @@
       <div className="dash-dialog-backdrop" onClick={onClose}>
         <UI.Plate className="dash-dialog elev-lg" role="dialog" aria-modal="true" aria-labelledby="add-funds-title" onClick={(event) => event.stopPropagation()}>
           <h2 id="add-funds-title" style={{ margin: 0 }}>{t("dashboard.addFunds.title")}</h2>
-          <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
-            {account
-              ? t("dashboard.addFunds.subtitle", { account: accountLabel(account) })
-              : t("dashboard.addFunds.noAccount")}
-          </p>
 
           {account ? (
-            <UI.Field id="add-funds-amount" label={t("dashboard.payDialog.amount")}>
+            <UI.Field id="add-funds-amount" label={t("dashboard.addFunds.amount", { currency: account.cur })}>
               <UI.TextInput
                 id="add-funds-amount"
                 inputMode="decimal"
@@ -467,9 +462,9 @@
                 onChange={(event) => setAmount(event.target.value)}
               />
             </UI.Field>
-          ) : null}
-
-          <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>{t("dashboard.addFunds.note")}</p>
+          ) : (
+            <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>{t("dashboard.addFunds.noAccount")}</p>
+          )}
 
           {error ? (
             <div className="dash-balance-line is-short" role="alert">{error.message}</div>

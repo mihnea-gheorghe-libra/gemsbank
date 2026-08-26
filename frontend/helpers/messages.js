@@ -289,6 +289,7 @@
       addFunds: {
         title: "Add funds",
         subtitle: "Add demo money to {account}. This is a mock top-up — nothing leaves any real account.",
+        amount: "Amount ({currency})",
         noAccount: "You need a current account to add funds to.",
         note: "Demo data only — this does not reach the ledger and resets on refresh.",
         submit: "Add funds",
@@ -1107,6 +1108,7 @@
       addFunds: {
         title: "Adaugă fonduri",
         subtitle: "Adaugă bani demo în {account}. E o alimentare simulată — nimic nu părăsește vreun cont real.",
+        amount: "Suma ({currency})",
         noAccount: "Ai nevoie de un cont curent în care să adaugi fonduri.",
         note: "Doar date demo — nu ajunge în ledger și dispare la refresh.",
         submit: "Adaugă fonduri",

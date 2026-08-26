@@ -936,6 +936,7 @@
             {screen === "cards" ? (
               <SCR.CardsScreen
                 cards={visibleCards}
+                transactions={transactions}
                 loading={cardsLoading && !cardsLoaded}
                 error={cardsError}
                 selectedCardId={selectedCardId}
