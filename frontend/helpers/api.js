@@ -127,6 +127,11 @@
         method: "POST",
         json: { newPin, newPinConfirmation },
       }),
+    requestPasswordChange: (newPassword, newPasswordConfirmation) =>
+      send("/auth/password/change", {
+        method: "POST",
+        json: { newPassword, newPasswordConfirmation },
+      }),
     verifySecureChange: (caseId, code) =>
       send("/auth/secure-change/" + caseId + "/verify", { method: "POST", json: { code } }),
     requestAccountClosure: (pin) =>

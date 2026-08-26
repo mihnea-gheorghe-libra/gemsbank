@@ -561,8 +561,6 @@
         personalDetails: "PERSONAL DETAILS",
         fullName: "Full name",
         birthDate: "Date of birth",
-        cnp: "Personal numeric code",
-        document: "ID document",
         phone: "Phone",
         email: "Email",
         identityNote:
@@ -573,6 +571,7 @@
         saving: "Saving…",
         security: "SECURITY",
         changePin: "Change PIN",
+        changePassword: "Change password",
         update: "Update",
         twoFactor: "Two-factor authentication",
         authenticator: "Authenticator",
@@ -600,6 +599,7 @@
           successEmail: "Email updated.",
           successPhone: "Phone number updated.",
           successPin: "PIN updated.",
+          successPassword: "Password updated.",
         },
         pinDialog: {
           title: "Change PIN",
@@ -607,6 +607,12 @@
           confirmPin: "Confirm new PIN",
           submit: "Send code",
           cancel: "Cancel",
+        },
+        passwordDialog: {
+          title: "Change password",
+          newPassword: "New password",
+          confirmPassword: "Confirm new password",
+          submit: "Send code",
         },
         sessionsDialog: {
           title: "Active sessions",
@@ -1385,8 +1391,6 @@
         personalDetails: "DATE PERSONALE",
         fullName: "Nume complet",
         birthDate: "Data nașterii",
-        cnp: "Cod numeric personal",
-        document: "Act de identitate",
         phone: "Telefon",
         email: "Email",
         identityNote:
@@ -1397,6 +1401,7 @@
         saving: "Se salvează…",
         security: "SECURITATE",
         changePin: "Schimbă PIN-ul",
+        changePassword: "Schimbă parola",
         update: "Actualizează",
         twoFactor: "Autentificare în doi factori",
         authenticator: "Aplicație autentificare",
@@ -1424,6 +1429,7 @@
           successEmail: "Adresa de email a fost actualizată.",
           successPhone: "Numărul de telefon a fost actualizat.",
           successPin: "PIN-ul a fost actualizat.",
+          successPassword: "Parola a fost actualizată.",
         },
         pinDialog: {
           title: "Schimbă PIN-ul",
@@ -1431,6 +1437,12 @@
           confirmPin: "Confirmă PIN-ul nou",
           submit: "Trimite codul",
           cancel: "Anulează",
+        },
+        passwordDialog: {
+          title: "Schimbă parola",
+          newPassword: "Parolă nouă",
+          confirmPassword: "Confirmă parola nouă",
+          submit: "Trimite codul",
         },
         sessionsDialog: {
           title: "Sesiuni active",
