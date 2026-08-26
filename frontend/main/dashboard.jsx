@@ -163,6 +163,8 @@
       { role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) },
     ]);
     const [me, setMe] = useState(null);
+    const [insights, setInsights] = useState([]);
+    const [insightHistory, setInsightHistory] = useState([]);
     const [payBusy, setPayBusy] = useState(false);
     const [payFormError, setPayFormError] = useState(null);
     const [signingPayment, setSigningPayment] = useState(null);
@@ -209,6 +211,21 @@
       };
     }, [username]);
 
+    useEffect(() => {
+      let cancelled = false;
+      api
+        .listInsights(username)
+        .then((response) => {
+          if (!cancelled && response) {
+            setInsights(response.insights || []);
+            setInsightHistory(response.history || []);
+          }
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [username]);
     const loadPaymentsData = useCallback(async () => {
       const [accountList, txList, pendingList] = await Promise.all([
         api.listAccounts(),
@@ -982,6 +999,9 @@
                 onNavigate={navigate}
                 onAddFunds={openAddFunds}
                 onExchange={openExchange}
+                insights={insights}
+                insightHistory={insightHistory}
+                lang={lang}
               />
             ) : null}
             {screen === "payments" ? (

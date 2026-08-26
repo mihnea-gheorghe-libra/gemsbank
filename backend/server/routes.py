@@ -79,6 +79,10 @@ from backend.payments.service import (
     SignPayment,
     get_payments_service,
 )
+from backend.vendors.service import (
+    VendorInsightsService,
+    get_vendor_insights_service,
+)
 
 
 class ContactRequest(BaseModel):
@@ -239,6 +243,9 @@ AccountsDep = Annotated[AccountsService, Depends(get_accounts_service)]
 PaymentsDep = Annotated[PaymentsService, Depends(get_payments_service)]
 CardsServiceDep = Annotated[CardsService, Depends(get_cards_service)]
 InvestmentsDep = Annotated[InvestmentsService, Depends(get_investments_service)]
+VendorInsightsDep = Annotated[
+    VendorInsightsService, Depends(get_vendor_insights_service)
+]
 SupportDep = Annotated[SupportService, Depends(get_support_service)]
 AnalyticsDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
 PaymentsAgentDep = Annotated[PaymentsAgentService, Depends(get_payments_agent_service)]
@@ -257,6 +264,7 @@ payments_router = APIRouter(prefix="/payments", tags=["payments"])
 cards_router = APIRouter(prefix="/cards", tags=["cards"])
 exchange_router = APIRouter(prefix="/exchange", tags=["exchange"])
 investments_router = APIRouter(prefix="/investments", tags=["investments"])
+insights_router = APIRouter(prefix="/insights", tags=["insights"])
 goals_router = APIRouter(prefix="/goals", tags=["goals"])
 agents_router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -761,6 +769,14 @@ async def market_snapshot(
     return await service.market(range, force=refresh)
 
 
+@insights_router.get("")
+async def list_insights(
+    service: VendorInsightsDep,
+    username: str | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    board = await service.board_for_username(username, limit)
+    return board.model_dump()
 @agents_router.post("/support/ask")
 async def ask_support(
     actor: CurrentActor, support: SupportDep, payload: AskAgentRequest
@@ -850,6 +866,7 @@ api_router.include_router(accounts_router)
 api_router.include_router(payments_router)
 api_router.include_router(cards_router)
 api_router.include_router(investments_router)
+api_router.include_router(insights_router)
 api_router.include_router(goals_router)
 api_router.include_router(agents_router)
 api_router.include_router(exchange_router)

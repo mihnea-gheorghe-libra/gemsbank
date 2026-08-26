@@ -112,7 +112,58 @@
     );
   }
 
-SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onNavigate, onAddFunds, onExchange }) {
+  const INSIGHT_CARD_LIMIT = 2;
+
+  function renderInsightText(insight, currentLang) {
+    if (!insight) return "";
+    const isEn = (currentLang || (GEMS.i18n && GEMS.i18n.locale) || "en") === "en";
+    const template = (isEn ? insight.longTextEn : insight.longText) || "";
+    if (!template || !insight.currency) return "";
+    return template
+      .replace("{baseline}", UI.formatMoney(insight.baselineMinorUnits || 0, insight.currency))
+      .replace("{observed}", UI.formatMoney(insight.observedMinorUnits || 0, insight.currency));
+  }
+
+  function InsightsDialog({ rows, lang, onDismiss }) {
+    return (
+      <UI.Dialog labelledBy="insights-title" onDismiss={onDismiss}>
+        <h2 id="insights-title" className="dialog-title">{t("dashboard.home.insightsAllTitle")}</h2>
+        {rows.length === 0 ? (
+          <p className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.home.insightsEmpty")}</p>
+        ) : (
+          <div className="dash-settings-list">
+            {rows.map((insight) => (
+              <div className="dash-settings-row" key={insight.id} style={{ alignItems: "flex-start" }}>
+                <div>
+                  <div style={{ fontFamily: "var(--font-heading)", fontSize: 15 }}>
+                    {insight.vendorDisplayName}
+                  </div>
+                  <div style={{ fontSize: 13, lineHeight: 1.5, marginTop: 2 }}>
+                    {renderInsightText(insight, lang)}
+                  </div>
+                  <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+                    {insight.month}
+                    {" · "}
+                    {t("dashboard.home.insightConfidence." + insight.confidence)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <UI.Button type="button" variant="ghost" onClick={onDismiss}>
+          {t("dashboard.home.insightsClose")}
+        </UI.Button>
+      </UI.Dialog>
+    );
+  }
+
+  SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onNavigate, onAddFunds, onExchange, insights, insightHistory, lang }) {
+    const { useState } = React;
+    const [showAllInsights, setShowAllInsights] = useState(false);
+    const allInsights = insightHistory || [];
+    const visibleInsights = (insights || []).slice(0, INSIGHT_CARD_LIMIT);
+    const hasMoreInsights = allInsights.length > visibleInsights.length;
     const totalBalanceMinor = accounts
       .filter((account) => account.cur === "RON")
       .reduce((sum, account) => sum + account.minor, 0);
@@ -176,16 +227,47 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
 
         {/* Moved below the accounts frame, same footprint (grid-column: span 2) per request. */}
         <UI.Plate className="dash-accounts-card elev-sm">
-          <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.home.insights")}</UI.Kicker>
+          <div className="dash-kicker-row" style={{ marginBottom: 10 }}>
+            <UI.Kicker>{t("dashboard.home.insights")}</UI.Kicker>
+            {visibleInsights.length > 0 ? (
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--color-primary)", letterSpacing: "0.08em" }}>
+                {allInsights.length} {t("dashboard.home.insightsCount")}
+              </span>
+            ) : null}
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13, lineHeight: 1.5 }}>
-            <div>{t("dashboard.home.insightNetflix")}</div>
-            <div className="hr" style={{ margin: 0 }} />
-            <div>{t("dashboard.home.insightFx")}</div>
-            <UI.Button type="button" variant="ghost" style={{ alignSelf: "flex-start", padding: 0 }} onClick={() => onNavigate("chat")}>
-              {t("dashboard.home.askAgent")}
-            </UI.Button>
+            {visibleInsights.length > 0 ? (
+              visibleInsights.map((insight, idx) => (
+                <div key={insight.id || idx}>
+                  <div>{renderInsightText(insight, lang)}</div>
+                  {idx < visibleInsights.length - 1 ? (
+                    <div className="hr" style={{ margin: "10px 0 0 0" }} />
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <div className="text-muted">{t("dashboard.home.insightsEmpty")}</div>
+            )}
+            <div className="dash-ai-disclaimer">
+              <UI.Icon name="Sparkles" size={13} />
+              {t("dashboard.home.insightsAiDisclaimer")}
+            </div>
+            <div className="dash-kicker-row" style={{ marginBottom: 0 }}>
+              <UI.Button type="button" variant="ghost" style={{ padding: 0 }} onClick={() => onNavigate("chat")}>
+                {t("dashboard.home.askAgent")}
+              </UI.Button>
+              {hasMoreInsights ? (
+                <UI.Button type="button" variant="ghost" style={{ padding: 0 }} onClick={() => setShowAllInsights(true)}>
+                  {t("dashboard.home.insightsViewAll", { count: allInsights.length })}
+                </UI.Button>
+              ) : null}
+            </div>
           </div>
         </UI.Plate>
+
+        {showAllInsights ? (
+          <InsightsDialog rows={allInsights} lang={lang} onDismiss={() => setShowAllInsights(false)} />
+        ) : null}
 
         <UI.Plate className="elev-sm" style={{ padding: 18, gridColumn: "1 / -1" }}>
           <div className="dash-kicker-row">

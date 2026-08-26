@@ -180,6 +180,8 @@
         method: "POST",
         json: { username, limitMinor },
       }),
+    listInsights: (username) =>
+      send("/insights?username=" + encodeURIComponent(username || "")),
 
     askSupport: (question) =>
       send("/agents/support/ask", { method: "POST", json: { question } }),
