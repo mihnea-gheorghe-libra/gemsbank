@@ -680,8 +680,9 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                 </div>
               ) : null}
             </UI.Plate>
-            <table className="dash-table">
-              <tbody>
+            <div className="dash-holdings-table-wrap">
+              <table className="dash-table">
+                <tbody>
                 {holdings.map((holding) => (
                   <tr
                     key={holding.id}
@@ -748,8 +749,9 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                     ) : null}
                   </td>
                 </tr>
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
           </div>
         </UI.Plate>
       </div>
@@ -867,8 +869,20 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     );
   }
 
+  function monthlyCardSpendMinor(transactions) {
+    const now = new Date();
+    return transactions
+      .filter((row) => {
+        if (row.channel !== "card" || row.direction !== "out" || row.statusKey !== "booked") return false;
+        const [day, month, year] = row.date.split(".").map(Number);
+        return month === now.getMonth() + 1 && year === now.getFullYear();
+      })
+      .reduce((sum, row) => sum + row.minor, 0);
+  }
+
   SCR.CardsScreen = function CardsScreen({
     cards,
+    transactions,
     loading,
     error,
     selectedCardId,
@@ -897,9 +911,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     const [editingLimit, setEditingLimit] = useState(null);
     const card = cards.find((row) => row.cardId === selectedCardId) || null;
     const disabled = busy || !card || card.state === "blocked";
-    // Demo has no real spend feed yet — this month's online spend is a fixed
-    // mock; only the limit (denominator) is live, from the card's own state.
-    const monthlySpendMinor = 184000;
+    const monthlySpendMinor = monthlyCardSpendMinor(transactions);
     const onlineLimitMinor = card ? card.onlineLimitMinor : 0;
     const monthlySpendPct = onlineLimitMinor > 0
       ? Math.min(100, Math.round((monthlySpendMinor / onlineLimitMinor) * 100))

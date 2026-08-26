@@ -145,7 +145,8 @@
 .dash-kicker-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 
 /* ── table ───────────────────────────────────────────────── */
-.dash-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.dash-holdings-table-wrap { min-width: 0; overflow-x: auto; }
+.dash-table { width: 100%; min-width: 0; border-collapse: collapse; font-size: 14px; }
 .dash-table th {
   text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--color-muted); padding: 8px; border-bottom: 1px solid var(--color-border);
@@ -275,11 +276,11 @@
 .dash-progress > span { display: block; height: 100%; background: var(--color-lime-600); }
 .dash-donut { width: 150px; height: 150px; flex: none; border-radius: 50%; }
 .dash-progress-negative > span { background: var(--color-negative); }
-.dash-invest-row { display: grid; grid-template-columns: 1.6fr 1fr; gap: 20px; align-items: center; margin-top: 20px; }
+.dash-invest-row { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px; align-items: center; margin-top: 20px; }
 .dash-donut-row { display: flex; gap: 20px; align-items: center; }
 .dash-donut-legend { flex: 1; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
 .dash-donut-legend-row { display: flex; justify-content: space-between; gap: 10px; }
-.dash-trade-cell { white-space: nowrap; display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+.dash-trade-cell { white-space: nowrap; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
 .dash-symbol { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; color: var(--color-muted); }
 .dash-change { font-size: 11px; color: var(--color-muted); }
 .dash-change.is-up { color: var(--color-positive); }
@@ -543,7 +544,7 @@
   .dash-sidebar { width: 100%; flex-direction: row; align-items: center; padding: 12px; overflow-x: auto; }
   .dash-sidebar-brand { padding: 0 12px 0 4px; }
   .dash-sidebar-foot { display: none; }
-  .dash-grid-home, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-layout, .dash-settings-grid, .dash-chat-layout {
+  .dash-grid-home, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-layout, .dash-settings-grid, .dash-chat-layout, .dash-invest-row {
     grid-template-columns: 1fr;
   }
   .dash-balance-card { grid-row: auto; }
@@ -551,7 +552,6 @@
   .dash-accounts-tiles, .dash-portfolio-tiles, .dash-cards-grid, .dash-field-grid {
     grid-template-columns: 1fr;
   }
-  .dash-trade-cell { flex-wrap: wrap; }
 }
 
 @media (max-width: 700px) {
