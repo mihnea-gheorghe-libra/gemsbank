@@ -227,6 +227,10 @@
     const [templateName, setTemplateName] = useState("");
     const [acknowledgeMismatch, setAcknowledgeMismatch] = useState(false);
 
+    useEffect(() => {
+      setToId("");
+    }, [payType]);
+
     const mismatch = Boolean(error && error.details && error.details.payeeCheck === "no_match");
 
     const from = accounts.find((account) => account.id === fromId) || accounts[0];
@@ -312,14 +316,17 @@
           <BalanceLine account={from} shortfallMinor={shortfall} />
 
           {payType === "internal" ? (
-            <UI.Field id="pay-to" label={t("dashboard.payDialog.toOwn")} hint={t("dashboard.payDialog.sameCurrency")}>
-              <UI.Select id="pay-to" value={toId} onChange={(event) => setToId(event.target.value)}>
-                <option value="">{t("dashboard.payDialog.choose")}</option>
-                {internalTargets.map((account) => (
-                  <option key={account.id} value={account.id}>{accountBalanceOption(account)}</option>
-                ))}
-              </UI.Select>
-            </UI.Field>
+            <React.Fragment>
+              <UI.Field id="pay-to" label={t("dashboard.payDialog.toOwn")} hint={t("dashboard.payDialog.sameCurrency")}>
+                <UI.Select id="pay-to" value={toId} onChange={(event) => setToId(event.target.value)}>
+                  <option value="">{t("dashboard.payDialog.choose")}</option>
+                  {internalTargets.map((account) => (
+                    <option key={account.id} value={account.id}>{accountBalanceOption(account)}</option>
+                  ))}
+                </UI.Select>
+              </UI.Field>
+              {to ? <BalanceLine account={to} shortfallMinor={null} /> : null}
+            </React.Fragment>
           ) : (
             <div className="dash-field-grid">
               <UI.Field id="pay-beneficiary" label={t("dashboard.payDialog.beneficiary")}>
@@ -489,7 +496,7 @@
     const [sourceId, setSourceId] = useState(ronAccounts.length ? ronAccounts[0].id : "");
     const [targetCurrency, setTargetCurrency] = useState(EXCHANGE_TARGETS[0]);
     const [amount, setAmount] = useState("");
-    const [rate, setRate] = useState(null);
+    const [rates, setRates] = useState({});
     const [rateLoading, setRateLoading] = useState(false);
     const [rateError, setRateError] = useState(null);
 
@@ -501,10 +508,12 @@
       let cancelled = false;
       setRateLoading(true);
       setRateError(null);
-      api
-        .exchangeRate("RON", targetCurrency)
-        .then((response) => {
-          if (!cancelled) setRate(response);
+      Promise.all(EXCHANGE_TARGETS.map((code) => api.exchangeRate("RON", code)))
+        .then((responses) => {
+          if (cancelled) return;
+          const byCurrency = {};
+          EXCHANGE_TARGETS.forEach((code, index) => { byCurrency[code] = responses[index]; });
+          setRates(byCurrency);
         })
         .catch((err) => {
           if (!cancelled) setRateError(err);
@@ -515,7 +524,9 @@
       return () => {
         cancelled = true;
       };
-    }, [targetCurrency]);
+    }, []);
+
+    const rate = rates[targetCurrency] || null;
 
     const targetAmountMinor = rate && amountMinor > 0
       ? Math.round((amountMinor * rate.rateMicro) / RATE_SCALE)
@@ -570,12 +581,12 @@
                   ? t("dashboard.exchange.rateLoading")
                   : rateError
                     ? t("dashboard.exchange.rateUnavailable")
-                    : rate
-                      ? t("dashboard.exchange.rateNote", {
-                          rate: (rate.rateMicro / RATE_SCALE).toFixed(4).replace(".", ","),
-                          target: targetCurrency,
+                    : EXCHANGE_TARGETS.filter((code) => rates[code]).map((code) =>
+                        t("dashboard.exchange.rateNote", {
+                          rate: (rates[code].rateMicro / RATE_SCALE).toFixed(4).replace(".", ","),
+                          target: code,
                         })
-                      : ""}
+                      ).join(" · ")}
               </div>
 
               {targetAmountMinor != null ? (
