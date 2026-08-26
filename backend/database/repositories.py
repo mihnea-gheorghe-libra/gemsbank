@@ -24,6 +24,7 @@ from backend.database.mongo import (
     beneficiaries_collection,
     cards_collection,
     goals_collection,
+    handoffs_collection,
     journal_collection,
     kyc_cases_collection,
     payments_collection,
@@ -31,6 +32,7 @@ from backend.database.mongo import (
     sessions_collection,
     users_collection,
 )
+from backend.escalations.handoff import Handoff, HandoffStatus
 from backend.goals.goal import Goal
 from backend.helpers.errors import ConflictError
 from backend.ledger.journal import JournalEntry, JournalTransaction, TransactionKind
@@ -508,6 +510,41 @@ class MongoGoalRepository:
     async def get_for_user(self, user_id: str) -> Goal | None:
         raw = await goals_collection().find_one({"userId": user_id})
         return _goal_from_bson(raw) if raw else None
+
+
+def _handoff_to_bson(handoff: Handoff) -> dict[str, Any]:
+    return {
+        "_id": handoff.id,
+        "userId": handoff.user_id,
+        "question": handoff.question,
+        "reason": handoff.reason,
+        "transcript": handoff.transcript,
+        "status": handoff.status.value,
+        "createdAt": handoff.created_at,
+    }
+
+
+def _handoff_from_bson(raw: dict[str, Any]) -> Handoff:
+    return Handoff(
+        id=raw["_id"],
+        user_id=raw["userId"],
+        question=raw["question"],
+        reason=raw.get("reason"),
+        transcript=raw.get("transcript") or [],
+        status=HandoffStatus(raw["status"]),
+        created_at=raw["createdAt"],
+    )
+
+
+class MongoHandoffRepository:
+    async def add(
+        self, handoff: Handoff, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await handoffs_collection().insert_one(_handoff_to_bson(handoff), session=session)
+
+    async def list_for_user(self, user_id: str) -> list[Handoff]:
+        cursor = handoffs_collection().find({"userId": user_id}).sort("createdAt", DESCENDING)
+        return [_handoff_from_bson(raw) async for raw in cursor]
 
 
 @dataclass(slots=True, frozen=True)

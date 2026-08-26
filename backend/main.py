@@ -22,6 +22,7 @@ from backend.helpers.context import (
     get_correlation_id,
     set_correlation_id,
 )
+from backend.escalations.service import get_escalations_service
 from backend.exchange.service import get_exchange_service
 from backend.helpers.errors import DomainError
 from backend.investments.service import (
@@ -47,6 +48,7 @@ async def lifespan(app: FastAPI):
     get_capabilities_service()
     get_goals_service()
     get_exchange_service()
+    get_escalations_service()
     await ensure_indexes()
     yield
     await close_investments_clients()

@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -58,6 +59,14 @@ class _FixedClock:
         return self._today
 
 
+class _FakeUserDirectory:
+    def __init__(self, display_name: str = "Test User") -> None:
+        self._display_name = display_name
+
+    async def get(self, user_id: str):
+        return SimpleNamespace(display_name=self._display_name)
+
+
 class _FakeGoalRepository:
     def __init__(self) -> None:
         self._goals: dict[str, object] = {}
@@ -79,7 +88,10 @@ def _build_service(
         journal=_FakeJournalRepository({account.id: balance_minor}), clock=_FixedClock(today)
     )
     accounts_service = AccountsService(
-        accounts=_FakeAccountRepository([account]), ledger=ledger, clock=_FixedClock(today)
+        accounts=_FakeAccountRepository([account]),
+        ledger=ledger,
+        users=_FakeUserDirectory(),
+        clock=_FixedClock(today),
     )
     goal_repo = _FakeGoalRepository()
     service = GoalsService(

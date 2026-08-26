@@ -184,11 +184,22 @@ backend/
     registry.py      Capability, SideEffect, the in-memory CapabilityRegistry
     service.py       the registered capabilities — name, in/out schema, resolver, scope
     support_docs.py  parses frontend/help.html into searchable FAQ/guide entries
-  agents/            SupportAgent — a first, narrow caller of capabilities/
+    analytics.py     the four analytics.* resolvers
+    payments.py      balances, beneficiaries, and the money-moving transfer *proposal*
+  agents/            the workers — narrow callers of capabilities/, never of bus.execute
     adapters.py      AzureChatCompleter — Azure OpenAI, tool-calling
     base.py          ToolCallingAgent — the shared loop: capability-only, audits every run
     support.py       SupportAgent — read-only, FAQ/guide + own profile/sessions, tool-scoped
+    analytics.py     AnalyticsAgent — read-only, forecasts and month-over-month explanations
+    payments.py      PaymentsAgent — balances (read) + transfer proposals (money-moving)
+    orchestrator.py  the lead agent: routes, fans out, aggregates; holds no capabilities
+    transcript.py    sanitises the client-supplied conversation history
     service.py       wraps the actor as kind="agent", on_behalf_of=user_id
+    analytics_service.py / payments_service.py   the same wrapping, per worker
+  escalations/       handing a conversation to a human
+    handoff.py       the Handoff aggregate
+    service.py       RequestHandoff — a normal command through bus.execute
+    validation.py    question and reason bounds
   helpers/
     context.py       ids, Actor, correlation id, JSON logging
     crypto.py        Argon2id hasher, AES-GCM PIN cipher
@@ -590,7 +601,7 @@ migration `ops/008_goals_schema.js`). v0 is **one active goal per user**, enforc
 index on `userId`, not just application code — no listing, editing or closing endpoints, because
 nothing past `goal_gap` needs them yet.
 
-`backend/agents/` has two workers so far, no orchestrator. `SupportAgent` — answers from the
+`backend/agents/` has three workers and an orchestrator (see below). `SupportAgent` — answers from the
 FAQ/user guide and can look up the signed-in user's own profile, preferences, or active sessions,
 for account-settings questions (`POST /agents/support/ask`). Two prompt-level behaviours worth
 knowing: it cites the FAQ/guide section a `support.faq.search` answer came from, and it keeps a
@@ -657,8 +668,30 @@ of them ask about spend, cards, portfolio or payments, and `SupportAgent` has no
 that — it would either say so (correctly) or, worse, dig through the FAQ for something that isn't
 there.
 
-`backend/tests/` splits agent coverage in two. The default `pytest` run (`backend/pytest.ini` sets
-`addopts = -m "not live_llm"`) is deterministic and free: harness-level guarantees like allow-list
+### Running the tests
+
+`pytest` from the repo root is the whole suite. `pytest.ini` there sets `testpaths = tests
+backend/tests`, so both roots run in one command and the stray `test_azure.py` at the root (a
+manual Azure smoke script, not a test) is never collected. `cd backend && pytest` still works and
+uses `backend/pytest.ini`. You need the test dependencies once: `pip install -r
+backend/requirements.txt` — `pytest-asyncio` is what makes the `async def` tests run at all, and
+without it they do not fail, they *error at collection*, which reads like something much worse.
+
+The suite is **hermetic on purpose**. `backend/config.py` has nine settings with no defaults, so
+merely importing it outside Docker used to blow up collection for every agent test.
+`backend/tests/conftest.py` pins those nine plus every value the suite actually asserts on — the
+payment per-transaction, daily and step-up limits above all — so a developer's `.env` cannot change
+a test result, and `WEB_DIR` is resolved to whichever directory really holds `help.html` (the
+checkout's `frontend/` locally, the `/web` mount inside the container). The root `conftest.py`
+loads that same file first, so the pinning happens before anything can import `backend.config`.
+`backend/tests/test_the_suite_is_hermetic.py` asserts all of this, and is the test that fails first
+if someone reintroduces a dependency on ambient configuration.
+
+Verified green three ways — `pytest` from the repo root, `pytest` from `backend/`, and inside the
+`api` container — and every test file also passes run on its own, so nothing depends on collection
+order.
+
+The default run (`addopts = -m "not live_llm"`) is deterministic and free: harness-level guarantees like allow-list
 enforcement, the `MAX_TOOL_ROUNDS` giving-up path, and the rate limiter, all against a scripted
 fake chat completer, no network. `backend/tests/test_support_agent_live_eval.py` is marked
 `live_llm` and skipped by default — it calls the real Azure OpenAI deployment through
@@ -669,10 +702,139 @@ can't exercise. Run it deliberately after a prompt or model change: `pytest -m l
 `docker compose up`/Mongo and valid `AZURE_OPENAI_*` credentials; set `EVAL_SUPPORT_USER_ID` /
 `EVAL_ANALYTICS_USER_ID` to real demo user ids to also cover the cases that need seeded data).
 
-Not done: no orchestrator, no third worker, no mandates, no `settings.security.get` (see above), no
-UI for `AnalyticsAgent`, no multi-goal support. `accounts.list`, `payments.transactions.list` and
-the other financial reads a future insights-style worker would need are not in the registry yet —
-add them there, not as a new pathway, when that worker exists.
+### PaymentsAgent — the first worker that can touch money, and still cannot move it
+
+`PaymentsAgent` (`backend/agents/payments.py`, `POST /agents/payments/ask`) is the third worker and
+the first to hold a capability that is not `SideEffect.READ`. It does two things.
+
+**Balances.** `payments.balances.get` answers "how much is in each account", "how much do I have in
+total", and "how much is in *that* one". One capability covers all three: with no `accountRef` it
+returns every account plus per-currency totals; with an `accountRef` it returns the one account the
+customer named, and still returns the totals. The reference is matched the way people actually
+speak — a label, a kind (`current`, `savings`, `economii`), a currency in words (`euro`, `lei`,
+`dolari`), or the last digits of an IBAN — in `capabilities/payments.py::_match_score`. Two rules
+in that matcher matter: naming **both** a kind and a currency ("ron savings") pins exactly one
+account or returns nothing, and any reference matching more than one account returns
+`status: "ambiguous"` with the candidates rather than picking one. The agent asks; it never guesses
+which account you meant.
+
+**Amounts never reach the model as raw integers.** Every balance and total carries a
+`balanceFormatted` / `totalFormatted` string ("2.350,00 RON"), and the prompt tells the model to
+quote it verbatim. This is deliberate: the prompt also forbids the model from doing arithmetic, so
+without a preformatted string it correctly refuses to divide by 100 and reports minor units at the
+customer ("952 EUR minor units" — observed, before the field was added). `format_minor` in
+`capabilities/payments.py` is the one place that formatting happens server-side; `<Money>`/
+`DASH.formatMinor` still owns it in the browser (`PROMPT.md` §6).
+
+**Proposals, never payments.** `payments.transfer.propose` is registered
+`SideEffect.MONEY_MOVING` and **writes nothing**: no command, no journal transaction, no payment
+document, no outbox event. It re-runs the same read-only guards the real handler runs — ownership,
+account status, same-currency, sufficient balance, and `StaticLimitPolicy` against the same
+per-transaction / daily / step-up thresholds, counting today's spend the same way
+`PaymentsService._spent_today` does — and returns one of three statuses: `proposed`,
+`blocked` (with typed `blockers`), or `needs_clarification` (with `candidates`). A `proposed`
+result carries `requiresHumanConfirmation: true` and `autoApprovalEligible: false`
+(`autoApprovalReason: "no_mandate"`). The customer confirms it on screen, and the confirmation goes
+through `POST /payments/transfers` — `bus.execute` — exactly like a hand-typed payment. §7's hard
+rule 2 is therefore satisfied in its "returns a proposal + explicit human confirmation" half; the
+"in-mandate auto-approval" half is not built, because `mandates` is still an empty collection and
+building it is a data-model change nobody has asked for yet.
+
+`ToolCallingAgent` grew a second allow-list, `proposal_tool_names`, to carry this. The existing
+guarantee is unchanged and re-asserted in tests: a name in `tool_names` must be `READ`, a name in
+`proposal_tool_names` must be `MONEY_MOVING`, and anything else is refused before the resolver
+runs. `SupportAgent` and `AnalyticsAgent` pass an empty `proposal_tool_names`, so neither can be
+handed a money-moving capability even by mistake.
+
+One behaviour changed for all three workers. The loop used to raise on *any* tool name it did not
+recognise, which killed the whole conversation when the model simply mis-typed one — observed live:
+gpt-5-mini called `transfer.propose` instead of `payments.transfer.propose` and the customer got a
+422. Now the two cases are separated. A name that is **not registered at all** is an ordinary model
+slip: the loop feeds back a `no_such_capability` tool result listing the exact valid names and lets
+the model correct itself, bounded by `MAX_TOOL_ROUNDS`. A name that **is** registered but sits
+outside this agent's grant is a security signal and still raises, as before — that is what
+`test_support_agent_scoping.py` has always asserted, and it still does. Malformed tool arguments
+are handled the same forgiving way as a mis-typed name.
+
+`backend/tests/test_payments_agent_proposes_but_never_pays.py` is the proof: a `FakeLedger` whose
+`post_transaction` raises on contact, asserted across the clean, insufficient-funds, cross-currency,
+over-limit and over-daily-limit paths; the ambiguity and formatting rules; and the two refusal
+contracts above. Verified against the live stack as well — five real questions through the real
+deployment left `journalTransactions`, `payments` and `outbox` at a delta of exactly zero.
+
+The frontend routes the chat to `PaymentsAgent` from the Home and Payments screens
+(`agentForScreen` in `frontend/main/dashboard.jsx`); Analytics still routes to `AnalyticsAgent` and
+everything else to `SupportAgent`. A `proposed` result renders as a `kind: "proposal"` message — a
+card showing the formatted amount, payee, masked IBANs, reference and what is left afterwards, with
+copy that says nothing has been sent. Its one button opens the ordinary New-payment dialog
+prefilled, so the money still moves through the same screen, the same command and the same
+step-up dance as any other payment. The old hardcoded `kind: "tx"` mock card is untouched and still
+belongs to the suggested-prompt buttons.
+
+### The orchestrator
+
+`POST /agents/ask` is now the only chat endpoint the frontend calls. `backend/agents/orchestrator.py`
+holds an `Orchestrator` that is deliberately **not** a `ToolCallingAgent` subclass and is handed no
+`CapabilityRegistry` at all — its only tools are the three workers plus `escalate_to_human`. It
+cannot read a balance, resolve an IBAN or touch Mongo even by accident, which is §7's "never calls
+the DB" enforced by construction rather than by prompt.
+
+Routing is **delegate-to-one, fan-out-when-needed**. One LLM call classifies the question and
+rewrites it to stand alone; if a single worker is chosen its answer is returned verbatim, so the
+common case costs two LLM calls, not three. Only a genuinely cross-domain question ("can I afford
+to send 200 lei to my savings this month" needs balances *and* spending history) fans out — in
+parallel, via `asyncio.gather`, read-only workers only — and pays for a second aggregating call.
+The aggregator is given the workers' text and no tools, and is told to copy every figure exactly
+rather than recompute it, because it is the one place a number could be silently re-rounded.
+
+The screen you are on is passed as a **hint**, not a decision. `agentForScreen` is gone: the old
+five-line frontend router is what sent "how do I freeze my card?" to `PaymentsAgent`.
+
+Multi-turn conversation now works. The transcript travels with the request from the client, which
+matches the existing session model exactly — a reload already signs you out, so server-side history
+would outlive its own session — and needs no new collection. It is treated as untrusted input:
+`backend/agents/transcript.py` drops anything that is not a `user`/`assistant` turn (a forged
+`system` turn cannot get through), caps it at 10 turns and 1200 characters each, and never lets it
+start on a dangling assistant reply. A forged transcript cannot widen access anyway — the actor
+comes from the bearer token and the per-worker allow-lists are enforced in code.
+
+Rate limiting is **per orchestrator run**, keyed `orchestrator:{userId}`: one customer question is
+one unit whether it fans out to one worker or three. The orchestrator holds the three agents
+directly rather than their services, which is what stops the per-worker limiters from
+double-counting.
+
+Escalation to a human is a first-class, always-visible option (§7's hard rule 4), and the workers
+did not have to change to get it. The orchestrator can *offer* a human — for fraud, a lost card,
+distress, or anything no worker covers — but it never files anything: `escalate_to_human` only
+sets a flag on the response. The **customer** files the request, by clicking "Talk to a person",
+which runs `RequestHandoff` through `bus.execute` like every other write — idempotent, audited,
+one outbox event, into `supportHandoffs` (`ops/010_support_handoffs.js`). No agent ever gained a
+write pathway. The internal escalation *reason* is stored on the handoff and shown to staff; the
+customer sees a plain localised sentence, never the third-person text the model wrote for the
+handover.
+
+Every worker in a run inherits the orchestrator's `run_id` and the request's `correlation_id`, so
+a fanned-out answer is still one reconstructable trace in `auditLog`, alongside one
+`agents.orchestrator.answered` row naming which workers ran and whether it escalated. A worker that
+throws is logged and dropped from the aggregate rather than taking the whole answer down.
+
+`backend/tests/test_orchestrator_routes_without_touching_data.py` covers all of it against a
+scripted chat completer — no network: single-worker vs. fan-out call counts, duplicate and unknown
+worker names, a failing worker, escalation with and without a worker, proposal pass-through,
+`on_behalf_of` propagation, shared `run_id`, screen-as-hint, and every transcript-sanitising rule.
+
+Verified live end to end: "how much do I have" → payments; "how do I freeze my card?" → support
+(the case the old router got wrong); "why was my spending higher last month?" → analytics; "can I
+afford to send 200 lei to my savings?" → payments + analytics fanned out and merged; "I lost my
+card and someone is using it" → escalated with no worker forced; and "and the current one?" with
+two turns of history resolved to the right account. Zero movement in `journalTransactions` or
+`payments` across all of it.
+
+Not done: no mandates, no `settings.security.get` (see above), no
+UI for `AnalyticsAgent`, no multi-goal support. `PaymentsAgent` cannot see transactions, cards or
+settings, and `payments.transactions.list` is still not in the registry — add it there, not as a
+new pathway, when a worker needs it. The proposal is stateless: `proposalId` is a display string,
+nothing persists it, and the confirmation step re-validates from scratch rather than trusting it.
 
 ## What the payments screen does not do yet
 
@@ -701,11 +863,14 @@ Also missing, and worth knowing:
   the truth rather than the UI hiding a leg.
 - **No seed script.** `PROMPT.md` §4 asks for one with two demo users and ~30 transactions;
   registering through the wizard is currently the only way to get data.
-- **Automated tests are thin.** `backend/tests/` covers the capability registry and the agent
-  layer (`pytest backend/tests`, run inside the `api` container — see `backend/pytest.ini`). The
-  money-core invariants in this section — unbalanced-transaction rejection, idempotent replay,
-  concurrent transfers, boundary violations — are still only verified by hand against a running
-  stack; `PROMPT.md`'s definition of done wants those in `pytest` too, and they are not there yet.
+- **Automated tests are thin.** `pytest` from the repo root is green and needs no Docker, Mongo or
+  network, but it covers the capability registry, the agent layer and the CNP parser — not the
+  money core. The invariants in this section — unbalanced-transaction rejection, idempotent replay,
+  insufficient-balance refusal, concurrent transfers, boundary violations — are still only verified
+  by hand against a running stack; `PROMPT.md`'s definition of done wants those in `pytest` too,
+  and they are not there yet. `backend/tests/test_payments_agent_proposes_but_never_pays.py` is the
+  closest thing so far, and it only proves the *agent* cannot move money, not that the ledger is
+  right.
 
 ## Adding a feature
 

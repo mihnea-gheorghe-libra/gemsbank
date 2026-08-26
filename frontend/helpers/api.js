@@ -185,5 +185,11 @@
       send("/agents/support/ask", { method: "POST", json: { question } }),
     askAnalytics: (question) =>
       send("/agents/analytics/ask", { method: "POST", json: { question } }),
+    askPaymentsAgent: (question) =>
+      send("/agents/payments/ask", { method: "POST", json: { question } }),
+    askGems: (question, history, screen) =>
+      send("/agents/ask", { method: "POST", json: { question, history, screen } }),
+    requestHandoff: (question, reason, history) =>
+      send("/agents/handoff", { method: "POST", json: { question, reason, history } }),
   };
 })();

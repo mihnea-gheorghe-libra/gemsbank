@@ -17,7 +17,16 @@ docker compose up --build     # mongo + api; the api also serves frontend/ at /a
 docker compose logs -f api
 ruff check backend
 mypy backend
+
+pip install -r backend/requirements.txt   # once; the suite needs pytest + pytest-asyncio
+pytest                        # everything, from the repo root — no Docker, no Mongo, no network
+pytest -m live_llm            # the graded prompt evals; needs Mongo + AZURE_OPENAI_* credentials
 ```
+
+`pytest` from the repo root runs both test roots (`tests/` and `backend/tests/`) and must be green
+before you push. It is hermetic: `backend/tests/conftest.py` pins every setting the suite reads, so
+it does not matter whose `.env` is on disk or what the working directory is. Do not make a test
+depend on `.env`; add the value there instead.
 
 Schema migrations in `ops/` are applied by hand — see `README.md`.
 
