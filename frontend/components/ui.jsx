@@ -42,6 +42,36 @@
     );
   };
 
+  UI.Logo = function Logo({ size = 20, className, style }) {
+    const t = GEMS.i18n.t;
+    const markSize = Math.round(size * 1.3);
+    return (
+      <span className={classNames("brand-logo", className)} style={style}>
+        <svg
+          width={markSize}
+          height={markSize}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="brand-logo-mark"
+          aria-hidden="true"
+        >
+          <polygon points="12,2 22,11 12,22 2,11" />
+          <polyline points="7,6.5 17,6.5" />
+          <polyline points="7,6.5 12,22" />
+          <polyline points="17,6.5 12,22" />
+        </svg>
+        <span className="brand-logo-word" style={{ fontSize: size }}>
+          <span className="brand-logo-name">{t("brand")}</span>
+          <span className="brand-logo-suffix">{t("brandSuffix")}</span>
+        </span>
+      </span>
+    );
+  };
+
   UI.Kicker = function Kicker({ children, style }) {
     return (
       <div className="kicker" style={style}>

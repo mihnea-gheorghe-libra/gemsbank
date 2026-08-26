@@ -180,6 +180,15 @@ backend/
     payment.py       the Payment state machine and the Beneficiary aggregate
     validation.py    reference, counterparty, category, cursor codec
     adapters.py      clock, limit policy, step-up stub, Verification-of-Payee stub
+  capabilities/      SEAM 6: the registry an agent layer reads its tool list from
+    registry.py      Capability, SideEffect, the in-memory CapabilityRegistry
+    service.py       the registered capabilities — name, in/out schema, resolver, scope
+    support_docs.py  parses frontend/help.html into searchable FAQ/guide entries
+  agents/            SupportAgent — a first, narrow caller of capabilities/
+    adapters.py      AzureChatCompleter — Azure OpenAI, tool-calling
+    base.py          ToolCallingAgent — the shared loop: capability-only, audits every run
+    support.py       SupportAgent — read-only, FAQ/guide + own profile/sessions, tool-scoped
+    service.py       wraps the actor as kind="agent", on_behalf_of=user_id
   helpers/
     context.py       ids, Actor, correlation id, JSON logging
     crypto.py        Argon2id hasher, AES-GCM PIN cipher
@@ -226,8 +235,9 @@ HTTP route → bus.execute(command, actor, idempotency_key)
                      stored response
 ```
 
-Nothing writes outside this path. When the agent layer arrives it becomes a second *caller* of
-`bus.execute`, never a second pathway.
+Nothing writes outside this path. `backend/agents/` is a first, read-only caller of the *read*
+side of the platform (`backend/capabilities/`, not `bus.execute`) — see "Agents" below. No agent
+calls `bus.execute` yet; when one does, it becomes a second *caller* of it, never a second pathway.
 
 `CommandResult` has two output channels: `data` is stored and replayed under the idempotency key;
 `sensitive` is merged into the HTTP response and never persisted anywhere. Use `sensitive` for
@@ -522,6 +532,148 @@ that promises there is none (`PROMPT.md` §0).
 New users start with zero cards; there is no seed script yet for a starter set matching the mock's
 four cards. `ops/004_cards_schema.js` adds the `cards` collection.
 
+## Agents — a first, narrow caller past the §4 boundary
+
+`PROMPT.md` §4 lists "the entire agent layer" as explicitly not in v0, and §7 says to design it in
+docs, build none of it. `backend/capabilities/` and `backend/agents/` are a **deliberate, explicitly
+approved deviation** from that — two read-only workers, not a reinterpretation of the boundary. The
+rest of v0 (identity, ledger, payments, cards) is unaffected: neither module is on the money path,
+and both `SupportService` and `AnalyticsService` are constructed lazily, not at startup, so a clone
+without Azure OpenAI credentials still boots and runs everything else — only the two `POST
+/agents/*/ask` routes fail.
+
+`backend/capabilities/` (SEAM 6) is the registry §7.6 describes: a `Capability` is a name, a
+Pydantic input/output schema, a `SideEffect` (`read` / `write` / `money-moving`) and a resolver
+function. Eight are registered, all `SideEffect.READ`. Four back `SupportAgent`: `support.faq.search`
+(a small regex parser, `backend/capabilities/support_docs.py`, that reads `frontend/help.html`
+itself, so the FAQ/user guide has one source of truth instead of a copy that can drift),
+`settings.profile.get`, `settings.preferences.get` (the user's own `lang`/`theme`, already persisted
+on the user document — no new storage) and `settings.sessions.list` (thin wrappers over
+`AuthService.get_me` / `list_sessions`). `settings.security.get` (2FA/passkeys/PIN-changed-at) was
+considered and deliberately skipped: none of that state exists in the backend today — 2FA and
+passkey counts are hardcoded display strings in `frontend/components/dashboard-screens.jsx`, and no
+PIN-change timestamp is stored anywhere — so building it would mean either the agent fabricating
+security status or a real data-model change (new fields + migration), neither of which belongs in a
+capability add.
+
+The other four (`backend/capabilities/analytics.py`) back `AnalyticsAgent`, and turn transaction
+history into forecasts and explanations — the "fact vs. narrative" split is structural, not a prompt
+convention: every output schema carries a `status` (`"ok"` or a tool-specific sentinel —
+`insufficient_data`, `no_goal_found`, `no_activity`, per-category `no_clear_cause`), and when status
+isn't `"ok"` the rest of the fields stay empty, so the model narrates the sentinel instead of
+papering over a gap with a guessed number.
+- `analytics.cashflow_forecast.get` projects the balance forward from **confirmed recurring**
+  income/payments only — never variable spending or market prediction. "Confirmed recurring" is a
+  concrete, code-level definition (no such detector existed before this): ≥3 occurrences of the same
+  counterparty+category in a 6-month lookback, 24–40 days apart, amounts within ±15% of the group's
+  median. Zero qualifying groups → `insufficient_data`, not a silent best-effort guess.
+- `analytics.goal_gap.get` compares a savings goal's required monthly rate against the actual net
+  rate observed on its linked account over the last 3 months. Backed by a new minimal feature,
+  `backend/goals/` (below) — no goal set → `no_goal_found`.
+- `analytics.month_recap.get` and `analytics.what_changed.get` return facts only (biggest expense,
+  busiest day, category deltas, per-category cause of a spend change — `new_merchant` /
+  `increased_frequency` / `increased_price` / `no_clear_cause`), never prose; the agent's prompt
+  does the narrating, so the numbers stay testable and localizable independent of phrasing.
+
+All four page through the existing `PaymentsService.list_transactions` cursor (already sorted
+newest-first) and stop once a page crosses the requested date boundary
+(`capabilities/analytics.py::_transactions_in_range`) — no date-range parameter was added to
+`payments/` or `ledger/` for this; that boundary stayed untouched on purpose. All four are also
+scoped to RON transactions/accounts only: mixing currencies into one sum would be silently wrong,
+and multi-currency forecasting was never asked for — an explicit v0 cut, not an oversight.
+`GET /capabilities` describes all eight alongside the write-side command list.
+
+**`backend/goals/`** exists only so `analytics.goal_gap.get` has real data to read — it followed
+the same shape check as every other feature (aggregate, `service.py`, `validation.py`) and the same
+one-write-path rule (`POST /goals` → `bus.execute(CreateGoal(...))`, `backend/goals/service.py`,
+migration `ops/008_goals_schema.js`). v0 is **one active goal per user**, enforced by a unique Mongo
+index on `userId`, not just application code — no listing, editing or closing endpoints, because
+nothing past `goal_gap` needs them yet.
+
+`backend/agents/` has two workers so far, no orchestrator. `SupportAgent` — answers from the
+FAQ/user guide and can look up the signed-in user's own profile, preferences, or active sessions,
+for account-settings questions (`POST /agents/support/ask`). Two prompt-level behaviours worth
+knowing: it cites the FAQ/guide section a `support.faq.search` answer came from, and it keeps a
+content gap ("not in the FAQ") and a scope limit ("not in the sixth capability I have — try
+Cards/Payments/Home") in distinct, non-interchangeable wording, pointing to the right screen for
+the latter instead of a bare refusal. Both are prompt instructions, not new code paths — no intent
+classifier, same allow-list enforcement. It is a thin subclass of
+`backend/agents/base.py::ToolCallingAgent`, which holds the actual tool-calling loop against Azure
+OpenAI. The subclass supplies only a system prompt and a `tool_names` allow-list; `ToolCallingAgent`
+refuses — in code, before the call happens — any capability not in that allow-list or not
+`SideEffect.READ`, per §7's hard rule 1. The allow-list is load-bearing, not decorative:
+`backend/tests/test_support_agent_scoping.py` builds a fake registry that also holds a
+money-moving capability and asserts `SupportAgent` never offers it to the model and refuses to call
+it if asked to anyway. `ToolCallingAgent` was built as a shared base, not inlined into
+`SupportAgent`, precisely so the next worker doesn't have to copy the loop again. Three things
+worth knowing:
+
+- **The calling actor is `kind="agent"`, not `kind="user"`.** The route wraps the signed-in user
+  as `Actor(kind="agent", id="support-agent", on_behalf_of=user_id)` before handing it to the
+  agent — the first real use of `on_behalf_of` (§7.1). Capability resolvers read
+  `actor.subject_id()` (`on_behalf_of or id`) rather than `actor.id`, so they scope correctly to
+  the human whether the caller is a user or an agent acting for one.
+- **Prompt injection is assumed, not handled by the prompt.** The system prompt tells the model
+  that tool results are data, not instructions — but the actual enforcement is the tool-scope and
+  `SideEffect.READ` checks inside `ToolCallingAgent.ask`, in code, not the model choosing to comply
+  (§7's hard rule 5). There is no mandate system yet, so `SupportAgent` cannot be given a
+  money-moving capability to call, and it cannot see accounts, balances, cards or transactions —
+  only its own four capabilities.
+- **Every run is audited** (§7.4/§7.7), not just logged. Each capability call writes an
+  `audit_log` record (`capability.<name>`, `entityType: "capability"`) and the final answer writes
+  one more (`agents.support.answered`, `entityType: "agent_run"`) — sharing a `runId` and the
+  request's `correlationId`, so one agent-initiated answer is fully reconstructable from
+  `auditLog` alone, the same way a payment is. `backend/tests/test_tool_calling_agent.py` verifies
+  the linkage with a fake audit recorder — no live Mongo needed for that test.
+- **Rate-limited per user, in-process.** `AgentRateLimiter` (`backend/agents/service.py`) is a
+  sliding-window counter over `settings.agent_rate_limit_max_calls` /
+  `agent_rate_limit_window_seconds` (defaults: 20 calls/hour), keyed by the signed-in user's id,
+  checked in `SupportService.ask` before the agent runs. It is in-memory on purpose — no new Mongo
+  collection for a single-process demo — so it resets on restart and does not coordinate across
+  API instances; raises the existing `RateLimitedError` (429), no new error type or route code.
+
+`AnalyticsAgent` (`backend/agents/analytics.py`, `POST /agents/analytics/ask`) is the second
+worker, built the same way: a thin `ToolCallingAgent` subclass supplying only a system prompt and
+its `tool_names` allow-list (the four `analytics.*` capabilities above), same `AgentRateLimiter`
+class reused with its own instance (`backend/agents/analytics_service.py::AnalyticsService`), same
+audited-run-per-`run_id` guarantee, same in-code allow-list/`SideEffect.READ` enforcement — nothing
+about the second worker changed how `ToolCallingAgent` works, which is the point of it being a
+shared base. Its prompt carries one stake-appropriate addition beyond `SupportAgent`'s: every
+number it says must come from a tool result, full stop, and any forecast or "capping X would help"
+framing must be said as an estimate, not a certainty — financial projections, not FAQ answers.
+`backend/tests/test_analytics_agent_scoping.py` mirrors `test_support_agent_scoping.py`'s allow-list
+proof; `backend/tests/test_analytics_capabilities.py` exercises the four resolvers' actual logic
+(recurring-pattern detection, the goal-gap rate math, the category-cause classifier) against a
+scripted `PaymentsService`, no Mongo. **No frontend wiring was added for it** — the task asked for
+the tools, not a second chat surface; when one is built, it should reuse the `aiGenerated`/
+"always double-check" disclaimer mechanism already in `dashboard.jsx`, not invent a new one,
+especially for a worker whose whole job is projections and recommendations.
+
+The frontend's "Ask GEMS" dock and the chat screen's free-text box (`frontend/main/dashboard.jsx`)
+call `SupportAgent` for whatever the user types — busy state, error fallback, and an
+"AI-generated" disclaimer under real answers. The dock's *suggested-prompt buttons* (per-screen
+shortcuts like "How do I freeze my card?") still answer from `dashboard-data.js`, unchanged: most
+of them ask about spend, cards, portfolio or payments, and `SupportAgent` has no tool for any of
+that — it would either say so (correctly) or, worse, dig through the FAQ for something that isn't
+there.
+
+`backend/tests/` splits agent coverage in two. The default `pytest` run (`backend/pytest.ini` sets
+`addopts = -m "not live_llm"`) is deterministic and free: harness-level guarantees like allow-list
+enforcement, the `MAX_TOOL_ROUNDS` giving-up path, and the rate limiter, all against a scripted
+fake chat completer, no network. `backend/tests/test_support_agent_live_eval.py` is marked
+`live_llm` and skipped by default — it calls the real Azure OpenAI deployment through
+`get_support_service()` / `get_analytics_service()` to grade prompt quality (injection resistance,
+FAQ-gap vs. scope-limit wording, correct screen fallback, and — for `AnalyticsAgent` — that a
+`no_goal_found`/sentinel status gets narrated honestly instead of papered over) that a scripted chat
+can't exercise. Run it deliberately after a prompt or model change: `pytest -m live_llm` (needs
+`docker compose up`/Mongo and valid `AZURE_OPENAI_*` credentials; set `EVAL_SUPPORT_USER_ID` /
+`EVAL_ANALYTICS_USER_ID` to real demo user ids to also cover the cases that need seeded data).
+
+Not done: no orchestrator, no third worker, no mandates, no `settings.security.get` (see above), no
+UI for `AnalyticsAgent`, no multi-goal support. `accounts.list`, `payments.transactions.list` and
+the other financial reads a future insights-style worker would need are not in the registry yet —
+add them there, not as a new pathway, when that worker exists.
+
 ## What the payments screen does not do yet
 
 Present in the interface, deliberately inert, each marked "coming soon" rather than removed
@@ -532,7 +684,6 @@ Present in the interface, deliberately inert, each marked "coming soon" rather t
 | Split bill | Not in `PROMPT.md` §4 |
 | Scan QR | Not in §4 |
 | Read aloud | Text-to-speech is a settings feature; `/settings` is unbuilt |
-| Ask GEMS | The entire agent layer is out of scope by §7 |
 | Cards filter | Cards are explicitly not in v0 |
 
 The rest of the design archive — dashboard, portfolio, cards, analytics, settings, and the left
@@ -550,8 +701,11 @@ Also missing, and worth knowing:
   the truth rather than the UI hiding a leg.
 - **No seed script.** `PROMPT.md` §4 asks for one with two demo users and ~30 transactions;
   registering through the wizard is currently the only way to get data.
-- **No automated tests.** The invariants in this section were verified by hand against a running
-  stack. `PROMPT.md`'s definition of done wants them in `pytest`; they are not there yet.
+- **Automated tests are thin.** `backend/tests/` covers the capability registry and the agent
+  layer (`pytest backend/tests`, run inside the `api` container — see `backend/pytest.ini`). The
+  money-core invariants in this section — unbalanced-transaction rejection, idempotent replay,
+  concurrent transfers, boundary violations — are still only verified by hand against a running
+  stack; `PROMPT.md`'s definition of done wants those in `pytest` too, and they are not there yet.
 
 ## Adding a feature
 

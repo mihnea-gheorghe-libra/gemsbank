@@ -162,7 +162,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
             <a href="#" onClick={(event) => { event.preventDefault(); onNavigate("portfolio"); }}>{t("dashboard.home.openAccount")}</a>
           </div>
           <div className="dash-accounts-tiles">
-            {accounts.slice(0, 3).map((account, index) => (
+            {accounts.map((account, index) => (
               <UI.Plate key={index} className="dash-account-tile">
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
                   {account.cur} · {t("dashboard.accountType." + account.typeKey)}
@@ -702,8 +702,9 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                 </div>
               ) : null}
             </UI.Plate>
-            <table className="dash-table">
-              <tbody>
+            <div className="dash-holdings-table-wrap">
+              <table className="dash-table">
+                <tbody>
                 {holdings.map((holding) => (
                   <tr
                     key={holding.id}
@@ -770,8 +771,9 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                     ) : null}
                   </td>
                 </tr>
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
           </div>
         </UI.Plate>
       </div>
@@ -889,8 +891,20 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     );
   }
 
+  function monthlyCardSpendMinor(transactions) {
+    const now = new Date();
+    return transactions
+      .filter((row) => {
+        if (row.channel !== "card" || row.direction !== "out" || row.statusKey !== "booked") return false;
+        const [day, month, year] = row.date.split(".").map(Number);
+        return month === now.getMonth() + 1 && year === now.getFullYear();
+      })
+      .reduce((sum, row) => sum + row.minor, 0);
+  }
+
   SCR.CardsScreen = function CardsScreen({
     cards,
+    transactions,
     loading,
     error,
     selectedCardId,
@@ -921,9 +935,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const card = cards.find((row) => row.cardId === selectedCardId) || null;
     const disabled = busy || !card || card.state === "blocked";
-    // Demo has no real spend feed yet — this month's online spend is a fixed
-    // mock; only the limit (denominator) is live, from the card's own state.
-    const monthlySpendMinor = 184000;
+    const monthlySpendMinor = monthlyCardSpendMinor(transactions);
     const onlineLimitMinor = card ? card.onlineLimitMinor : 0;
     const monthlySpendPct = onlineLimitMinor > 0
       ? Math.min(100, Math.round((monthlySpendMinor / onlineLimitMinor) * 100))
@@ -1859,7 +1871,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   };
 
-  SCR.ChatScreen = function ChatScreen({ messages, draft, onDraftChange, onSend, onKeyDown, micOn, onToggleMic, onPromptClick, onConfirmTx, username }) {
+  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, onToggleMic, onPromptClick, onConfirmTx, username }) {
     const prompts = [
       { key: "pay", label: t("dashboard.chat.promptPay") },
       { key: "recurring", label: t("dashboard.chat.promptRecurring") },
@@ -1927,17 +1939,33 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                           <DASH.Bars items={DATA.groceryBars} />
                         </UI.Plate>
                       ) : null}
+
+                      {message.aiGenerated ? (
+                        <div className="dash-ai-disclaimer">
+                          <UI.Icon name="Sparkles" size={13} />
+                          {t("dashboard.chat.aiDisclaimer")}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 )}
               </div>
             ))}
+
+            {busy ? (
+              <div className="dash-msg">
+                <div className="dash-msg-ai">
+                  <span className="dash-msg-ai-dot" aria-hidden="true" />
+                  <div className="dash-msg-ai-body text-muted">{t("dashboard.chat.thinking")}</div>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div style={{ paddingTop: 16 }}>
             <div className="dash-prompts-row">
               {prompts.map((prompt) => (
-                <UI.Button key={prompt.key} type="button" variant="secondary" onClick={() => onPromptClick(prompt.key)}>{prompt.label}</UI.Button>
+                <UI.Button key={prompt.key} type="button" variant="secondary" disabled={busy} onClick={() => onPromptClick(prompt.key)}>{prompt.label}</UI.Button>
               ))}
             </div>
             <UI.Plate className="dash-chat-input-row">
@@ -1946,13 +1974,14 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                 value={draft}
                 onChange={onDraftChange}
                 onKeyDown={onKeyDown}
+                disabled={busy}
                 placeholder={t("dashboard.chat.inputPlaceholder")}
                 aria-label={t("dashboard.chat.inputPlaceholder")}
               />
-              <UI.Button type="button" variant="secondary" aria-pressed={micOn} onClick={onToggleMic}>
+              <UI.Button type="button" variant="secondary" aria-pressed={micOn} disabled={busy} onClick={onToggleMic}>
                 {micOn ? t("dashboard.chat.micOn") : t("dashboard.chat.micOff")}
               </UI.Button>
-              <UI.Button type="button" variant="primary" onClick={onSend}>{t("dashboard.chat.send")}</UI.Button>
+              <UI.Button type="button" variant="primary" disabled={busy} onClick={onSend}>{t("dashboard.chat.send")}</UI.Button>
             </UI.Plate>
             <div className="dash-chat-hint">{t("dashboard.chat.orchestratorNote")}</div>
           </div>

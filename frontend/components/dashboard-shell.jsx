@@ -2,6 +2,7 @@
   const GEMS = (window.GEMS = window.GEMS || {});
   const DASH = (GEMS.dashboardUi = GEMS.dashboardUi || {});
   const UI = GEMS.ui;
+  const AUTH = GEMS.auth;
   const t = GEMS.i18n.t;
   const DATA = GEMS.dashboardData;
   const api = GEMS.api;
@@ -9,10 +10,6 @@
 
   function accountLabel(account) {
     return t("dashboard.accountType." + account.typeKey) + " · " + account.cur + " · " + account.ibanShort;
-  }
-
-  function accountBalanceOption(account) {
-    return accountLabel(account) + " — " + DASH.formatMinor(account.minor) + " " + account.cur;
   }
 
   const NAV_ICONS = {
@@ -29,7 +26,7 @@
   DASH.Sidebar = function Sidebar({ screen, onNavigate, onSignOut }) {
     return (
       <nav className="dash-sidebar" aria-label={t("dashboard.navLabel")}>
-        <div className="dash-sidebar-brand">{t("brand")}</div>
+        <div className="dash-sidebar-brand"><UI.Logo size={22} /></div>
 
         {DATA.navItems.map((item) => {
           const active = item.key === screen;
@@ -228,6 +225,10 @@
     const [templateName, setTemplateName] = useState("");
     const [acknowledgeMismatch, setAcknowledgeMismatch] = useState(false);
 
+    useEffect(() => {
+      setToId("");
+    }, [payType]);
+
     const mismatch = Boolean(error && error.details && error.details.payeeCheck === "no_match");
 
     const from = accounts.find((account) => account.id === fromId) || accounts[0];
@@ -313,14 +314,17 @@
           <BalanceLine account={from} shortfallMinor={shortfall} />
 
           {payType === "internal" ? (
-            <UI.Field id="pay-to" label={t("dashboard.payDialog.toOwn")} hint={t("dashboard.payDialog.sameCurrency")}>
-              <UI.Select id="pay-to" value={toId} onChange={(event) => setToId(event.target.value)}>
-                <option value="">{t("dashboard.payDialog.choose")}</option>
-                {internalTargets.map((account) => (
-                  <option key={account.id} value={account.id}>{accountBalanceOption(account)}</option>
-                ))}
-              </UI.Select>
-            </UI.Field>
+            <React.Fragment>
+              <UI.Field id="pay-to" label={t("dashboard.payDialog.toOwn")} hint={t("dashboard.payDialog.sameCurrency")}>
+                <UI.Select id="pay-to" value={toId} onChange={(event) => setToId(event.target.value)}>
+                  <option value="">{t("dashboard.payDialog.choose")}</option>
+                  {internalTargets.map((account) => (
+                    <option key={account.id} value={account.id}>{accountLabel(account)}</option>
+                  ))}
+                </UI.Select>
+              </UI.Field>
+              {to ? <BalanceLine account={to} shortfallMinor={null} /> : null}
+            </React.Fragment>
           ) : (
             <div className="dash-field-grid">
               <UI.Field id="pay-beneficiary" label={t("dashboard.payDialog.beneficiary")}>
@@ -370,7 +374,9 @@
             </div>
           ) : null}
 
-          <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>{t("dashboard.payDialog.agentCheck")}</p>
+          {payType === "iban" ? (
+            <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>{t("dashboard.payDialog.agentCheck")}</p>
+          ) : null}
 
           {mismatch ? (
             <label className="dash-check">
@@ -395,9 +401,7 @@
   };
 
   DASH.SignPaymentDialog = function SignPaymentDialog({ payment, busy, error, onClose, onSubmit }) {
-    const [code, setCode] = useState("");
-    const devCode = payment.stepUp && payment.stepUp.devCode;
-    const attemptsLeft = error && error.details ? error.details.attemptsLeft : null;
+    const [pin, setPin] = useState("");
 
     return (
       <div className="dash-dialog-backdrop" onClick={onClose}>
@@ -410,31 +414,21 @@
             })}
           </p>
 
-          <UI.Field
-            id="sign-payment-code"
+          <AUTH.DigitGroup
             label={t("dashboard.signDialog.codeLabel")}
-            hint={devCode ? t("dashboard.signDialog.devHint", { code: devCode }) : undefined}
-          >
-            <UI.TextInput
-              id="sign-payment-code"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              value={code}
-              onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-            />
-          </UI.Field>
+            length={6}
+            value={pin}
+            onChange={setPin}
+            autoFocus
+          />
 
           {error ? (
-            <div className="dash-balance-line is-short" role="alert">
-              {error.message}
-              {attemptsLeft != null ? " · " + t("dashboard.signDialog.attemptsLeft", { n: attemptsLeft }) : ""}
-            </div>
+            <div className="dash-balance-line is-short" role="alert">{error.message}</div>
           ) : null}
 
           <div className="dash-dialog-actions">
             <UI.Button type="button" variant="secondary" onClick={onClose}>{t("dashboard.payDialog.cancel")}</UI.Button>
-            <UI.Button type="button" variant="primary" disabled={busy || code.length !== 6} onClick={() => onSubmit(payment.paymentId, code)}>
+            <UI.Button type="button" variant="primary" disabled={busy || pin.length !== 6} onClick={() => onSubmit(payment.paymentId, pin)}>
               {busy ? t("dashboard.signDialog.signing") : t("dashboard.signDialog.confirm")}
             </UI.Button>
           </div>
@@ -452,14 +446,9 @@
       <div className="dash-dialog-backdrop" onClick={onClose}>
         <UI.Plate className="dash-dialog elev-lg" role="dialog" aria-modal="true" aria-labelledby="add-funds-title" onClick={(event) => event.stopPropagation()}>
           <h2 id="add-funds-title" style={{ margin: 0 }}>{t("dashboard.addFunds.title")}</h2>
-          <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
-            {account
-              ? t("dashboard.addFunds.subtitle", { account: accountLabel(account) })
-              : t("dashboard.addFunds.noAccount")}
-          </p>
 
           {account ? (
-            <UI.Field id="add-funds-amount" label={t("dashboard.payDialog.amount")}>
+            <UI.Field id="add-funds-amount" label={t("dashboard.addFunds.amount", { currency: account.cur })}>
               <UI.TextInput
                 id="add-funds-amount"
                 inputMode="decimal"
@@ -468,9 +457,9 @@
                 onChange={(event) => setAmount(event.target.value)}
               />
             </UI.Field>
-          ) : null}
-
-          <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>{t("dashboard.addFunds.note")}</p>
+          ) : (
+            <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>{t("dashboard.addFunds.noAccount")}</p>
+          )}
 
           {error ? (
             <div className="dash-balance-line is-short" role="alert">{error.message}</div>
@@ -495,7 +484,7 @@
     const [sourceId, setSourceId] = useState(ronAccounts.length ? ronAccounts[0].id : "");
     const [targetCurrency, setTargetCurrency] = useState(EXCHANGE_TARGETS[0]);
     const [amount, setAmount] = useState("");
-    const [rate, setRate] = useState(null);
+    const [rates, setRates] = useState({});
     const [rateLoading, setRateLoading] = useState(false);
     const [rateError, setRateError] = useState(null);
 
@@ -507,10 +496,12 @@
       let cancelled = false;
       setRateLoading(true);
       setRateError(null);
-      api
-        .exchangeRate("RON", targetCurrency)
-        .then((response) => {
-          if (!cancelled) setRate(response);
+      Promise.all(EXCHANGE_TARGETS.map((code) => api.exchangeRate("RON", code)))
+        .then((responses) => {
+          if (cancelled) return;
+          const byCurrency = {};
+          EXCHANGE_TARGETS.forEach((code, index) => { byCurrency[code] = responses[index]; });
+          setRates(byCurrency);
         })
         .catch((err) => {
           if (!cancelled) setRateError(err);
@@ -521,7 +512,9 @@
       return () => {
         cancelled = true;
       };
-    }, [targetCurrency]);
+    }, []);
+
+    const rate = rates[targetCurrency] || null;
 
     const targetAmountMinor = rate && amountMinor > 0
       ? Math.round((amountMinor * rate.rateMicro) / RATE_SCALE)
@@ -576,12 +569,12 @@
                   ? t("dashboard.exchange.rateLoading")
                   : rateError
                     ? t("dashboard.exchange.rateUnavailable")
-                    : rate
-                      ? t("dashboard.exchange.rateNote", {
-                          rate: (rate.rateMicro / RATE_SCALE).toFixed(4).replace(".", ","),
-                          target: targetCurrency,
+                    : EXCHANGE_TARGETS.filter((code) => rates[code]).map((code) =>
+                        t("dashboard.exchange.rateNote", {
+                          rate: (rates[code].rateMicro / RATE_SCALE).toFixed(4).replace(".", ","),
+                          target: code,
                         })
-                      : ""}
+                      ).join(" · ")}
               </div>
 
               {targetAmountMinor != null ? (

@@ -14,7 +14,9 @@ class FrankfurterRateClient:
 
     async def fetch(self, base: str, quote: str) -> tuple[int, date]:
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(self._timeout)) as client:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(self._timeout), follow_redirects=True
+            ) as client:
                 response = await client.get(
                     f"{self._base_url}/latest", params={"base": base, "symbols": quote}
                 )

@@ -101,7 +101,7 @@
     return (
       <div className="onb-shell">
         <header className="onb-topbar">
-          <span className="onb-wordmark">{t("brand")}</span>
+          <UI.Logo size={20} />
           <span className="auth-screen-tag">
             {t("screenTag")}
           </span>
