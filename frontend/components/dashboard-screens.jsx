@@ -1565,7 +1565,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   }
 
-  SCR.SettingsScreen = function SettingsScreen({ lang, onLang, theme, onTheme, ttsOn, onToggleTts, onSignOut, onGoChat, me, onMeChange }) {
+  SCR.SettingsScreen = function SettingsScreen({ lang, onLang, theme, onTheme, ttsOn, onToggleTts, onSignOut, me, onMeChange }) {
     const langs = [
       { value: "ro", label: "Română" },
       { value: "en", label: "English" },
@@ -1778,7 +1778,6 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
           <UI.Plate className="elev-sm" style={{ padding: 18 }}>
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.settings.support")}</UI.Kicker>
             <div className="dash-settings-list">
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={onGoChat}><UI.Icon name="MessageCircle" size={15} />{t("dashboard.settings.chatSupport")}</UI.Button>
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={() => setContactDialogOpen(true)}><UI.Icon name="Headset" size={15} />{t("dashboard.settings.customerService")}</UI.Button>
               <UI.Button
                 type="button"

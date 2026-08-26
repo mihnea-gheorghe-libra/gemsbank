@@ -237,6 +237,12 @@
       payments: {
         title: "Payments & transfers",
         subtitle: "{count} movements · {pending} pending signatures",
+        pendingTitle: "Pending Signatures",
+        sign: "Sign",
+        note: {
+          revolut: "Revolut top-up",
+          rent: "August rent"
+        },
         splitBill: "Split bill",
         newPayment: "New payment",
         filter: { all: "All", income: "Income", spending: "Spending", pending: "Pending", cards: "Cards" },
@@ -579,7 +585,6 @@
         light: "Light",
         dark: "Dark",
         support: "SUPPORT & ACCOUNT",
-        chatSupport: "Chat with customer service",
         customerService: "Customer service",
         faq: "FAQ & user guide",
         agentInstructions: "AI agent instructions",
@@ -1051,6 +1056,12 @@
       payments: {
         title: "Plăți și transferuri",
         subtitle: "{count} mișcări · {pending} semnături în așteptare",
+        pendingTitle: "Semnături în așteptare",
+        sign: "Semnează",
+        note: {
+          revolut: "Alimentare Revolut",
+          rent: "Chirie august"
+        },
         splitBill: "Împarte nota",
         newPayment: "Plată nouă",
         filter: { all: "Toate", income: "Venituri", spending: "Cheltuieli", pending: "În așteptare", cards: "Carduri" },
@@ -1393,7 +1404,6 @@
         light: "Deschisă",
         dark: "Întunecată",
         support: "SUPORT & CONT",
-        chatSupport: "Discută cu serviciul clienți",
         customerService: "Serviciul clienți",
         faq: "Întrebări frecvente și ghid",
         agentInstructions: "Instrucțiuni agent AI",
