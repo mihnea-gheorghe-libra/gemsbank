@@ -24,10 +24,6 @@
 }
 .dash-sidebar-brand {
   padding: 0 22px 22px;
-  font-family: var(--font-heading);
-  font-size: 22px;
-  letter-spacing: 0.2em;
-  color: var(--color-heading);
 }
 .dash-nav-item {
   appearance: none;

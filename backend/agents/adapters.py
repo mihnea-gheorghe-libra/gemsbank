@@ -1,9 +1,11 @@
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
-from openai import AsyncAzureOpenAI
+from openai import AsyncAzureOpenAI, BadRequestError
 
 from backend.config import Settings
+
+CONTENT_FILTER_REFUSAL = "I can't help with that request."
 
 
 @dataclass(slots=True)
@@ -47,11 +49,21 @@ class AzureChatCompleter:
     async def complete(
         self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
     ) -> ChatResult:
-        response = await self._client.chat.completions.create(
-            model=self._deployment,
-            messages=cast(Any, messages),
-            tools=cast(Any, tools or None),
-        )
+        extra: dict[str, Any] = {"parallel_tool_calls": True} if tools else {}
+        try:
+            response = await self._client.chat.completions.create(
+                model=self._deployment,
+                messages=cast(Any, messages),
+                tools=cast(Any, tools or None),
+                **extra,
+            )
+        except BadRequestError as exc:
+            if exc.code != "content_filter":
+                raise
+            return ChatResult(
+                content=CONTENT_FILTER_REFUSAL,
+                message={"role": "assistant", "content": CONTENT_FILTER_REFUSAL},
+            )
         choice = response.choices[0].message
         calls = [
             ToolCall(id=call.id, name=call.function.name, arguments=call.function.arguments)

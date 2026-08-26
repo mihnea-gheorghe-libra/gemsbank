@@ -82,6 +82,10 @@ def goals_collection() -> AsyncIOMotorCollection:
     return get_db()["goals"]
 
 
+def agent_rate_limits_collection() -> AsyncIOMotorCollection:
+    return get_db()["agentRateLimits"]
+
+
 async def ensure_indexes() -> None:
     await users_collection().create_index([("username", ASCENDING)], unique=True, name="uq_username")
     await users_collection().create_index([("email", ASCENDING)], unique=True, name="uq_email")
@@ -147,3 +151,9 @@ async def ensure_indexes() -> None:
     await cards_collection().create_index([("createdAt", ASCENDING)], name="ix_created")
 
     await goals_collection().create_index([("userId", ASCENDING)], unique=True, name="uq_user")
+
+    await agent_rate_limits_collection().create_index(
+        [("windowStart", ASCENDING)],
+        expireAfterSeconds=settings.agent_rate_limit_window_seconds,
+        name="ttl_window",
+    )

@@ -3,6 +3,7 @@
 
   const en = {
     brand: "GEMS",
+    brandSuffix: "BANK",
     screenTag: "ONBOARDING & KYC",
     backToSignIn: "Back to sign in",
     signInSoon: "Sign in — coming soon",
@@ -614,6 +615,7 @@
         promptSettingsPin: "How do I change my PIN?",
         promptSettings2fa: "How do I enable two-factor authentication?",
         seed: "Hi, I'm your GEMS agent. Across 4 active accounts you hold {balance} RON. Nothing needs your signature right now — two direct debits land on Thursday.",
+        seedAnalytics: "Hi, I'm GEMS Analytics. Ask me about your cashflow forecast, a savings goal, a month recap, or what changed between two months.",
         answerPay: "I drafted the transfer to Ionescu John. Check it and sign — nothing moves until you confirm.",
         answerRecurring: "You have 5 recurring payments totalling 412,97 RON a month.",
         answerGroceries: "Groceries averaged 1.180 RON a month over the last six — August is tracking 9% below that.",
@@ -770,6 +772,7 @@
 
   const ro = {
     brand: "GEMS",
+    brandSuffix: "BANK",
     screenTag: "ÎNROLARE & KYC",
     backToSignIn: "Înapoi la autentificare",
     signInSoon: "Autentificare — în curând",
@@ -1386,6 +1389,7 @@
         promptSettingsPin: "Cum îmi schimb PIN-ul?",
         promptSettings2fa: "Cum activez autentificarea în doi factori?",
         seed: "Salut, sunt agentul tău GEMS. În 4 conturi active ai {balance} RON. Nimic nu are nevoie de semnătura ta acum — două debitări directe ajung joi.",
+        seedAnalytics: "Salut, sunt GEMS Analytics. Întreabă-mă despre prognoza de cashflow, un obiectiv de economisire, recapitularea unei luni sau ce s-a schimbat între două luni.",
         answerPay: "Am pregătit transferul către Ionescu John. Verifică-l și semnează — nimic nu se mută până nu confirmi.",
         answerRecurring: "Ai 5 plăți recurente însumând 412,97 RON pe lună.",
         answerGroceries: "Cumpărăturile au fost în medie 1.180 RON pe lună în ultimele șase — august este cu 9% sub această medie.",

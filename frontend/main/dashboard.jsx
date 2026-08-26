@@ -21,6 +21,10 @@
     settings2fa: "answerSettings2fa",
   };
 
+  function agentForScreen(originScreen) {
+    return originScreen === "analytics" ? "analytics" : "support";
+  }
+
   function answerFor(promptKey) {
     if (promptKey === "pay") return { role: "ai", kind: "tx", text: t("dashboard.chat.answerPay") };
     if (promptKey === "recurring") return { role: "ai", kind: "table", text: t("dashboard.chat.answerRecurring") };
@@ -82,6 +86,7 @@
     const [micOn, setMicOn] = useState(false);
     const [draft, setDraft] = useState("");
     const [chatBusy, setChatBusy] = useState(false);
+    const [chatAgent, setChatAgent] = useState("support");
     const [messages, setMessages] = useState([
       { role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) },
     ]);
@@ -106,7 +111,10 @@
     const navigate = useCallback((key) => {
       if (SCREENS.indexOf(key) >= 0) {
         if (key === "chat" && screen !== "chat") {
-          setMessages([{ role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) }]);
+          const agent = agentForScreen(screen);
+          const seedKey = agent === "analytics" ? "seedAnalytics" : "seed";
+          setChatAgent(agent);
+          setMessages([{ role: "ai", kind: "text", text: t("dashboard.chat." + seedKey, { balance: DATA.totalBalance }) }]);
         }
         setScreen(key);
         setBalanceHidden(true);
@@ -118,6 +126,7 @@
     }, []);
 
     const pushExchange = useCallback((userText, reply) => {
+      if (screen !== "chat") setChatAgent(agentForScreen(screen));
       setMessages((list) => {
         const base = screen === "chat" ? list : [];
         return base.concat([{ role: "user", kind: "text", text: userText }, reply]);
@@ -134,8 +143,8 @@
       setBalanceHidden(true);
       setDraft("");
       setChatBusy(true);
-      api
-        .askSupport(text)
+      const ask = chatAgent === "analytics" ? api.askAnalytics : api.askSupport;
+      ask(text)
         .then((result) => {
           setMessages((list) =>
             list.concat([{ role: "ai", kind: "text", text: result.answer, aiGenerated: true }])
@@ -147,7 +156,7 @@
           );
         })
         .finally(() => setChatBusy(false));
-    }, [draft, chatBusy]);
+    }, [draft, chatBusy, chatAgent]);
 
     const onDockPrompt = useCallback((key) => {
       const prompt = DATA.chatPrompts[key];

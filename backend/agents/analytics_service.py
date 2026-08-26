@@ -7,6 +7,7 @@ from backend.agents.service import AgentRateLimiter
 from backend.capabilities.service import get_capabilities_service
 from backend.config import settings
 from backend.database.records import write_audit
+from backend.database.repositories import MongoRateLimitStore
 from backend.helpers.context import Actor
 
 
@@ -16,7 +17,7 @@ class AnalyticsService:
         self._limiter = limiter
 
     async def ask(self, user_id: str, question: str) -> AgentAnswer:
-        self._limiter.check(user_id)
+        await self._limiter.check(user_id)
         agent_actor = Actor(kind="agent", id="analytics-agent", on_behalf_of=user_id)
         return await self._agent.ask(agent_actor, question)
 
@@ -29,7 +30,9 @@ def get_analytics_service() -> AnalyticsService:
         audit=write_audit,
     )
     limiter = AgentRateLimiter(
+        agent_name="analytics",
         max_calls=settings.agent_rate_limit_max_calls,
         window_seconds=settings.agent_rate_limit_window_seconds,
+        store=MongoRateLimitStore(),
     )
     return AnalyticsService(agent, limiter)

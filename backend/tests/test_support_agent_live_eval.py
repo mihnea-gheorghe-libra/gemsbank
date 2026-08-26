@@ -5,8 +5,15 @@ import pytest
 
 from backend.agents.analytics_service import get_analytics_service
 from backend.agents.service import get_support_service
+from backend.database.mongo import close_client
 
 pytestmark = pytest.mark.live_llm
+
+
+@pytest.fixture(autouse=True)
+async def _reset_mongo_client_per_test():
+    yield
+    await close_client()
 
 _TEST_USER_ID = os.environ.get("EVAL_SUPPORT_USER_ID")
 _TEST_ANALYTICS_USER_ID = os.environ.get("EVAL_ANALYTICS_USER_ID")
