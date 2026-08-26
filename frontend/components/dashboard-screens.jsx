@@ -13,7 +13,6 @@
     { icon: "Send", key: "transact", go: "payments" },
     { icon: "Plus", key: "addFunds", go: "portfolio" },
     { icon: "ArrowLeftRight", key: "exchange", go: "portfolio" },
-    { icon: "QrCode", key: "scanQr", go: "payments" },
   ];
 
   const formatMinor = DASH.formatMinor;
@@ -22,7 +21,7 @@
     all: () => true,
     income: (row) => row.direction === "in",
     spending: (row) => row.direction === "out",
-    pending: (row) => row.statusKey === "pending",
+    pending: (row) => row.statusKey === "awaiting_signature",
     cards: (row) => row.channel === "card",
   };
 
@@ -37,6 +36,18 @@
 
   function kindToI18nKey(kind) {
     return kind.replace(/_([a-z])/g, (match, letter) => letter.toUpperCase());
+  }
+
+  function formatCardKind(text) {
+    const parts = text.split(" · ");
+    if (parts.length === 2) {
+      return (
+        <React.Fragment>
+          <strong style={{ fontWeight: 700 }}>{parts[0]}</strong> · {parts[1]}
+        </React.Fragment>
+      );
+    }
+    return <strong style={{ fontWeight: 700 }}>{text}</strong>;
   }
 
   function formatExpiry(iso) {
@@ -101,7 +112,11 @@
     );
   }
 
-SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onNavigate }) {
+SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onNavigate, onAddFunds, onExchange }) {
+    const totalBalanceMinor = accounts
+      .filter((account) => account.cur === "RON")
+      .reduce((sum, account) => sum + account.minor, 0);
+
     return (
       <div className="dash-grid-home">
         <UI.Plate className="dash-balance-card elev-sm">
@@ -113,7 +128,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
             </UI.Button>
           </div>
           <div className="dash-balance-figure">
-            {balanceHidden ? "•••••••• RON" : DATA.totalBalance + " RON"}
+            {balanceHidden ? "•••••••• RON" : formatMinor(totalBalanceMinor) + " RON"}
           </div>
           <div className="text-muted" style={{ fontSize: 12 }}>
             {balanceHidden ? t("dashboard.home.balanceHiddenSub") : t("dashboard.home.balanceSub")}
@@ -123,7 +138,17 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
 
           <div className="dash-quick-grid">
             {QUICK_ACTIONS.map((action) => (
-              <UI.Button key={action.key} type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 10, minHeight: 46 }} onClick={() => onNavigate(action.go)}>
+              <UI.Button
+                key={action.key}
+                type="button"
+                variant="secondary"
+                style={{ justifyContent: "flex-start", gap: 10, minHeight: 46 }}
+                onClick={() => {
+                  if (action.key === "addFunds") return onAddFunds();
+                  if (action.key === "exchange") return onExchange();
+                  return onNavigate(action.go);
+                }}
+              >
                 <UI.Icon name={action.icon} size={16} style={{ color: "var(--color-primary)" }} />
                 {t("dashboard.home.quick." + action.key)}
               </UI.Button>
@@ -191,6 +216,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     onUseTemplate,
     onSettleShare,
     onDeleteSplit,
+    onSign,
   }) {
     const filters = Object.keys(TX_FILTERS);
     const visible = transactions.filter((row) => TX_FILTERS[filter](row) && matchesQuery(row, query));
@@ -210,22 +236,30 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
           </div>
         </div>
 
-        <UI.Plate className="elev-sm" style={{ padding: 16, marginBottom: 18 }}>
-          <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.payments.pendingTitle")}</UI.Kicker>
-          <div className="dash-pending-grid">
-            {DATA.pending.map((row, index) => (
-              <div className="dash-pending-row" key={index}>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--color-primary)" }}>{row.num}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>{row.who}</div>
-                  <div className="text-muted" style={{ fontSize: 11 }}>{t("dashboard.payments.note." + row.noteKey)}</div>
+        {pending.length ? (
+          <UI.Plate className="elev-sm" style={{ padding: 16, marginBottom: 18 }}>
+            <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.payments.pendingTitle")}</UI.Kicker>
+            <div className="dash-pending-grid">
+              {pending.map((row, index) => (
+                <div className="dash-pending-row" key={row.paymentId}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--color-primary)" }}>
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>{row.counterparty}</div>
+                    <div className="text-muted" style={{ fontSize: 11 }}>{row.reference}</div>
+                  </div>
+                  <div style={{ fontFamily: "var(--font-heading)", fontSize: 18 }}>
+                    {formatMinor(row.amount.minorUnits)} {row.amount.currency}
+                  </div>
+                  <UI.Button type="button" variant="secondary" onClick={() => onSign(row)}>
+                    {t("dashboard.payments.sign")}
+                  </UI.Button>
                 </div>
-                <div style={{ fontFamily: "var(--font-heading)", fontSize: 18 }}>{row.amount} RON</div>
-                <UI.Button type="button" variant="secondary">{t("dashboard.payments.sign")}</UI.Button>
-              </div>
-            ))}
-          </div>
-        </UI.Plate>
+              ))}
+            </div>
+          </UI.Plate>
+        ) : null}
 
         <UI.Plate className="elev-sm" style={{ padding: 16, marginBottom: 18 }}>
           <div className="dash-kicker-row">
@@ -368,20 +402,35 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     onApplyCredit,
     onWithdrawApplication,
   }) {
-    const investedMinor = holdings.reduce((sum, holding) => sum + DASH.holdingValue(holding), 0) + investCashMinor;
+    const investedMinor = holdings.reduce((sum, holding) => sum + DASH.holdingValue(holding), 0) + (investCashMinor || 0);
     const [focusId, setFocusId] = useState(null);
+    const [chartRange, setChartRange] = useState("month");
 
     const focused = holdings.find((holding) => holding.id === focusId) || null;
     const totalSeries = DASH.portfolioSeries(holdings, investCashMinor);
-    const series = focused ? DASH.instrumentSeries(focused) : totalSeries;
+    const rawSeries = focused ? DASH.instrumentSeries(focused) : totalSeries;
+    const series = DASH.sliceSeriesByRange(rawSeries, chartRange);
     const windowChangeBps = DASH.seriesChangeBps(totalSeries);
-    const focusChangeBps = focused ? DASH.seriesChangeBps(series) : null;
+    const chartChangeBps = DASH.seriesChangeBps(series);
+    const currentPoint = rawSeries.length ? rawSeries[rawSeries.length - 1] : null;
+    const currentDelta = rawSeries.length > 1
+      ? currentPoint.valueMinor - rawSeries[rawSeries.length - 2].valueMinor
+      : null;
+
+    const rangeOptions = [
+      { value: "day", label: t("dashboard.invest.range.day") },
+      { value: "week", label: t("dashboard.invest.range.week") },
+      { value: "month", label: t("dashboard.invest.range.month") },
+      { value: "quarter", label: t("dashboard.invest.range.quarter") },
+      { value: "half", label: t("dashboard.invest.range.half") },
+      { value: "year", label: t("dashboard.invest.range.year") },
+    ];
 
     return (
       <div>
         <div className="dash-screen-head">
           <h3 style={{ margin: 0 }}>{t("dashboard.portfolio.title")}</h3>
-          <UI.Button type="button" variant="primary" onClick={onOpenAccount}>{t("dashboard.portfolio.openAccount")}</UI.Button>
+          <UI.Button type="button" variant="primary" onClick={() => onOpenAccount()}>{t("dashboard.portfolio.openAccount")}</UI.Button>
         </div>
 
         <div className="dash-portfolio-tiles">
@@ -553,7 +602,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                 : t("dashboard.portfolio.investmentsWithChange", {
                     total: formatMinor(investedMinor),
                     change: DASH.formatChangeBps(windowChangeBps),
-                    months: DASH.seriesMonths(series),
+                    months: DASH.seriesMonths(totalSeries),
                   })}
             </UI.Kicker>
             <UI.Button type="button" variant="secondary" onClick={() => onTrade(null, "buy")}>
@@ -572,8 +621,26 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
             <UI.Plate className="dash-chart-plate">
               <div className="dash-chart-head">
                 <div>
-                  <div className="dash-chart-title">
-                    {focused ? focused.name : t("dashboard.invest.totalTitle")}
+                  <div className="dash-chart-title-row">
+                    <div className="dash-chart-title">
+                      {focused ? focused.name : t("dashboard.invest.totalTitle")}
+                    </div>
+                    {currentPoint ? (
+                      <div className="dash-chart-current" title={t("dashboard.invest.currentPrice")}>
+                        <span className="dash-chart-current-value">{formatMinor(currentPoint.valueMinor)} RON</span>
+                        {currentDelta == null ? null : (
+                          <span
+                            className={UI.classNames(
+                              "dash-chart-current-delta",
+                              currentDelta > 0 && "is-up",
+                              currentDelta < 0 && "is-down"
+                            )}
+                          >
+                            {(currentDelta > 0 ? "+" : currentDelta < 0 ? "−" : "") + formatMinor(Math.abs(currentDelta))}
+                          </span>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="text-muted dash-chart-sub">
                     {focused
@@ -584,26 +651,31 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                       : t("dashboard.invest.totalSub")}
                   </div>
                 </div>
-                {focused ? (
-                  <UI.Button type="button" variant="secondary" onClick={() => setFocusId(null)}>
-                    {t("dashboard.invest.backToTotal")}
-                  </UI.Button>
-                ) : null}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <DASH.PeriodPicker
+                    options={rangeOptions}
+                    value={chartRange}
+                    onChange={setChartRange}
+                    label={t("dashboard.invest.rangeLabel")}
+                  />
+                  {focused ? (
+                    <UI.Button type="button" variant="secondary" onClick={() => setFocusId(null)}>
+                      {t("dashboard.invest.backToTotal")}
+                    </UI.Button>
+                  ) : null}
+                </div>
               </div>
 
               {series.length > 1 ? (
                 <DASH.PriceChart
-                  key={focusId || "total"}
+                  key={(focusId || "total") + ":" + chartRange}
                   series={series}
                   dimmed={marketLoading}
                   label={t("dashboard.invest.chartLabel", {
                     what: focused ? focused.name : t("dashboard.invest.totalTitle"),
                     from: GEMS.i18n.isoToDisplayDate(series[0].on),
                     to: GEMS.i18n.isoToDisplayDate(series[series.length - 1].on),
-                    change:
-                      DASH.seriesChangeBps(series) == null
-                        ? "—"
-                        : DASH.formatChangeBps(DASH.seriesChangeBps(series)),
+                    change: chartChangeBps == null ? "—" : DASH.formatChangeBps(chartChangeBps),
                   })}
                 />
               ) : (
@@ -612,16 +684,17 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                 </div>
               )}
 
-              {focused && focusChangeBps != null ? (
+              {series.length > 1 && chartChangeBps != null ? (
                 <div className="dash-chart-foot text-muted">
                   {t("dashboard.invest.windowChange", {
-                    change: DASH.formatChangeBps(focusChangeBps),
+                    change: DASH.formatChangeBps(chartChangeBps),
                   })}
                 </div>
               ) : null}
             </UI.Plate>
-            <table className="dash-table">
-              <tbody>
+            <div className="dash-holdings-table-wrap">
+              <table className="dash-table">
+                <tbody>
                 {holdings.map((holding) => (
                   <tr
                     key={holding.id}
@@ -646,7 +719,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                     </td>
                     <td className="text-muted" style={{ fontSize: 12 }}>{DASH.formatUnits(holding)}</td>
                     <td className="amount-col">
-                      <div>{formatMinor(DASH.holdingValue(holding))}</div>
+                      <div>{formatMinor(DASH.holdingValue(holding))} RON</div>
                       {holding.changeBps == null ? null : (
                         <div
                           className={UI.classNames(
@@ -677,11 +750,20 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                 <tr>
                   <td>{t("dashboard.invest.cash")}</td>
                   <td className="text-muted" style={{ fontSize: 12 }}>—</td>
-                  <td className="amount-col">{formatMinor(investCashMinor)}</td>
-                  <td />
+                  <td className="amount-col">
+                    {investCashMinor == null ? null : formatMinor(investCashMinor) + " RON"}
+                  </td>
+                  <td className="amount-col dash-trade-cell">
+                    {investCashMinor == null ? (
+                      <UI.Button type="button" variant="secondary" onClick={() => onOpenAccount("invest")}>
+                        {t("dashboard.invest.openInvestAccount")}
+                      </UI.Button>
+                    ) : null}
+                  </td>
                 </tr>
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
           </div>
         </UI.Plate>
       </div>
@@ -799,8 +881,20 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     );
   }
 
+  function monthlyCardSpendMinor(transactions) {
+    const now = new Date();
+    return transactions
+      .filter((row) => {
+        if (row.channel !== "card" || row.direction !== "out" || row.statusKey !== "booked") return false;
+        const [day, month, year] = row.date.split(".").map(Number);
+        return month === now.getMonth() + 1 && year === now.getFullYear();
+      })
+      .reduce((sum, row) => sum + row.minor, 0);
+  }
+
   SCR.CardsScreen = function CardsScreen({
     cards,
+    transactions,
     loading,
     error,
     selectedCardId,
@@ -829,9 +923,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     const [editingLimit, setEditingLimit] = useState(null);
     const card = cards.find((row) => row.cardId === selectedCardId) || null;
     const disabled = busy || !card || card.state === "blocked";
-    // Demo has no real spend feed yet — this month's online spend is a fixed
-    // mock; only the limit (denominator) is live, from the card's own state.
-    const monthlySpendMinor = 184000;
+    const monthlySpendMinor = monthlyCardSpendMinor(transactions);
     const onlineLimitMinor = card ? card.onlineLimitMinor : 0;
     const monthlySpendPct = onlineLimitMinor > 0
       ? Math.min(100, Math.round((monthlySpendMinor / onlineLimitMinor) * 100))
@@ -879,7 +971,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                 const front = (
                   <div className="dash-card-tile" style={{ width: "100%", height: "100%" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <span className="dash-card-kind">{t("dashboard.cards.kind." + kindToI18nKey(row.kind))}</span>
+                      <span className="dash-card-kind">{formatCardKind(t("dashboard.cards.kind." + kindToI18nKey(row.kind)))}</span>
                       <UI.Tag variant="outline">{t("dashboard.cards.state." + row.state)}</UI.Tag>
                     </div>
                     <div>
@@ -893,57 +985,32 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                   </div>
                 );
 
-                if (isSelected) {
-                  return (
-                    <button
-                      key={row.cardId}
-                      type="button"
-                      className={UI.classNames(
-                        "dash-card-flip",
-                        flipped && "is-flipped",
-                        row.state === "frozen" && "is-frozen"
-                      )}
-                      onClick={() => onSelect(row.cardId)}
-                      aria-pressed={isSelected}
-                    >
-                      <div className="dash-card-flip-inner">
-                        <div className="dash-card-face-front">{front}</div>
-                        <div className="dash-card-face-back">
-                          <span className="dash-card-back-line">
-                            {mockFullNumber(row.cardId, row.numberMasked.slice(-4), row.kind)}
-                          </span>
-                          <span className="dash-card-back-line">
-                            {t("dashboard.cards.expLabel", { exp: formatExpiry(row.expiresOn) })}
-                          </span>
-                          <span className="dash-card-back-line">
-                            {cvv ? t("dashboard.cards.cvvLabel", { cvv }) : "•••"}
-                          </span>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                }
-
                 return (
                   <button
                     key={row.cardId}
                     type="button"
-                    className={UI.classNames("dash-card-tile", row.state === "frozen" && "is-frozen")}
+                    className={UI.classNames(
+                      "dash-card-flip",
+                      flipped && "is-flipped",
+                      row.state === "frozen" && "is-frozen"
+                    )}
                     onClick={() => onSelect(row.cardId)}
                     aria-pressed={isSelected}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <span className="dash-card-kind">{t("dashboard.cards.kind." + kindToI18nKey(row.kind))}</span>
-                      <UI.Tag variant="outline">{t("dashboard.cards.state." + row.state)}</UI.Tag>
-                    </div>
-                    <div>
-                      <div className="dash-card-num">{row.numberMasked}</div>
-                      <div className="dash-card-meta text-muted">
-                        <span>{row.owner}</span>
-                        <span>{formatExpiry(row.expiresOn)}</span>
+                    <div className="dash-card-flip-inner">
+                      <div className="dash-card-face-front">{front}</div>
+                      <div className="dash-card-face-back">
+                        <span className="dash-card-back-line">
+                          {mockFullNumber(row.cardId, row.numberMasked.slice(-4), row.kind)}
+                        </span>
+                        <span className="dash-card-back-line">
+                          {t("dashboard.cards.expLabel", { exp: formatExpiry(row.expiresOn) })}
+                        </span>
+                        <span className="dash-card-back-line">
+                          {cvv ? t("dashboard.cards.cvvLabel", { cvv }) : "•••"}
+                        </span>
                       </div>
                     </div>
-                    <MastercardMark />
                   </button>
                 );
               })}
@@ -1497,7 +1564,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   }
 
-  SCR.SettingsScreen = function SettingsScreen({ lang, onLang, theme, onTheme, ttsOn, onToggleTts, onSignOut, onGoChat, me, onMeChange }) {
+  SCR.SettingsScreen = function SettingsScreen({ lang, onLang, theme, onTheme, ttsOn, onToggleTts, onSignOut, me, onMeChange }) {
     const langs = [
       { value: "ro", label: "Română" },
       { value: "en", label: "English" },
@@ -1710,7 +1777,6 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
           <UI.Plate className="elev-sm" style={{ padding: 18 }}>
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.settings.support")}</UI.Kicker>
             <div className="dash-settings-list">
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={onGoChat}><UI.Icon name="MessageCircle" size={15} />{t("dashboard.settings.chatSupport")}</UI.Button>
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={() => setContactDialogOpen(true)}><UI.Icon name="Headset" size={15} />{t("dashboard.settings.customerService")}</UI.Button>
               <UI.Button
                 type="button"

@@ -134,6 +134,9 @@
     updatePreferences: (prefs) => send("/auth/preferences", { method: "PUT", json: { prefs } }),
 
     listAccounts: () => send("/accounts"),
+    openAccount: (currency, kind) => send("/accounts", { method: "POST", json: { currency, kind } }),
+    exchangeRate: (from, to) => send("/exchange/rate" + query({ from, to })),
+    exchange: (payload) => send("/exchange/convert", { method: "POST", json: payload }),
     paymentsSummary: () => send("/payments/summary"),
     listTransactions: (params) => send("/payments/transactions" + query(params)),
     listPending: () => send("/payments/pending"),

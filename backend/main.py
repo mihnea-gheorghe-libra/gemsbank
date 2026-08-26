@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.accounts.service import get_accounts_service
 from backend.auth.service import get_auth_service
 from backend.capabilities.service import get_capabilities_service
 from backend.cards.service import get_cards_service
@@ -21,6 +22,7 @@ from backend.helpers.context import (
     get_correlation_id,
     set_correlation_id,
 )
+from backend.exchange.service import get_exchange_service
 from backend.helpers.errors import DomainError
 from backend.investments.service import (
     close_investments_clients,
@@ -36,6 +38,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
+    get_accounts_service()
     get_payments_service()
     get_onboarding_service()
     get_auth_service()
@@ -43,6 +46,7 @@ async def lifespan(app: FastAPI):
     get_investments_service()
     get_capabilities_service()
     get_goals_service()
+    get_exchange_service()
     await ensure_indexes()
     yield
     await close_investments_clients()

@@ -57,7 +57,7 @@
       { key: "savings", creates: "account", rateBps: 225, monthlyFeeMinor: 0, minOpenMinor: 10000, accessKey: "anytime" },
       { key: "deposit", creates: "deposit", depositKind: "term", monthlyFeeMinor: 0, minOpenMinor: 100000, accessKey: "maturity" },
       { key: "goal", creates: "deposit", depositKind: "goal", monthlyFeeMinor: 0, minOpenMinor: 10000, accessKey: "goalExit" },
-      { key: "invest", creates: "account", rateBps: 0, monthlyFeeMinor: 900, minOpenMinor: 50000, accessKey: "settlement" },
+      { key: "invest", creates: "account", rateBps: 0, monthlyFeeMinor: 0, minOpenMinor: 0, accessKey: "anytime" },
     ],
 
     templates: [
