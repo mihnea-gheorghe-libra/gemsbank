@@ -101,11 +101,18 @@ class ToolCallingAgent:
             if self._may_call(capability)
         ]
 
-    async def ask(self, actor: Actor, question: str) -> AgentAnswer:
-        run_id = new_id()
+    async def ask(
+        self,
+        actor: Actor,
+        question: str,
+        history: list[dict[str, str]] | None = None,
+        run_id: str | None = None,
+    ) -> AgentAnswer:
+        run_id = run_id or new_id()
         correlation_id = get_correlation_id()
         messages: list[dict[str, object]] = [
             {"role": "system", "content": self._system_prompt},
+            *({"role": turn["role"], "content": turn["content"]} for turn in history or []),
             {"role": "user", "content": question},
         ]
         tools = self._tool_defs()

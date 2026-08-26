@@ -10,7 +10,17 @@ from backend.agents.payments_service import (
     PaymentsAgentService,
     get_payments_agent_service,
 )
+from backend.agents.orchestrator_service import (
+    OrchestratorService,
+    get_orchestrator_service,
+)
 from backend.agents.service import SupportService, get_support_service
+from backend.agents.transcript import sanitise_history
+from backend.escalations.service import (
+    EscalationsService,
+    RequestHandoff,
+    get_escalations_service,
+)
 from backend.accounts.service import AccountKind, AccountsService, OpenAccount, get_accounts_service
 from backend.exchange.service import ConvertCurrency, ExchangeService, get_exchange_service
 from backend.auth.service import (
@@ -189,6 +199,23 @@ class AskAgentRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
 
 
+class ChatTurn(BaseModel):
+    role: str = Field(max_length=16)
+    content: str = Field(max_length=2000)
+
+
+class AskOrchestratorRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+    screen: str | None = Field(default=None, max_length=32)
+    history: list[ChatTurn] = Field(default_factory=list, max_length=40)
+
+
+class HandoffRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+    reason: str | None = Field(default=None, max_length=300)
+    history: list[ChatTurn] = Field(default_factory=list, max_length=40)
+
+
 class GoalRequest(BaseModel):
     account_id: str = Field(alias="accountId", min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=80)
@@ -206,6 +233,8 @@ InvestmentsDep = Annotated[InvestmentsService, Depends(get_investments_service)]
 SupportDep = Annotated[SupportService, Depends(get_support_service)]
 AnalyticsDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
 PaymentsAgentDep = Annotated[PaymentsAgentService, Depends(get_payments_agent_service)]
+OrchestratorDep = Annotated[OrchestratorService, Depends(get_orchestrator_service)]
+EscalationsDep = Annotated[EscalationsService, Depends(get_escalations_service)]
 ExchangeDep = Annotated[ExchangeService, Depends(get_exchange_service)]
 
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key")]
@@ -736,6 +765,46 @@ async def ask_payments_agent(
         "capabilitiesUsed": answer.capabilities_used,
         "proposals": answer.proposals,
     }
+
+
+@agents_router.post("/ask")
+async def ask_orchestrator(
+    actor: CurrentActor, orchestrator: OrchestratorDep, payload: AskOrchestratorRequest
+) -> dict[str, Any]:
+    history = sanitise_history([turn.model_dump() for turn in payload.history])
+    answer = await orchestrator.ask(
+        actor.id, payload.question, history=history, screen=payload.screen
+    )
+    return {
+        "answer": answer.answer,
+        "agentsUsed": answer.agents_used,
+        "capabilitiesUsed": answer.capabilities_used,
+        "proposals": answer.proposals,
+        "escalation": {
+            "offered": answer.escalated,
+            "reason": answer.escalation_reason,
+        },
+        "runId": answer.run_id,
+    }
+
+
+@agents_router.post("/handoff", status_code=201)
+async def request_handoff(
+    actor: CurrentActor,
+    payload: HandoffRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = RequestHandoff(
+        question=payload.question,
+        reason=payload.reason,
+        transcript=[turn.model_dump() for turn in payload.history],
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@agents_router.get("/handoff")
+async def list_handoffs(actor: CurrentActor, escalations: EscalationsDep) -> dict[str, Any]:
+    return await escalations.list_for_user(actor.id)
 
 
 @goals_router.post("", status_code=201)

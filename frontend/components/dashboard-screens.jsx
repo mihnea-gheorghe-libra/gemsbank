@@ -1833,7 +1833,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   };
 
-  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, onToggleMic, onPromptClick, onConfirmTx, onConfirmProposal, username }) {
+  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, onToggleMic, onPromptClick, onConfirmTx, onConfirmProposal, onRequestHuman, handoffBusy, handoffSent, username }) {
     const inputRef = useRef(null);
 
     useEffect(() => {
@@ -1994,7 +1994,17 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
               </UI.Button>
               <UI.Button type="button" variant="primary" disabled={busy} onClick={onSend}>{t("dashboard.chat.send")}</UI.Button>
             </UI.Plate>
-            <div className="dash-chat-hint">{t("dashboard.chat.orchestratorNote")}</div>
+            <div className="dash-chat-hint">
+              <span>{t("dashboard.chat.orchestratorNote")}</span>
+              <button
+                type="button"
+                className="dash-handoff-link"
+                onClick={onRequestHuman}
+                disabled={handoffBusy || handoffSent}
+              >
+                {handoffSent ? t("dashboard.chat.handoffSent") : t("dashboard.chat.handoffAsk")}
+              </button>
+            </div>
           </div>
         </div>
 

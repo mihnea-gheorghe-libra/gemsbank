@@ -22,23 +22,18 @@
     settings2fa: "answerSettings2fa",
   };
 
-  function agentForScreen(originScreen) {
-    if (originScreen === "analytics") return "analytics";
-    if (originScreen === "payments" || originScreen === "home") return "payments";
-    return "support";
+  const MAX_HISTORY_TURNS = 10;
+
+  function transcriptOf(messages) {
+    return messages
+      .filter((message) => message.kind === "text" || message.kind === "proposal")
+      .filter((message) => typeof message.text === "string" && message.text.trim() !== "")
+      .slice(-MAX_HISTORY_TURNS)
+      .map((message) => ({
+        role: message.role === "user" ? "user" : "assistant",
+        content: message.text,
+      }));
   }
-
-  const AGENT_SEED_KEYS = {
-    analytics: "seedAnalytics",
-    payments: "seedPayments",
-    support: "seed",
-  };
-
-  const AGENT_ASK = {
-    analytics: (question) => api.askAnalytics(question),
-    payments: (question) => api.askPaymentsAgent(question),
-    support: (question) => api.askSupport(question),
-  };
 
   function answerFor(promptKey) {
     if (promptKey === "pay") return { role: "ai", kind: "tx", text: t("dashboard.chat.answerPay") };
@@ -161,7 +156,9 @@
     const [micOn, setMicOn] = useState(false);
     const [draft, setDraft] = useState("");
     const [chatBusy, setChatBusy] = useState(false);
-    const [chatAgent, setChatAgent] = useState("support");
+    const [lastQuestion, setLastQuestion] = useState("");
+    const [handoffBusy, setHandoffBusy] = useState(false);
+    const [handoffSent, setHandoffSent] = useState(false);
     const [messages, setMessages] = useState([
       { role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) },
     ]);
@@ -217,10 +214,7 @@
     const navigate = useCallback((key) => {
       if (SCREENS.indexOf(key) >= 0) {
         if (key === "chat" && screen !== "chat") {
-          const agent = agentForScreen(screen);
-          const seedKey = AGENT_SEED_KEYS[agent] || "seed";
-          setChatAgent(agent);
-          setMessages([{ role: "ai", kind: "text", text: t("dashboard.chat." + seedKey, { balance: DATA.totalBalance }) }]);
+          setMessages([{ role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) }]);
         }
         setScreen(key);
         setBalanceHidden(true);
@@ -232,7 +226,6 @@
     }, []);
 
     const pushExchange = useCallback((userText, reply) => {
-      if (screen !== "chat") setChatAgent(agentForScreen(screen));
       setMessages((list) => {
         const base = screen === "chat" ? list : [];
         return base.concat([{ role: "user", kind: "text", text: userText }, reply]);
@@ -244,24 +237,28 @@
     const sendDraft = useCallback(() => {
       const text = draft.trim();
       if (!text || chatBusy) return;
-      const agent = screen === "chat" ? chatAgent : agentForScreen(screen);
-      if (agent !== chatAgent) setChatAgent(agent);
+      const history = transcriptOf(messages);
+      const origin = screen;
       setMessages((list) => list.concat([{ role: "user", kind: "text", text }]));
+      setLastQuestion(text);
       setScreen("chat");
       setBalanceHidden(true);
       setDraft("");
       setChatBusy(true);
-      const ask = AGENT_ASK[agent] || api.askSupport;
-      ask(text)
+      api
+        .askGems(text, history, origin)
         .then((result) => {
           const proposal = (result.proposals || []).filter(
             (item) => item && item.status === "proposed"
           )[0];
+          const escalation = result.escalation || {};
+          const escalated = Boolean(escalation.offered);
+          const answer = (result.answer || "").trim() || (escalated ? t("dashboard.chat.handoffOffered") : t("dashboard.chat.errorNote"));
           setMessages((list) =>
             list.concat([
               proposal
-                ? { role: "ai", kind: "proposal", text: result.answer, proposal, aiGenerated: true }
-                : { role: "ai", kind: "text", text: result.answer, aiGenerated: true },
+                ? { role: "ai", kind: "proposal", text: answer, proposal, aiGenerated: true }
+                : { role: "ai", kind: "text", text: answer, aiGenerated: true, escalated },
             ])
           );
         })
@@ -276,7 +273,26 @@
           setMessages((list) => list.concat([{ role: "ai", kind: "text", text: note }]));
         })
         .finally(() => setChatBusy(false));
-    }, [draft, chatBusy, chatAgent, screen]);
+    }, [draft, chatBusy, messages, screen]);
+
+    const requestHuman = useCallback(() => {
+      if (handoffBusy || handoffSent) return;
+      setHandoffBusy(true);
+      api
+        .requestHandoff(lastQuestion || t("dashboard.chat.handoffFallbackQuestion"), null, transcriptOf(messages))
+        .then(() => {
+          setHandoffSent(true);
+          setMessages((list) =>
+            list.concat([{ role: "ai", kind: "text", text: t("dashboard.chat.handoffConfirmed") }])
+          );
+        })
+        .catch(() => {
+          setMessages((list) =>
+            list.concat([{ role: "ai", kind: "text", text: t("dashboard.chat.handoffFailed") }])
+          );
+        })
+        .finally(() => setHandoffBusy(false));
+    }, [handoffBusy, handoffSent, lastQuestion, messages]);
 
     const onDockPrompt = useCallback((key) => {
       const prompt = DATA.chatPrompts[key];
@@ -983,6 +999,9 @@
                 onPromptClick={onDockPrompt}
                 onConfirmTx={confirmTx}
                 onConfirmProposal={confirmProposal}
+                onRequestHuman={requestHuman}
+                handoffBusy={handoffBusy}
+                handoffSent={handoffSent}
                 username={firstName}
               />
             ) : null}
