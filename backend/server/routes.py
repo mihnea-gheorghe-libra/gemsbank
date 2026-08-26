@@ -42,6 +42,7 @@ from backend.auth.service import (
     VerifySecureChange,
     get_auth_service,
 )
+from backend.capabilities import analytics as analytics_capabilities
 from backend.capabilities.service import get_capabilities_service
 from backend.cards.service import (
     BlockCardPermanently,
@@ -842,6 +843,13 @@ async def create_goal(
         target_date=payload.target_date,
     )
     return await bus.execute(command, actor, idempotency_key)
+
+
+@goals_router.get("/progress")
+async def goal_progress(actor: CurrentActor) -> dict[str, Any]:
+    capability = get_capabilities_service().get("analytics.goal_gap.get")
+    result = await capability.resolve(actor, analytics_capabilities.GoalGapInput())
+    return result.model_dump(by_alias=True)
 
 
 api_router.include_router(onboarding_router)

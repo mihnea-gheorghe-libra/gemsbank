@@ -181,6 +181,8 @@
         json: { username, limitMinor },
       }),
 
+    getGoalProgress: () => send("/goals/progress"),
+
     askSupport: (question) =>
       send("/agents/support/ask", { method: "POST", json: { question } }),
     askAnalytics: (question) =>

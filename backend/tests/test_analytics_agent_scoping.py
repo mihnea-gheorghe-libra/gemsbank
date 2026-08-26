@@ -56,6 +56,7 @@ async def test_agent_only_offers_its_own_capabilities_to_the_model() -> None:
         ("analytics.goal_gap.get", SideEffect.READ),
         ("analytics.month_recap.get", SideEffect.READ),
         ("analytics.what_changed.get", SideEffect.READ),
+        ("analytics.recommendations.get", SideEffect.READ),
         ("payments.transfer", SideEffect.MONEY_MOVING),
         ("settings.profile.get", SideEffect.READ),
     )
@@ -71,6 +72,7 @@ async def test_agent_only_offers_its_own_capabilities_to_the_model() -> None:
         "analytics.goal_gap.get",
         "analytics.month_recap.get",
         "analytics.what_changed.get",
+        "analytics.recommendations.get",
     }
 
 

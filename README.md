@@ -580,19 +580,36 @@ papering over a gap with a guessed number.
   median. Zero qualifying groups → `insufficient_data`, not a silent best-effort guess.
 - `analytics.goal_gap.get` compares a savings goal's required monthly rate against the actual net
   rate observed on its linked account over the last 3 months. Backed by a new minimal feature,
-  `backend/goals/` (below) — no goal set → `no_goal_found`.
+  `backend/goals/` (below) — no goal set → `no_goal_found`. It also returns a
+  `projectedCompletionDate` (today's date if the target is already met, `null` if the actual rate
+  isn't positive, otherwise today plus the number of months the remaining gap needs at the actual
+  rate) and a `streakWeeks` count — consecutive weeks, counting back from now, with a net-positive
+  contribution to the goal's account, bucketed from a 26-week transaction lookback. Both are
+  computed here, never by the model; `GET /goals/progress` (`server/routes.py`) exposes the same
+  resolver output directly, read-only, for the Analytics screen's goal card below — one
+  computation, two callers, the same numbers either way.
 - `analytics.month_recap.get` and `analytics.what_changed.get` return facts only (biggest expense,
   busiest day, category deltas, per-category cause of a spend change — `new_merchant` /
   `increased_frequency` / `increased_price` / `no_clear_cause`), never prose; the agent's prompt
   does the narrating, so the numbers stay testable and localizable independent of phrasing.
+- `analytics.recommendations.get` assembles up to three deterministic recommendations from the
+  other resolvers' own logic — a `goal_projection` and a `savings_rate` entry (reusing
+  `resolve_goal_gap`'s output directly) when a goal exists, and a `category_alert` entry when one
+  category's spend grew ≥15% and ≥50 RON between the last two completed calendar months (the same
+  significance thresholds `what_changed` uses). No goal and no notable category growth →
+  `insufficient_data`. Every amount carries both the raw minor-units figure and a pre-formatted
+  string (`currentValueFormatted`/`suggestedValueFormatted`/`gapFormatted`, same `format_minor` as
+  `payments.balances.get`) — the prompt requires the model to quote the formatted string verbatim,
+  after a first pass narrated raw minor units as if they were whole currency ("economisești acum
+  33333 RON"), the exact failure mode `PaymentsAgent` had already hit once for balances.
 
-All four page through the existing `PaymentsService.list_transactions` cursor (already sorted
+All five page through the existing `PaymentsService.list_transactions` cursor (already sorted
 newest-first) and stop once a page crosses the requested date boundary
 (`capabilities/analytics.py::_transactions_in_range`) — no date-range parameter was added to
-`payments/` or `ledger/` for this; that boundary stayed untouched on purpose. All four are also
+`payments/` or `ledger/` for this; that boundary stayed untouched on purpose. All five are also
 scoped to RON transactions/accounts only: mixing currencies into one sum would be silently wrong,
 and multi-currency forecasting was never asked for — an explicit v0 cut, not an oversight.
-`GET /capabilities` describes all eight alongside the write-side command list.
+`GET /capabilities` describes all nine alongside the write-side command list.
 
 **`backend/goals/`** exists only so `analytics.goal_gap.get` has real data to read — it followed
 the same shape check as every other feature (aggregate, `service.py`, `validation.py`) and the same
@@ -653,12 +670,21 @@ shared base. Its prompt carries one stake-appropriate addition beyond `SupportAg
 number it says must come from a tool result, full stop, and any forecast or "capping X would help"
 framing must be said as an estimate, not a certainty — financial projections, not FAQ answers.
 `backend/tests/test_analytics_agent_scoping.py` mirrors `test_support_agent_scoping.py`'s allow-list
-proof; `backend/tests/test_analytics_capabilities.py` exercises the four resolvers' actual logic
-(recurring-pattern detection, the goal-gap rate math, the category-cause classifier) against a
-scripted `PaymentsService`, no Mongo. **No frontend wiring was added for it** — the task asked for
-the tools, not a second chat surface; when one is built, it should reuse the `aiGenerated`/
-"always double-check" disclaimer mechanism already in `dashboard.jsx`, not invent a new one,
-especially for a worker whose whole job is projections and recommendations.
+proof; `backend/tests/test_analytics_capabilities.py` exercises the five resolvers' actual logic
+(recurring-pattern detection, the goal-gap rate math, the category-cause classifier, the
+recommendations aggregation) against a scripted `PaymentsService`, no Mongo.
+
+The Analytics screen (`SCR.AnalyticsScreen`, `frontend/components/dashboard-screens.jsx`) now
+carries real frontend wiring for it, past the existing spend-by-category/income-vs-spend charts:
+a **financial-education card** (static, hand-authored tips in `messages.js`, no LLM call, rotated
+client-side, expandable per tip — deliberately not `AnalyticsAgent`'s concern, since its system
+prompt is scoped to the signed-in user's own data) sits next to a **recommendations card**, which
+replaced the screen's old hardcoded "insight" blurb with a real `askAnalytics(...)` call against
+`analytics.recommendations.get`, rendered with the same `aiGenerated`/disclaimer treatment that
+blurb already used, and a **goal card** below it reading `GET /goals/progress` directly (a plain
+read, not narrated) for the progress bar, the projected date, and a streak badge — shown only at
+3+ weeks, and worded as a neutral nudge to start one below that threshold, never as a broken-streak
+warning, per the stakes of encouraging compulsive "catch-up" spending around money.
 
 The frontend's "Ask GEMS" dock and the chat screen's free-text box (`frontend/main/dashboard.jsx`)
 call `SupportAgent` for whatever the user types — busy state, error fallback, and an
@@ -831,7 +857,10 @@ two turns of history resolved to the right account. Zero movement in `journalTra
 `payments` across all of it.
 
 Not done: no mandates, no `settings.security.get` (see above), no
-UI for `AnalyticsAgent`, no multi-goal support. `PaymentsAgent` cannot see transactions, cards or
+multi-goal support, no UI for creating a goal (`POST /goals` has no caller in the frontend yet —
+`backend/goals/` is still reachable only by seeding a goal directly or through a future dialog; the
+Analytics screen's goal card renders correctly either way, showing "no goal set" until one exists).
+`PaymentsAgent` cannot see transactions, cards or
 settings, and `payments.transactions.list` is still not in the registry — add it there, not as a
 new pathway, when a worker needs it. The proposal is stateless: `proposalId` is a display string,
 nothing persists it, and the confirmation step re-validates from scratch rather than trusting it.

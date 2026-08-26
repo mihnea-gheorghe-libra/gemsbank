@@ -1314,6 +1314,152 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     );
   }
 
+  function EducationTip({ tip }) {
+    const [expanded, setExpanded] = useState(false);
+    return (
+      <div className="dash-tip">
+        <div className="dash-tip-title">{tip.title}</div>
+        <p className="text-muted" style={{ fontSize: 13, margin: "4px 0 8px" }}>
+          {expanded ? tip.body : tip.summary}
+        </p>
+        <button type="button" className="dash-tip-toggle" onClick={() => setExpanded((value) => !value)}>
+          {expanded ? t("dashboard.analytics.education.showLess") : t("dashboard.analytics.education.readMore")}
+        </button>
+      </div>
+    );
+  }
+
+  function EducationCard() {
+    const section = GEMS.i18n.dictionary.dashboard.analytics.education;
+    const tips = (section && section.tips) || [];
+    return (
+      <UI.Plate className="elev-sm" style={{ padding: 18 }}>
+        <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.analytics.education.title")}</UI.Kicker>
+        <div className="dash-tip-list">
+          {tips.map((tip, index) => (
+            <EducationTip tip={tip} key={index} />
+          ))}
+        </div>
+      </UI.Plate>
+    );
+  }
+
+  function RecommendationsCard() {
+    const [state, setState] = useState({ loading: true, answer: null, error: null });
+
+    useEffect(() => {
+      let cancelled = false;
+      const prompt =
+        GEMS.i18n.locale === "ro"
+          ? "Dă-mi recomandări personalizate de economisire și buget, pe baza tranzacțiilor mele reale."
+          : "Give me personalized savings and budgeting recommendations based on my real transactions.";
+      api
+        .askAnalytics(prompt)
+        .then((result) => {
+          if (cancelled) return;
+          setState({ loading: false, answer: (result && result.answer ? result.answer : "").trim(), error: null });
+        })
+        .catch((err) => {
+          if (!cancelled) setState({ loading: false, answer: null, error: err });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []);
+
+    const body = state.loading
+      ? t("dashboard.analytics.recommendations.loading")
+      : state.error
+      ? t("dashboard.analytics.recommendations.error")
+      : state.answer || t("dashboard.analytics.recommendations.empty");
+
+    return (
+      <UI.Plate className="dash-agent-note elev-sm">
+        <span className="dash-agent-dot" aria-hidden="true" style={{ marginTop: 6, flex: "none" }} />
+        <div style={{ fontSize: 14, lineHeight: 1.6, flex: 1 }}>
+          <UI.Kicker style={{ marginBottom: 8 }}>{t("dashboard.analytics.recommendations.title")}</UI.Kicker>
+          {body}
+          {!state.loading && !state.error && state.answer ? (
+            <div className="dash-ai-disclaimer">
+              <UI.Icon name="Sparkles" size={13} />
+              {t("dashboard.analytics.aiDisclaimer")}
+            </div>
+          ) : null}
+        </div>
+      </UI.Plate>
+    );
+  }
+
+  function GoalProgressCard() {
+    const [state, setState] = useState({ loading: true, data: null, error: null });
+
+    useEffect(() => {
+      let cancelled = false;
+      api
+        .getGoalProgress()
+        .then((result) => {
+          if (!cancelled) setState({ loading: false, data: result, error: null });
+        })
+        .catch((err) => {
+          if (!cancelled) setState({ loading: false, data: null, error: err });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []);
+
+    const data = state.data;
+    const hasGoal = Boolean(data) && data.status === "ok";
+    const reached = hasGoal && data.progressMinorUnits >= data.targetMinorUnits;
+    const pct = hasGoal
+      ? Math.max(0, Math.min(100, Math.round((data.progressMinorUnits / data.targetMinorUnits) * 100)))
+      : 0;
+    const showStreak = hasGoal && data.streakWeeks >= 3;
+
+    return (
+      <UI.Plate className="elev-sm" style={{ padding: 18 }}>
+        <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.analytics.goal.title")}</UI.Kicker>
+        {state.loading ? (
+          <div className="dash-chart-empty">{t("dashboard.analytics.loading")}</div>
+        ) : !hasGoal ? (
+          <div className="dash-chart-empty">{t("dashboard.analytics.goal.noGoal")}</div>
+        ) : (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+              <span>{data.name}</span>
+              <span className="text-muted">
+                {t("dashboard.analytics.goal.progressOf", {
+                  progress: UI.formatMoney(data.progressMinorUnits, data.currency),
+                  target: UI.formatMoney(data.targetMinorUnits, data.currency),
+                })}
+              </span>
+            </div>
+            <DASH.ProgressBar pct={pct} label={t("dashboard.analytics.goal.title")} />
+            <p className="text-muted" style={{ fontSize: 13, marginTop: 10 }}>
+              {reached
+                ? t("dashboard.analytics.goal.reached")
+                : data.projectedCompletionDate
+                ? t("dashboard.analytics.goal.projected", {
+                    date: GEMS.i18n.isoToDisplayDate(data.projectedCompletionDate),
+                  })
+                : t("dashboard.analytics.goal.projectedUnknown")}
+            </p>
+            {showStreak ? (
+              <div className="dash-streak-badge" title={t("dashboard.analytics.goal.streakHint")}>
+                <UI.Icon name="Flame" size={14} />
+                {t("dashboard.analytics.goal.streak", { count: data.streakWeeks })}
+              </div>
+            ) : (
+              <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                {t("dashboard.analytics.goal.streakStart")}
+              </p>
+            )}
+          </div>
+        )}
+      </UI.Plate>
+    );
+  }
+
   SCR.AnalyticsScreen = function AnalyticsScreen({ range, onRange }) {
     const RC = window.Recharts;
     const months = range === "3" ? 3 : range === "12" ? 12 : 6;
@@ -1411,16 +1557,13 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
 
         <UI.ErrorNote error={error} />
 
-        <UI.Plate className="dash-agent-note elev-sm">
-          <span className="dash-agent-dot" aria-hidden="true" style={{ marginTop: 6, flex: "none" }} />
-          <div style={{ fontSize: 14, lineHeight: 1.6, flex: 1 }}>
-            {t("dashboard.analytics.agentNote")}
-            <div className="dash-ai-disclaimer">
-              <UI.Icon name="Sparkles" size={13} />
-              {t("dashboard.analytics.aiDisclaimer")}
-            </div>
+        <div className="dash-analytics-cols" style={{ marginTop: 20 }}>
+          <EducationCard />
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <RecommendationsCard />
+            <GoalProgressCard />
           </div>
-        </UI.Plate>
+        </div>
       </div>
     );
   };
