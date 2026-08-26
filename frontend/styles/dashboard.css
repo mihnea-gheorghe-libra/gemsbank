@@ -137,7 +137,7 @@
   color: var(--color-heading);
 }
 .dash-quick-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
-.dash-accounts-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.dash-accounts-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
 .dash-account-tile { padding: 12px; background: var(--color-surface); color: var(--color-text); }
 .dash-account-amount { font-family: var(--font-heading); font-size: 22px; margin: 4px 0 2px; }
 

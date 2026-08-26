@@ -334,14 +334,17 @@ class PaymentsService:
                 },
             )
 
-        payee_check = PayeeVerification(
-            await self._payees.verify(counterparty, target.holder_name)
-        )
-        if payee_check is PayeeVerification.NO_MATCH and not command.acknowledge_payee_mismatch:
-            raise ValidationError(
-                "That name does not match the account holder. Check it, then confirm to send.",
-                details={"field": "counterparty", "payeeCheck": payee_check.value},
+        if command.target_account_id:
+            payee_check = PayeeVerification.MATCH
+        else:
+            payee_check = PayeeVerification(
+                await self._payees.verify(counterparty, target.holder_name)
             )
+            if payee_check is PayeeVerification.NO_MATCH and not command.acknowledge_payee_mismatch:
+                raise ValidationError(
+                    "That name does not match the account holder. Check it, then confirm to send.",
+                    details={"field": "counterparty", "payeeCheck": payee_check.value},
+                )
 
         payment = Payment(
             user_id=user_id,

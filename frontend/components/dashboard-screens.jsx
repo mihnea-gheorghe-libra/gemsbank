@@ -162,7 +162,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
             <a href="#" onClick={(event) => { event.preventDefault(); onNavigate("portfolio"); }}>{t("dashboard.home.openAccount")}</a>
           </div>
           <div className="dash-accounts-tiles">
-            {accounts.slice(0, 3).map((account, index) => (
+            {accounts.map((account, index) => (
               <UI.Plate key={index} className="dash-account-tile">
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
                   {account.cur} · {t("dashboard.accountType." + account.typeKey)}

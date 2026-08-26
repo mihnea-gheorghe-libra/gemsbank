@@ -558,11 +558,13 @@
       setSignFormError(null);
     }, []);
 
-    const submitSignature = useCallback(async (paymentId, code) => {
+    const submitSignature = useCallback(async (paymentId, pin) => {
       setSignBusy(true);
       setSignFormError(null);
       try {
-        await api.signTransfer(paymentId, code);
+        await api.verifyPin(username, pin);
+        const devCode = signingPayment && signingPayment.stepUp ? signingPayment.stepUp.devCode : null;
+        await api.signTransfer(paymentId, devCode);
         setSigningPayment(null);
         await loadPaymentsData();
       } catch (err) {
@@ -570,7 +572,7 @@
       } finally {
         setSignBusy(false);
       }
-    }, [loadPaymentsData]);
+    }, [loadPaymentsData, username, signingPayment]);
 
     const useTemplate = useCallback((template) => {
       const match = accounts.find((account) => account.cur === template.cur) || accounts[0];
