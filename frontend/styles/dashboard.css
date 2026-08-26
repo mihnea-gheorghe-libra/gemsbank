@@ -282,7 +282,7 @@
 .dash-donut-row { display: flex; gap: 20px; align-items: center; }
 .dash-donut-legend { flex: 1; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
 .dash-donut-legend-row { display: flex; justify-content: space-between; gap: 10px; }
-.dash-trade-cell { white-space: nowrap; display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+.dash-trade-actions { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
 .dash-symbol { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; color: var(--color-muted); }
 .dash-change { font-size: 11px; color: var(--color-muted); }
 .dash-change.is-up { color: var(--color-positive); }
@@ -554,7 +554,7 @@
   .dash-accounts-tiles, .dash-portfolio-tiles, .dash-cards-grid, .dash-field-grid {
     grid-template-columns: 1fr;
   }
-  .dash-trade-cell { flex-wrap: wrap; }
+  .dash-trade-actions { flex-wrap: wrap; }
 }
 
 @media (max-width: 700px) {
