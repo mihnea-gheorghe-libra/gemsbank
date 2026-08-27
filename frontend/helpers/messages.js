@@ -204,6 +204,9 @@
         insightsEmpty: "No price alerts for your vendors right now.",
         insightsViewAll: "View all ({count}) →",
         insightsAllTitle: "All price alerts",
+        fxInsightsAllTitle: "Exchange rate alerts",
+        insightSourceLabel: "Source:",
+        insightSourceOwnHistory: "your own payment history",
         insightsClose: "Close",
         insightsAiDisclaimer: "AI-generated insight",
         insightConfidence: {
@@ -1173,6 +1176,9 @@
         insightsEmpty: "Nicio alertă de preț pentru furnizorii tăi acum.",
         insightsViewAll: "Vezi toate ({count}) →",
         insightsAllTitle: "Toate alertele de preț",
+        fxInsightsAllTitle: "Alerte de curs valutar",
+        insightSourceLabel: "Sursa:",
+        insightSourceOwnHistory: "istoricul plăților tale",
         insightsClose: "Închide",
         insightsAiDisclaimer: "Analiză generată de AI",
         insightConfidence: {

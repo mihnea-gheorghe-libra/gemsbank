@@ -57,6 +57,7 @@ from backend.cards.service import (
 )
 from backend.command_bus import bus
 from backend.database.mongo import get_db
+from backend.fx.service import FxInsightsService, get_fx_insights_service
 from backend.escalations.service import (
     EscalationsService,
     RequestHandoff,
@@ -251,6 +252,7 @@ InvestmentsDep = Annotated[InvestmentsService, Depends(get_investments_service)]
 VendorInsightsDep = Annotated[
     VendorInsightsService, Depends(get_vendor_insights_service)
 ]
+FxInsightsDep = Annotated[FxInsightsService, Depends(get_fx_insights_service)]
 SupportDep = Annotated[SupportService, Depends(get_support_service)]
 AnalyticsDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
 PaymentsAgentDep = Annotated[PaymentsAgentService, Depends(get_payments_agent_service)]
@@ -770,11 +772,13 @@ async def market_snapshot(
 @insights_router.get("")
 async def list_insights(
     service: VendorInsightsDep,
+    fx: FxInsightsDep,
     username: str | None = None,
     limit: int | None = None,
 ) -> dict[str, Any]:
     board = await service.board_for_username(username, limit)
-    return board.model_dump()
+    fx_board = await fx.board_for_username(username, limit)
+    return {**board.model_dump(), "fx": fx_board.model_dump()}
 @agents_router.post("/support/ask")
 async def ask_support(
     actor: CurrentActor, support: SupportDep, payload: AskAgentRequest
