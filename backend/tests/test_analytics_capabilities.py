@@ -109,6 +109,7 @@ async def test_goal_gap_computes_required_and_actual_rate(monkeypatch) -> None:
     goal = Goal(
         user_id="user-1",
         account_id="acc-1",
+        parent_account_id="acc-parent",
         name="Apartment",
         target_minor=1_200_000,
         currency="RON",
@@ -172,6 +173,7 @@ async def test_goal_gap_projects_a_completion_date_and_counts_a_contribution_str
     goal = Goal(
         user_id="user-1",
         account_id="acc-1",
+        parent_account_id="acc-parent",
         name="Trip",
         target_minor=100_000,
         currency="RON",
@@ -201,6 +203,7 @@ async def test_goal_gap_reports_no_projected_date_without_a_positive_saving_rate
     goal = Goal(
         user_id="user-1",
         account_id="acc-1",
+        parent_account_id="acc-parent",
         name="Trip",
         target_minor=100_000,
         currency="RON",
@@ -224,6 +227,7 @@ async def test_goal_gap_projected_date_is_today_once_the_target_is_already_reach
     goal = Goal(
         user_id="user-1",
         account_id="acc-1",
+        parent_account_id="acc-parent",
         name="Trip",
         target_minor=100_000,
         currency="RON",
@@ -257,6 +261,7 @@ async def test_recommendations_includes_goal_projection_and_savings_rate_when_a_
     goal = Goal(
         user_id="user-1",
         account_id="acc-1",
+        parent_account_id="acc-parent",
         name="Trip",
         target_minor=100_000,
         currency="RON",
@@ -305,6 +310,104 @@ async def test_recommendations_flags_the_fastest_growing_category_between_the_la
     assert alert.suggested_value_minor == 5_000
     assert alert.message_data["currentValueFormatted"] == "300,00 RON"
     assert alert.message_data["suggestedValueFormatted"] == "50,00 RON"
+
+
+def _goal_pace_setup(monkeypatch, target_minor: int, progress_minor: int, target_days: int = 400):
+    now = datetime.now(timezone.utc)
+    goal = Goal(
+        user_id="user-1",
+        account_id="acc-1",
+        parent_account_id="acc-parent",
+        name="Trip",
+        target_minor=target_minor,
+        currency="RON",
+        target_date=(now + timedelta(days=target_days)).date(),
+    )
+    progress = _FakeGoalProgress(goal=goal, progress_minor=progress_minor)
+    monkeypatch.setattr(analytics, "get_goals_service", lambda: _FakeGoals(progress))
+    return now, goal
+
+
+async def test_goal_pace_reports_no_goal_found_without_a_goal(monkeypatch) -> None:
+    monkeypatch.setattr(analytics, "get_goals_service", lambda: _FakeGoals(None))
+
+    output = await analytics.resolve_goal_pace(_ACTOR, analytics.GoalPaceInput())
+
+    assert output.status == "no_goal_found"
+
+
+async def test_goal_pace_is_insufficient_data_with_zero_movements(monkeypatch) -> None:
+    now, _ = _goal_pace_setup(monkeypatch, target_minor=100_000, progress_minor=10_000)
+    monkeypatch.setattr(analytics, "get_payments_service", lambda: _FakePayments([]))
+
+    output = await analytics.resolve_goal_pace(_ACTOR, analytics.GoalPaceInput())
+
+    assert output.status == "insufficient-data"
+    assert output.avg_weekly_contribution_minor is None
+    assert output.projected_completion_date is None
+
+
+async def test_goal_pace_is_insufficient_data_below_the_minimum_movement_threshold(
+    monkeypatch,
+) -> None:
+    now, _ = _goal_pace_setup(monkeypatch, target_minor=100_000, progress_minor=10_000)
+    rows = [
+        _row(now - timedelta(days=3), "Self", "savings", 5_000, account_id="acc-1"),
+        _row(now - timedelta(days=10), "Self", "savings", 5_000, account_id="acc-1"),
+    ]
+    monkeypatch.setattr(analytics, "get_payments_service", lambda: _FakePayments(rows))
+
+    output = await analytics.resolve_goal_pace(_ACTOR, analytics.GoalPaceInput())
+
+    assert output.status == "insufficient-data"
+    assert output.movements_observed == 2
+    assert output.avg_weekly_contribution_minor is None
+
+
+async def test_goal_pace_is_completed_once_the_target_is_reached(monkeypatch) -> None:
+    _goal_pace_setup(monkeypatch, target_minor=100_000, progress_minor=150_000)
+    monkeypatch.setattr(analytics, "get_payments_service", lambda: _FakePayments([]))
+
+    output = await analytics.resolve_goal_pace(_ACTOR, analytics.GoalPaceInput())
+
+    assert output.status == "completed"
+    assert output.avg_weekly_contribution_minor is None
+    assert output.projected_completion_date is None
+
+
+async def test_goal_pace_falls_back_to_at_risk_instead_of_an_absurd_date(monkeypatch) -> None:
+    now, goal = _goal_pace_setup(monkeypatch, target_minor=100_000_000, progress_minor=0)
+    rows = [
+        _row(now - timedelta(days=offset), "Self", "savings", 100, account_id="acc-1")
+        for offset in (3, 10, 17)
+    ]
+    monkeypatch.setattr(analytics, "get_payments_service", lambda: _FakePayments(rows))
+
+    output = await analytics.resolve_goal_pace(_ACTOR, analytics.GoalPaceInput())
+
+    assert output.movements_observed == 3
+    assert output.avg_weekly_contribution_minor is not None
+    assert output.avg_weekly_contribution_minor > 0
+    assert output.status == "at-risk"
+    assert output.projected_completion_date is None
+
+
+async def test_goal_pace_projects_an_ok_completion_date_with_enough_contributions(
+    monkeypatch,
+) -> None:
+    now, goal = _goal_pace_setup(monkeypatch, target_minor=100_000, progress_minor=40_000)
+    rows = [
+        _row(now - timedelta(days=offset), "Self", "savings", 20_000, account_id="acc-1")
+        for offset in (3, 10, 17)
+    ]
+    monkeypatch.setattr(analytics, "get_payments_service", lambda: _FakePayments(rows))
+
+    output = await analytics.resolve_goal_pace(_ACTOR, analytics.GoalPaceInput())
+
+    assert output.status == "ok"
+    assert output.movements_observed == 3
+    assert output.avg_weekly_contribution_minor == 60_000 // 8
+    assert output.projected_completion_date is not None
 
 
 async def test_what_changed_detects_a_brand_new_merchant_as_the_cause(monkeypatch) -> None:

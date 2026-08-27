@@ -56,7 +56,7 @@ class ToolCallingAgent:
         if capability.name in self._tool_names:
             return capability.side_effect is SideEffect.READ
         if capability.name in self._proposal_tool_names:
-            return capability.side_effect is SideEffect.MONEY_MOVING
+            return capability.side_effect in (SideEffect.MONEY_MOVING, SideEffect.WRITE)
         return False
 
     def _granted_capability(self, name: str) -> Capability | None:
@@ -187,7 +187,10 @@ class ToolCallingAgent:
                     continue
                 output = await capability.resolve(actor, payload)
                 used.append(capability.name)
-                is_proposal = capability.side_effect is SideEffect.MONEY_MOVING
+                is_proposal = capability.side_effect in (
+                    SideEffect.MONEY_MOVING,
+                    SideEffect.WRITE,
+                )
                 if is_proposal:
                     proposals.append(output.model_dump(by_alias=True))
                 await self._audit(

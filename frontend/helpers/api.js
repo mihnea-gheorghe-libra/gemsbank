@@ -184,10 +184,48 @@
       send("/insights?username=" + encodeURIComponent(username || "")),
 
     getGoalProgress: () => send("/goals/progress"),
-    createGoal: (accountId, name, targetMinorUnits, targetDate) =>
+    getGoalPace: () => send("/goals/pace"),
+    createGoal: (parentAccountId, name, targetMinorUnits, targetDate, initialDepositMinorUnits) =>
       send("/goals", {
         method: "POST",
-        json: { accountId, name, targetMinorUnits, targetDate },
+        json: {
+          parentAccountId,
+          name,
+          targetMinorUnits,
+          targetDate,
+          initialDepositMinorUnits: initialDepositMinorUnits || 0,
+        },
+      }),
+    closeGoal: (goalId) =>
+      send("/goals/" + encodeURIComponent(goalId) + "/close", { method: "POST" }),
+    depositToGoal: (goalId, amountMinorUnits) =>
+      send("/goals/" + encodeURIComponent(goalId) + "/deposit", {
+        method: "POST",
+        json: { amountMinorUnits },
+      }),
+    withdrawFromGoal: (goalId, amountMinorUnits) =>
+      send("/goals/" + encodeURIComponent(goalId) + "/withdraw", {
+        method: "POST",
+        json: { amountMinorUnits },
+      }),
+    getStandingOrder: (goalId) =>
+      send("/goals/" + encodeURIComponent(goalId) + "/standing-order"),
+    createStandingOrder: (goalId, amountMinorUnits, frequency, createdVia) =>
+      send("/goals/" + encodeURIComponent(goalId) + "/standing-order", {
+        method: "POST",
+        json: { amountMinorUnits, frequency, createdVia: createdVia || "user" },
+      }),
+    pauseStandingOrder: (standingOrderId) =>
+      send("/goals/standing-order/" + encodeURIComponent(standingOrderId) + "/pause", {
+        method: "POST",
+      }),
+    resumeStandingOrder: (standingOrderId) =>
+      send("/goals/standing-order/" + encodeURIComponent(standingOrderId) + "/resume", {
+        method: "POST",
+      }),
+    cancelStandingOrder: (standingOrderId) =>
+      send("/goals/standing-order/" + encodeURIComponent(standingOrderId) + "/cancel", {
+        method: "POST",
       }),
 
     askSupport: (question) =>

@@ -59,7 +59,17 @@ from backend.cards.service import (
 )
 from backend.command_bus import bus
 from backend.database.mongo import get_db
-from backend.goals.service import CreateGoal
+from backend.goals.service import (
+    CancelStandingOrder,
+    CloseGoal,
+    CreateGoal,
+    CreateStandingOrder,
+    DepositToGoal,
+    PauseStandingOrder,
+    ResumeStandingOrder,
+    WithdrawFromGoal,
+    get_goals_service,
+)
 from backend.helpers.context import Actor
 from backend.helpers.errors import AuthenticationError
 from backend.investments.service import InvestmentsService, get_investments_service
@@ -231,10 +241,23 @@ class HandoffRequest(BaseModel):
 
 
 class GoalRequest(BaseModel):
-    account_id: str = Field(alias="accountId", min_length=1, max_length=64)
+    parent_account_id: str = Field(alias="parentAccountId", min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=80)
     target_minor: int = Field(alias="targetMinorUnits", gt=0)
     target_date: date = Field(alias="targetDate")
+    initial_deposit_minor: int = Field(default=0, alias="initialDepositMinorUnits", ge=0)
+    model_config = {"populate_by_name": True}
+
+
+class GoalMovementRequest(BaseModel):
+    amount_minor: int = Field(alias="amountMinorUnits", gt=0)
+    model_config = {"populate_by_name": True}
+
+
+class StandingOrderRequest(BaseModel):
+    amount_minor: int = Field(alias="amountMinorUnits", gt=0)
+    frequency: str
+    created_via: str = Field(default="user", alias="createdVia")
     model_config = {"populate_by_name": True}
 
 
@@ -853,10 +876,11 @@ async def create_goal(
     idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
     command = CreateGoal(
-        account_id=payload.account_id,
+        parent_account_id=payload.parent_account_id,
         name=payload.name,
         target_minor=payload.target_minor,
         target_date=payload.target_date,
+        initial_deposit_minor=payload.initial_deposit_minor,
     )
     return await bus.execute(command, actor, idempotency_key)
 
@@ -866,6 +890,99 @@ async def goal_progress(actor: CurrentActor) -> dict[str, Any]:
     capability = get_capabilities_service().get("analytics.goal_gap.get")
     result = await capability.resolve(actor, analytics_capabilities.GoalGapInput())
     return result.model_dump(by_alias=True)
+
+
+@goals_router.get("/pace")
+async def goal_pace(actor: CurrentActor) -> dict[str, Any]:
+    capability = get_capabilities_service().get("analytics.goal_pace.get")
+    result = await capability.resolve(actor, analytics_capabilities.GoalPaceInput())
+    return result.model_dump(by_alias=True)
+
+
+@goals_router.post("/{goal_id}/close")
+async def close_goal(
+    actor: CurrentActor,
+    goal_id: str,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = CloseGoal(goal_id=goal_id)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@goals_router.post("/{goal_id}/deposit")
+async def deposit_to_goal(
+    actor: CurrentActor,
+    goal_id: str,
+    payload: GoalMovementRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = DepositToGoal(goal_id=goal_id, amount_minor=payload.amount_minor)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@goals_router.post("/{goal_id}/withdraw")
+async def withdraw_from_goal(
+    actor: CurrentActor,
+    goal_id: str,
+    payload: GoalMovementRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = WithdrawFromGoal(goal_id=goal_id, amount_minor=payload.amount_minor)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@goals_router.get("/{goal_id}/standing-order")
+async def get_standing_order(actor: CurrentActor, goal_id: str) -> dict[str, Any]:
+    order = await get_goals_service().get_standing_order_for_goal(
+        goal_id, actor.subject_id()
+    )
+    return {"standingOrder": order.public_view() if order else None}
+
+
+@goals_router.post("/{goal_id}/standing-order")
+async def create_standing_order(
+    actor: CurrentActor,
+    goal_id: str,
+    payload: StandingOrderRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = CreateStandingOrder(
+        goal_id=goal_id,
+        amount_minor=payload.amount_minor,
+        frequency=payload.frequency,
+        created_via=payload.created_via,
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@goals_router.post("/standing-order/{standing_order_id}/pause")
+async def pause_standing_order(
+    actor: CurrentActor,
+    standing_order_id: str,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = PauseStandingOrder(standing_order_id=standing_order_id)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@goals_router.post("/standing-order/{standing_order_id}/resume")
+async def resume_standing_order(
+    actor: CurrentActor,
+    standing_order_id: str,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = ResumeStandingOrder(standing_order_id=standing_order_id)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@goals_router.post("/standing-order/{standing_order_id}/cancel")
+async def cancel_standing_order(
+    actor: CurrentActor,
+    standing_order_id: str,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = CancelStandingOrder(standing_order_id=standing_order_id)
+    return await bus.execute(command, actor, idempotency_key)
 
 
 api_router.include_router(onboarding_router)

@@ -62,15 +62,12 @@ class Settings(BaseSettings):
     transactions_page_size: int = 25
     ocr_min_confidence: float = 0.60
 
-    azure_openai_endpoint: str | None = None
-    azure_openai_api_key: str | None = None
-    azure_openai_api_version: str = "2024-10-21"
-    azure_openai_deployment: str | None = None
-
     agent_rate_limit_max_calls: int = 20
     agent_rate_limit_window_seconds: int = 3600
 
     cashflow_low_balance_threshold_minor: int = 0
+
+    standing_orders_poll_seconds: int = 3600
 
     yahoo_chart_base_url: str = "https://query1.finance.yahoo.com"
     frankfurter_base_url: str = "https://api.frankfurter.app"

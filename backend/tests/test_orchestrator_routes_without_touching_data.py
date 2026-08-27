@@ -134,7 +134,13 @@ def test_the_orchestrator_is_given_no_capabilities_only_specialists() -> None:
     _ask(_build(chat, support=support))
 
     offered = {tool["function"]["name"] for tool in chat.calls[0]["tools"]}
-    assert offered == {"ask_support", "ask_analytics", "ask_payments", "escalate_to_human"}
+    assert offered == {
+        "ask_support",
+        "ask_analytics",
+        "ask_payments",
+        "ask_education",
+        "escalate_to_human",
+    }
     assert not any(name.startswith("payments.") for name in offered)
     assert not any(name.startswith("analytics.") for name in offered)
 

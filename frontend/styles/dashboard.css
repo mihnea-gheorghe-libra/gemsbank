@@ -480,18 +480,11 @@
 .dash-bar-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; gap: 6px; }
 .dash-bar-fill { background: var(--color-lime-500); width: 100%; border-radius: 10px 10px 0 0; }
 .dash-bar-label { font-family: var(--font-mono); font-size: 9px; opacity: 0.45; text-align: center; }
-.dash-agent-note { padding: 18px; display: flex; gap: 14px; align-items: flex-start; margin-top: 20px; }
+.dash-agent-note { padding: 18px; display: flex; gap: 14px; align-items: flex-start; }
 .dash-ai-disclaimer { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; color: var(--color-muted); }
 .dash-ai-disclaimer .icon { flex: none; color: var(--color-primary); }
 
-.dash-tip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 18px; }
-.dash-tip-card { padding: 18px; }
-.dash-tip-title { font-size: 14px; font-weight: 600; }
-.dash-tip-toggle {
-  border: none; background: none; padding: 0; font-size: 12px; font-weight: 600;
-  color: var(--color-primary); cursor: pointer;
-}
-.dash-tip-toggle:hover { text-decoration: underline; }
+.dash-edu-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: stretch; }
 .dash-streak-badge {
   display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 4px 10px;
   border-radius: 999px; background: color-mix(in srgb, var(--color-warning) 16%, transparent);
@@ -514,6 +507,10 @@
 .dash-msg-ai { display: flex; gap: 12px; max-width: 82%; }
 .dash-msg-ai-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--color-lime-600); display: block; margin-top: 7px; flex: none; }
 .dash-msg-ai-body { flex: 1; font-size: 14px; line-height: 1.6; }
+.dash-msg-paragraph { margin: 0 0 10px; }
+.dash-msg-paragraph:last-child { margin-bottom: 0; }
+.dash-msg-list { margin: 0 0 10px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.dash-msg-list:last-child { margin-bottom: 0; }
 .dash-prompts-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .dash-chat-input-row { display: flex; gap: 10px; align-items: center; padding: 10px 12px; background: var(--color-surface-muted); box-shadow: var(--shadow-inset); }
 .dash-chat-input { border: 0; background: transparent; flex: 1; min-height: 32px; font: inherit; color: var(--color-text); }
@@ -530,6 +527,26 @@
 .dash-proposal-note { font-size: 12px; line-height: 1.45; color: var(--color-muted); margin: 0 0 12px; }
 .dash-table-card { margin-top: 12px; padding: 14px; max-width: 560px; }
 .dash-chart-card { margin-top: 12px; padding: 16px; max-width: 460px; }
+
+/* ── financial education agent panel ────────────────────────── */
+.dash-edu-panel {
+  padding: 18px; position: relative; overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+.dash-edu-panel::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--color-lime-500), var(--color-primary));
+}
+.dash-edu-panel-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.dash-edu-avatar {
+  width: 36px; height: 36px; border-radius: 50%; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--color-lime-500); color: var(--color-plum-900);
+}
+.dash-edu-title { font-family: var(--font-heading); font-size: 16px; font-weight: 600; color: var(--color-heading); line-height: 1.3; }
+.dash-edu-subtitle { font-size: 11px; color: var(--color-muted); margin-top: 2px; }
+.dash-edu-scroll { max-height: 320px; min-height: 120px; margin-bottom: 14px; }
+.dash-edu-input-row { border-radius: var(--radius-md); }
 
 /* ── agent dock ──────────────────────────────────────────── */
 .dash-dock { position: fixed; right: 26px; bottom: 26px; width: 330px; background: var(--color-bg); z-index: 30; }
@@ -561,7 +578,7 @@
   .dash-sidebar { width: 100%; flex-direction: row; align-items: center; padding: 12px; overflow-x: auto; }
   .dash-sidebar-brand { padding: 0 12px 0 4px; }
   .dash-sidebar-foot { display: none; }
-  .dash-grid-home, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-layout, .dash-settings-grid, .dash-chat-layout, .dash-invest-row {
+  .dash-grid-home, .dash-portfolio-cols, .dash-analytics-cols, .dash-edu-cols, .dash-cards-layout, .dash-settings-grid, .dash-chat-layout, .dash-invest-row {
     grid-template-columns: 1fr;
   }
   .dash-balance-card { grid-row: auto; }

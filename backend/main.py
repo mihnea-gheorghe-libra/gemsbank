@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -36,6 +37,18 @@ from backend.server.routes import api_router
 logger = logging.getLogger(__name__)
 
 
+async def _standing_orders_loop() -> None:
+    goals = get_goals_service()
+    while True:
+        try:
+            executed = await goals.run_due_standing_orders()
+            if executed:
+                logger.info("standing_orders_run", extra={"context": {"executed": executed}})
+        except Exception:
+            logger.exception("standing_orders_loop_failed")
+        await asyncio.sleep(settings.standing_orders_poll_seconds)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
@@ -50,7 +63,9 @@ async def lifespan(app: FastAPI):
     get_exchange_service()
     get_escalations_service()
     await ensure_indexes()
+    standing_orders_task = asyncio.create_task(_standing_orders_loop())
     yield
+    standing_orders_task.cancel()
     await close_investments_clients()
     await close_client()
 

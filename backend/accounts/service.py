@@ -4,7 +4,7 @@ from typing import Any, ClassVar, Protocol
 
 from motor.motor_asyncio import AsyncIOMotorClientSession
 
-from backend.accounts.account import Account, AccountKind
+from backend.accounts.account import Account, AccountKind, AccountStatus
 from backend.accounts.adapters import STARTER_ACCOUNTS, SystemClock
 from backend.accounts.validation import generate_iban, normalise_iban
 from backend.command_bus import Command, CommandBus, CommandResult, bus
@@ -35,6 +35,13 @@ class AccountRepository(Protocol):
     async def get_by_iban(self, iban: str) -> Account | None: ...
 
     async def list_for_user(self, user_id: str) -> list[Account]: ...
+
+    async def set_status(
+        self,
+        account_id: str,
+        status: AccountStatus,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool: ...
 
 
 class Clock(Protocol):
@@ -130,6 +137,15 @@ class AccountsService:
 
     async def owned_accounts(self, user_id: str) -> list[Account]:
         return await self._accounts.list_for_user(user_id)
+
+    async def close_owned(
+        self,
+        account_id: str,
+        user_id: str,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> None:
+        await self.get_owned(account_id, user_id)
+        await self._accounts.set_status(account_id, AccountStatus.CLOSED, session=session)
 
     async def list_for_user(self, user_id: str) -> list[dict[str, Any]]:
         accounts = await self._accounts.list_for_user(user_id)

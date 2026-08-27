@@ -2,6 +2,7 @@ from functools import lru_cache
 
 from backend.agents.adapters import AzureChatCompleter
 from backend.agents.analytics import AnalyticsAgent
+from backend.agents.education import EducationAgent
 from backend.agents.orchestrator import OrchestratedAnswer, Orchestrator
 from backend.agents.payments import PaymentsAgent
 from backend.agents.service import AgentRateLimiter
@@ -38,6 +39,7 @@ def get_orchestrator_service() -> OrchestratorService:
         "support": SupportAgent(chat=chat, capabilities=capabilities, audit=write_audit),
         "analytics": AnalyticsAgent(chat=chat, capabilities=capabilities, audit=write_audit),
         "payments": PaymentsAgent(chat=chat, capabilities=capabilities, audit=write_audit),
+        "education": EducationAgent(chat=chat, capabilities=capabilities, audit=write_audit),
     }
     orchestrator = Orchestrator(chat=chat, workers=workers, audit=write_audit)
     limiter = AgentRateLimiter(

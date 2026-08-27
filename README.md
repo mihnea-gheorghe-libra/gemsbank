@@ -652,9 +652,14 @@ and multi-currency forecasting was never asked for — an explicit v0 cut, not a
 **`backend/goals/`** exists only so `analytics.goal_gap.get` has real data to read — it followed
 the same shape check as every other feature (aggregate, `service.py`, `validation.py`) and the same
 one-write-path rule (`POST /goals` → `bus.execute(CreateGoal(...))`, `backend/goals/service.py`,
-migration `ops/008_goals_schema.js`). v0 is **one active goal per user**, enforced by a unique Mongo
-index on `userId`, not just application code — no listing, editing or closing endpoints, because
-nothing past `goal_gap` needs them yet.
+migration `ops/008_goals_schema.js`). v0 is **one *active* goal per user** — a `Goal` now carries a
+`status` (`active` | `closed`), and the uniqueness is a **partial** Mongo index on `userId` where
+`status: "active"` (`ops/011_goals_status.js`), not application code alone: closing a goal is a real
+state transition (`POST /goals/{id}/close` → `bus.execute(CloseGoal(...))`), never a delete — the
+document stays, just marked closed, matching how every other terminal state in this app works (a
+blocked card, a rejected payment). Closing frees the slot for a new `CreateGoal` the same way it
+always worked; there is still no *edit* endpoint, and still no support for more than one goal at a
+time — replacing one means closing it and creating another, not editing it in place.
 
 `backend/agents/` has three workers and an orchestrator (see below). `SupportAgent` — answers from the
 FAQ/user guide and can look up the signed-in user's own profile, preferences, or active sessions,
@@ -864,7 +869,7 @@ belongs to the suggested-prompt buttons.
 
 `POST /agents/ask` is now the only chat endpoint the frontend calls. `backend/agents/orchestrator.py`
 holds an `Orchestrator` that is deliberately **not** a `ToolCallingAgent` subclass and is handed no
-`CapabilityRegistry` at all — its only tools are the three workers plus `escalate_to_human`. It
+`CapabilityRegistry` at all — its only tools are the four workers plus `escalate_to_human`. It
 cannot read a balance, resolve an IBAN or touch Mongo even by accident, which is §7's "never calls
 the DB" enforced by construction rather than by prompt.
 
@@ -920,13 +925,61 @@ two turns of history resolved to the right account. Zero movement in `journalTra
 `payments` across all of it.
 
 Not done: no mandates, no `settings.security.get` (see above), no
-multi-goal support — the Analytics screen's "Set a goal" dialog only ever offers to create one,
-and `backend/goals/` still enforces exactly one active goal per user with no edit or close
-endpoint, so replacing a goal today still means deleting the Mongo document by hand.
+multi-goal support — the Analytics screen's "Set a goal" dialog only ever offers to create one, and
+`backend/goals/` still enforces exactly one *active* goal per user. Replacing one no longer needs a
+manual Mongo edit (see the "Financial education" section below for the close endpoint), but there is
+still no edit-in-place: closing and re-creating is the only path.
 `PaymentsAgent` cannot see transactions, cards or
 settings, and `payments.transactions.list` is still not in the registry — add it there, not as a
 new pathway, when a worker needs it. The proposal is stateless: `proposalId` is a display string,
 nothing persists it, and the confirmation step re-validates from scratch rather than trusting it.
+
+### Financial education — a RAG-backed advisor and in-chat goal setting
+
+The Financial Education screen's earlier static tip grid was replaced by a real conversation panel
+(`EducationChatPanel` in `frontend/components/dashboard-screens.jsx`), backed by a fourth
+orchestrator worker, `EducationAgent` (`backend/agents/education.py`). This is the same class of
+deliberate, explicitly-approved deviation past `PROMPT.md` §4 as the rest of the agent layer — a new
+caller of the existing seams, not a new pathway.
+
+`EducationAgent` reads from four capabilities, all `SideEffect.READ`:
+`education.docs.search` (a small hand-authored corpus — emergency funds, budgeting, compound
+interest, inflation, term deposits, debt payoff order, diversification, the deposit guarantee
+scheme, APR — in `backend/capabilities/education_docs.py`, scored by the same bag-of-words matcher
+`support_docs.py` already uses, so it degrades to "here's the whole corpus" rather than inventing
+an answer when nothing scores), plus `analytics.goal_gap.get`, `analytics.cashflow_forecast.get`
+and `payments.balances.get` reused as-is for personalised advice grounded in the customer's own
+numbers.
+
+**Setting a goal from the conversation** is the one new write-shaped capability,
+`goals.create.propose` (`backend/capabilities/education.py::resolve_goal_proposal`), built the same
+way `payments.transfer.propose` was: it validates and computes a fully-formed goal (account, name,
+target amount, target date) and **returns a proposal, never persists one** — no call to
+`GoalsService.add`, mirrored by `backend/tests/test_education_capabilities.py`'s "never creates the
+goal" proof, the same shape as `test_payments_agent_proposes_but_never_pays.py`. The customer
+confirms it as a card in the chat panel, which calls the existing `POST /goals` — the same command
+`SetGoalDialog` already uses — so a goal is still only ever created through one path.
+
+The one piece of shared infrastructure this needed: `ToolCallingAgent`'s proposal path
+(`backend/agents/base.py`) only recognised `SideEffect.MONEY_MOVING` as proposable. `goals.create`
+is not money movement, so `SideEffect.WRITE` (already in the enum, unused until now) is now
+accepted there too, additive and backward compatible — every existing `MONEY_MOVING` test is
+unaffected (`backend/tests/test_education_agent_scoping.py` proves the widening only reaches a
+capability actually granted to an agent's `proposal_tool_names`, same as before). This preserves the
+"agent proposes, human confirms" rule the analytics goal card already drew a hard line at, rather
+than letting an agent write to Mongo directly.
+
+**Closing a goal** (`POST /goals/{id}/close` → `bus.execute(CloseGoal(...))`,
+`backend/goals/service.py`) is the piece this unblocked: since only one *active* goal is allowed per
+user, the chat panel's "set a new goal" path needed a real way out of an existing one, instead of a
+manual Mongo edit. `Goal` gained a `status` (`active`/`closed`); the row is never deleted, only
+transitioned, and the uniqueness moved from a plain unique index to a **partial** one on `userId`
+where `status: "active"` (`ops/011_goals_status.js`) — so the DB itself still enforces "one active
+goal," not just application code, exactly as before. `GoalProgressCard`
+(`frontend/components/dashboard-screens.jsx`) exposes this as a "Close this goal" link behind a
+confirm dialog; once closed, `GET /goals/progress` naturally reports "no goal" again (it already
+reads through the same `status`-filtered `get_for_user`), so the existing "Set a goal" flow just
+works without any new frontend state.
 
 ## What the payments screen does not do yet
 

@@ -26,6 +26,9 @@ SYSTEM_PROMPT = (
     "forecasts, savings-goal progress, a recap of a month, why a spending category changed.\n"
     "- ask_support: how the app itself works, from its FAQ and user guide, plus the customer's "
     "own profile, language/theme preference and active sign-in sessions.\n"
+    "- ask_education: general financial-literacy explanations (emergency funds, budgeting, "
+    "compound interest, inflation, debt, deposit guarantee), personalised savings advice, and "
+    "preparing a savings goal for the customer to confirm.\n"
     f"- {ESCALATION_TOOL}: hand over to a human being.\n"
     "Call exactly one specialist when one can answer it alone — that is the normal case. Call "
     "two or three only when the question genuinely needs different specialities at once (for "
@@ -48,6 +51,7 @@ WORKER_TOOLS = {
     "ask_payments": "payments",
     "ask_analytics": "analytics",
     "ask_support": "support",
+    "ask_education": "education",
 }
 
 SCREEN_HINTS = {
@@ -57,6 +61,10 @@ SCREEN_HINTS = {
     "portfolio": "the Portfolio screen, which shows accounts, deposits and investments",
     "cards": "the Cards screen",
     "settings": "the Settings screen",
+    "education": (
+        "the Financial Education screen, which offers general financial-literacy content and "
+        "savings-goal help"
+    ),
 }
 
 

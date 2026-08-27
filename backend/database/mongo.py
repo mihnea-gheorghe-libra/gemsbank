@@ -82,6 +82,10 @@ def goals_collection() -> AsyncIOMotorCollection:
     return get_db()["goals"]
 
 
+def standing_orders_collection() -> AsyncIOMotorCollection:
+    return get_db()["standingOrders"]
+
+
 def handoffs_collection() -> AsyncIOMotorCollection:
     return get_db()["supportHandoffs"]
 
@@ -159,7 +163,22 @@ async def ensure_indexes() -> None:
     await cards_collection().create_index([("userId", ASCENDING)], name="ix_user")
     await cards_collection().create_index([("createdAt", ASCENDING)], name="ix_created")
 
-    await goals_collection().create_index([("userId", ASCENDING)], unique=True, name="uq_user")
+    await goals_collection().create_index(
+        [("userId", ASCENDING)],
+        unique=True,
+        name="uq_user_active",
+        partialFilterExpression={"status": "active"},
+    )
+
+    await standing_orders_collection().create_index(
+        [("goalId", ASCENDING)],
+        unique=True,
+        name="uq_goal_open",
+        partialFilterExpression={"status": {"$in": ["active", "paused"]}},
+    )
+    await standing_orders_collection().create_index(
+        [("status", ASCENDING), ("nextRunAt", ASCENDING)], name="ix_due"
+    )
 
     await agent_rate_limits_collection().create_index(
         [("windowStart", ASCENDING)],

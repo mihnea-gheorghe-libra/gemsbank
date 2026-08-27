@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from backend.auth.service import get_auth_service
 from backend.capabilities import analytics
+from backend.capabilities import education as education_capabilities
 from backend.capabilities import payments as payments_capabilities
 from backend.capabilities.registry import (
     Capability,
@@ -181,6 +182,16 @@ def get_capabilities_service() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            name="analytics.goal_pace.get",
+            input_schema=analytics.GoalPaceInput,
+            output_schema=analytics.GoalPaceOutput,
+            side_effect=SideEffect.READ,
+            required_scope="goals:read",
+            resolver=analytics.resolve_goal_pace,
+        )
+    )
+    registry.register(
+        Capability(
             name="analytics.month_recap.get",
             input_schema=analytics.MonthRecapInput,
             output_schema=analytics.MonthRecapOutput,
@@ -237,6 +248,36 @@ def get_capabilities_service() -> CapabilityRegistry:
             side_effect=SideEffect.MONEY_MOVING,
             required_scope="payments:propose",
             resolver=payments_capabilities.resolve_transfer_proposal,
+        )
+    )
+    registry.register(
+        Capability(
+            name="education.docs.search",
+            input_schema=education_capabilities.EducationSearchInput,
+            output_schema=education_capabilities.EducationSearchOutput,
+            side_effect=SideEffect.READ,
+            required_scope="education:read",
+            resolver=education_capabilities.resolve_education_search,
+        )
+    )
+    registry.register(
+        Capability(
+            name="goals.create.propose",
+            input_schema=education_capabilities.GoalProposalInput,
+            output_schema=education_capabilities.GoalProposalOutput,
+            side_effect=SideEffect.WRITE,
+            required_scope="goals:propose",
+            resolver=education_capabilities.resolve_goal_proposal,
+        )
+    )
+    registry.register(
+        Capability(
+            name="goals.standingOrder.propose",
+            input_schema=education_capabilities.StandingOrderProposalInput,
+            output_schema=education_capabilities.StandingOrderProposalOutput,
+            side_effect=SideEffect.WRITE,
+            required_scope="goals:propose",
+            resolver=education_capabilities.resolve_standing_order_proposal,
         )
     )
     return registry

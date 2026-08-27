@@ -1,21 +1,28 @@
+import calendar
+import logging
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
-from typing import ClassVar, Protocol
+from typing import ClassVar, Literal, Protocol
 
 from motor.motor_asyncio import AsyncIOMotorClientSession
+from pydantic import Field
 
+from backend.accounts.account import AccountKind
 from backend.accounts.service import AccountsService, get_accounts_service
 from backend.command_bus import Command, CommandBus, CommandResult, bus
 from backend.database.records import AuditRecord, DomainEvent
-from backend.database.repositories import MongoGoalRepository
+from backend.database.repositories import MongoGoalRepository, MongoStandingOrderRepository
 from backend.goals import validation
 from backend.goals.goal import Goal
-from backend.helpers.context import ActorContext
-from backend.helpers.errors import ConflictError
+from backend.goals.standing_order import StandingOrder
+from backend.helpers.context import Actor, ActorContext
+from backend.helpers.errors import ConflictError, IllegalTransitionError, NotFoundError
 from backend.ledger.service import LedgerService, get_ledger_service
 
-__all__ = ["Goal", "GoalProgress", "GoalsService", "get_goals_service"]
+__all__ = ["Goal", "GoalProgress", "GoalsService", "StandingOrder", "get_goals_service"]
+
+logger = logging.getLogger(__name__)
 
 
 class GoalRepository(Protocol):
@@ -27,14 +34,63 @@ class GoalRepository(Protocol):
 
     async def get_for_user(self, user_id: str) -> Goal | None: ...
 
+    async def close(
+        self,
+        goal_id: str,
+        user_id: str,
+        closed_at: datetime,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool: ...
+
+
+class StandingOrderRepository(Protocol):
+    async def add(
+        self, order: StandingOrder, session: AsyncIOMotorClientSession | None = None
+    ) -> None: ...
+
+    async def get(self, order_id: str) -> StandingOrder | None: ...
+
+    async def get_open_for_goal(self, goal_id: str) -> StandingOrder | None: ...
+
+    async def list_due(self, now: datetime, limit: int = 200) -> list[StandingOrder]: ...
+
+    async def set_status(
+        self,
+        order_id: str,
+        user_id: str,
+        status: str,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool: ...
+
+    async def record_run(
+        self,
+        order_id: str,
+        next_run_at: datetime,
+        ran_at: datetime,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> None: ...
+
+    async def record_failure(
+        self,
+        order_id: str,
+        reason: str,
+        failed_at: datetime,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> None: ...
+
 
 class Clock(Protocol):
     def today(self) -> date: ...
+
+    def now(self) -> datetime: ...
 
 
 class SystemClock:
     def today(self) -> date:
         return datetime.now(timezone.utc).date()
+
+    def now(self) -> datetime:
+        return datetime.now(timezone.utc)
 
 
 @dataclass(slots=True, frozen=True)
@@ -43,26 +99,104 @@ class GoalProgress:
     progress_minor: int
 
 
+def _advance(when: datetime, frequency: str) -> datetime:
+    if frequency == "weekly":
+        return when + timedelta(days=7)
+    month_index = when.month  # advance exactly one month
+    year = when.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(when.day, calendar.monthrange(year, month)[1])
+    return when.replace(year=year, month=month, day=day)
+
+
 class CreateGoal(Command):
     command_name: ClassVar[str] = "goals.create"
 
-    account_id: str
+    parent_account_id: str
     name: str
     target_minor: int
     target_date: date
+    initial_deposit_minor: int = Field(default=0, ge=0)
+
+
+class CloseGoal(Command):
+    command_name: ClassVar[str] = "goals.close"
+
+    goal_id: str
+
+
+class DepositToGoal(Command):
+    command_name: ClassVar[str] = "goals.deposit"
+
+    goal_id: str
+    amount_minor: int
+
+
+class WithdrawFromGoal(Command):
+    command_name: ClassVar[str] = "goals.withdraw"
+
+    goal_id: str
+    amount_minor: int
+
+
+class CreateStandingOrder(Command):
+    command_name: ClassVar[str] = "goals.standing_order.create"
+
+    goal_id: str
+    amount_minor: int
+    frequency: str
+    created_via: Literal["user", "agent-suggestion-confirmed"] = "user"
+
+
+class PauseStandingOrder(Command):
+    command_name: ClassVar[str] = "goals.standing_order.pause"
+
+    standing_order_id: str
+
+
+class ResumeStandingOrder(Command):
+    command_name: ClassVar[str] = "goals.standing_order.resume"
+
+    standing_order_id: str
+
+
+class CancelStandingOrder(Command):
+    command_name: ClassVar[str] = "goals.standing_order.cancel"
+
+    standing_order_id: str
+
+
+class RunStandingOrder(Command):
+    command_name: ClassVar[str] = "goals.standing_order.run"
+
+    standing_order_id: str
 
 
 class GoalsService:
     def __init__(
-        self, goals: GoalRepository, accounts: AccountsService, ledger: LedgerService, clock: Clock
+        self,
+        goals: GoalRepository,
+        standing_orders: StandingOrderRepository,
+        accounts: AccountsService,
+        ledger: LedgerService,
+        clock: Clock,
     ) -> None:
         self._goals = goals
+        self._standing_orders = standing_orders
         self._accounts = accounts
         self._ledger = ledger
         self._clock = clock
 
     def register(self, command_bus: CommandBus) -> None:
         command_bus.register(CreateGoal, self._handle_create)
+        command_bus.register(CloseGoal, self._handle_close)
+        command_bus.register(DepositToGoal, self._handle_deposit)
+        command_bus.register(WithdrawFromGoal, self._handle_withdraw)
+        command_bus.register(CreateStandingOrder, self._handle_create_standing_order)
+        command_bus.register(PauseStandingOrder, self._handle_pause_standing_order)
+        command_bus.register(ResumeStandingOrder, self._handle_resume_standing_order)
+        command_bus.register(CancelStandingOrder, self._handle_cancel_standing_order)
+        command_bus.register(RunStandingOrder, self._handle_run_standing_order)
 
     async def get_for_user(self, user_id: str) -> Goal | None:
         return await self._goals.get_for_user(user_id)
@@ -74,6 +208,16 @@ class GoalsService:
         account = await self._accounts.get_owned(goal.account_id, user_id)
         balances = await self._ledger.balances_of([account.id])
         return GoalProgress(goal=goal, progress_minor=balances.get(account.id, 0))
+
+    async def get_standing_order_for_goal(
+        self, goal_id: str, user_id: str
+    ) -> StandingOrder | None:
+        goal = await self._goals.get(goal_id)
+        if goal is None or goal.user_id != user_id:
+            raise NotFoundError(
+                "That goal does not belong to you.", details={"field": "goalId"}
+            )
+        return await self._standing_orders.get_open_for_goal(goal.id)
 
     async def _handle_create(
         self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
@@ -88,17 +232,51 @@ class GoalsService:
                 details={"field": "goalId", "existingGoalId": existing.id},
             )
 
-        account = await self._accounts.get_owned(command.account_id, user_id)
+        parent = await self._accounts.get_owned(command.parent_account_id, user_id)
+        parent.guard_can_send()
         today = self._clock.today()
+        name = validation.normalise_name(command.name)
+        target_minor = validation.normalise_target_minor(command.target_minor)
+        target_date = validation.normalise_target_date(command.target_date, today)
+
+        pot = await self._accounts.open_account(
+            user_id=user_id,
+            holder_name=parent.holder_name,
+            currency=parent.currency,
+            kind=AccountKind.SAVINGS,
+            label=name,
+            session=session,
+        )
+
         goal = Goal(
             user_id=user_id,
-            account_id=account.id,
-            name=validation.normalise_name(command.name),
-            target_minor=validation.normalise_target_minor(command.target_minor),
-            currency=account.currency,
-            target_date=validation.normalise_target_date(command.target_date, today),
+            account_id=pot.id,
+            parent_account_id=parent.id,
+            name=name,
+            target_minor=target_minor,
+            currency=parent.currency,
+            target_date=target_date,
         )
         await self._goals.add(goal, session=session)
+
+        if command.initial_deposit_minor > 0:
+            amount = validation.normalise_movement_minor(
+                command.initial_deposit_minor, "initialDepositMinorUnits"
+            )
+            balance = await self._ledger.balance_of(parent.id)
+            parent.guard_sufficient(balance, amount)
+            await self._ledger.transfer(
+                source_account_id=parent.id,
+                target_account_id=pot.id,
+                amount_minor=amount,
+                currency=parent.currency,
+                reference="Initial savings deposit",
+                counterparty=name,
+                category="savings",
+                correlation_id=context.correlation_id,
+                actor=context.actor.label(),
+                session=session,
+            )
 
         return CommandResult(
             data=goal.public_view(),
@@ -113,11 +291,405 @@ class GoalsService:
             ],
         )
 
+    async def _load_active_owned_goal(self, goal_id: str, user_id: str) -> Goal:
+        goal = await self._goals.get(goal_id)
+        if goal is None or goal.user_id != user_id:
+            raise NotFoundError(
+                "That goal does not belong to you.", details={"field": "goalId"}
+            )
+        if goal.status != "active":
+            raise IllegalTransitionError(
+                "That goal is already closed.", details={"field": "goalId"}
+            )
+        return goal
+
+    async def _handle_deposit(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, DepositToGoal)
+        user_id = context.actor.subject_id()
+        goal = await self._load_active_owned_goal(command.goal_id, user_id)
+        amount = validation.normalise_movement_minor(command.amount_minor, "amountMinorUnits")
+
+        parent = await self._accounts.get_owned(goal.parent_account_id, user_id)
+        parent.guard_can_send()
+        pot = await self._accounts.get_owned(goal.account_id, user_id)
+        pot.guard_can_receive()
+
+        parent_balance = await self._ledger.balance_of(parent.id)
+        parent.guard_sufficient(parent_balance, amount)
+        pot_balance = await self._ledger.balance_of(pot.id)
+
+        transaction = await self._ledger.transfer(
+            source_account_id=parent.id,
+            target_account_id=pot.id,
+            amount_minor=amount,
+            currency=goal.currency,
+            reference="Savings deposit",
+            counterparty=goal.name,
+            category="savings",
+            correlation_id=context.correlation_id,
+            actor=context.actor.label(),
+            session=session,
+        )
+
+        after = {"progressMinorUnits": pot_balance + amount, "journalTransactionId": transaction.id}
+        return CommandResult(
+            data=goal.public_view() | after,
+            audit=AuditRecord(
+                action="goals.deposited",
+                entity_type="goal",
+                entity_id=goal.id,
+                after=after,
+            ),
+            events=[
+                DomainEvent(
+                    name="goals.deposited",
+                    aggregate_type="goal",
+                    aggregate_id=goal.id,
+                    payload=after,
+                )
+            ],
+        )
+
+    async def _handle_withdraw(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, WithdrawFromGoal)
+        user_id = context.actor.subject_id()
+        goal = await self._load_active_owned_goal(command.goal_id, user_id)
+        amount = validation.normalise_movement_minor(command.amount_minor, "amountMinorUnits")
+
+        pot = await self._accounts.get_owned(goal.account_id, user_id)
+        pot.guard_can_send()
+        parent = await self._accounts.get_owned(goal.parent_account_id, user_id)
+        parent.guard_can_receive()
+
+        pot_balance = await self._ledger.balance_of(pot.id)
+        pot.guard_sufficient(pot_balance, amount)
+
+        transaction = await self._ledger.transfer(
+            source_account_id=pot.id,
+            target_account_id=parent.id,
+            amount_minor=amount,
+            currency=goal.currency,
+            reference="Savings withdrawal",
+            counterparty=parent.label,
+            category="savings",
+            correlation_id=context.correlation_id,
+            actor=context.actor.label(),
+            session=session,
+        )
+
+        after = {"progressMinorUnits": pot_balance - amount, "journalTransactionId": transaction.id}
+        return CommandResult(
+            data=goal.public_view() | after,
+            audit=AuditRecord(
+                action="goals.withdrawn",
+                entity_type="goal",
+                entity_id=goal.id,
+                after=after,
+            ),
+            events=[
+                DomainEvent(
+                    name="goals.withdrawn",
+                    aggregate_type="goal",
+                    aggregate_id=goal.id,
+                    payload=after,
+                )
+            ],
+        )
+
+    async def _handle_close(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, CloseGoal)
+        user_id = context.actor.subject_id()
+
+        goal = await self._goals.get(command.goal_id)
+        if goal is None or goal.user_id != user_id:
+            raise NotFoundError(
+                "That goal does not belong to you.", details={"field": "goalId"}
+            )
+        if goal.status != "active":
+            raise IllegalTransitionError(
+                "That goal is already closed.", details={"field": "goalId"}
+            )
+
+        pot = await self._accounts.get_owned(goal.account_id, user_id)
+        parent = await self._accounts.get_owned(goal.parent_account_id, user_id)
+        swept_minor = 0
+        pot_balance = await self._ledger.balance_of(pot.id)
+        if pot_balance > 0:
+            pot.guard_can_send()
+            await self._ledger.transfer(
+                source_account_id=pot.id,
+                target_account_id=parent.id,
+                amount_minor=pot_balance,
+                currency=goal.currency,
+                reference="Savings pot closed — balance returned",
+                counterparty=parent.label,
+                category="savings",
+                correlation_id=context.correlation_id,
+                actor=context.actor.label(),
+                session=session,
+            )
+            swept_minor = pot_balance
+
+        await self._accounts.close_owned(pot.id, user_id, session=session)
+
+        open_order = await self._standing_orders.get_open_for_goal(goal.id)
+        if open_order is not None:
+            await self._standing_orders.set_status(
+                open_order.id, user_id, "cancelled", session=session
+            )
+
+        closed_at = datetime.now(timezone.utc)
+        closed = await self._goals.close(goal.id, user_id, closed_at, session=session)
+        if not closed:
+            raise IllegalTransitionError(
+                "That goal is already closed.", details={"field": "goalId"}
+            )
+
+        before = goal.public_view()
+        after = before | {"status": "closed", "sweptBackMinorUnits": swept_minor}
+        return CommandResult(
+            data=after,
+            audit=AuditRecord(
+                action="goals.closed",
+                entity_type="goal",
+                entity_id=goal.id,
+                before=before,
+                after=after,
+            ),
+            events=[
+                DomainEvent(name="goals.closed", aggregate_type="goal", aggregate_id=goal.id)
+            ],
+        )
+
+    async def _handle_create_standing_order(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, CreateStandingOrder)
+        user_id = context.actor.subject_id()
+        goal = await self._load_active_owned_goal(command.goal_id, user_id)
+
+        existing = await self._standing_orders.get_open_for_goal(goal.id)
+        if existing is not None:
+            raise ConflictError(
+                "This goal already has an open standing order.",
+                details={"field": "goalId", "existingStandingOrderId": existing.id},
+            )
+
+        amount = validation.normalise_movement_minor(command.amount_minor, "amountMinorUnits")
+        frequency = validation.normalise_frequency(command.frequency)
+        parent = await self._accounts.get_owned(goal.parent_account_id, user_id)
+
+        order = StandingOrder(
+            goal_id=goal.id,
+            user_id=user_id,
+            source_account_id=parent.id,
+            target_account_id=goal.account_id,
+            amount_minor=amount,
+            currency=goal.currency,
+            frequency=frequency,
+            next_run_at=_advance(self._clock.now(), frequency),
+            created_via=command.created_via,
+        )
+        await self._standing_orders.add(order, session=session)
+
+        return CommandResult(
+            data=order.public_view(),
+            audit=AuditRecord(
+                action="goals.standing_order.created",
+                entity_type="standingOrder",
+                entity_id=order.id,
+                after=order.public_view(),
+            ),
+            events=[
+                DomainEvent(
+                    name="goals.standing_order.created",
+                    aggregate_type="standingOrder",
+                    aggregate_id=order.id,
+                )
+            ],
+        )
+
+    async def _transition_standing_order(
+        self,
+        standing_order_id: str,
+        context: ActorContext,
+        session: AsyncIOMotorClientSession,
+        new_status: str,
+        action: str,
+    ) -> CommandResult:
+        user_id = context.actor.subject_id()
+        order = await self._standing_orders.get(standing_order_id)
+        if order is None or order.user_id != user_id:
+            raise NotFoundError(
+                "That standing order does not belong to you.",
+                details={"field": "standingOrderId"},
+            )
+        changed = await self._standing_orders.set_status(
+            order.id, user_id, new_status, session=session
+        )
+        if not changed:
+            raise IllegalTransitionError(
+                "That standing order can no longer be changed.",
+                details={"field": "standingOrderId", "status": order.status},
+            )
+        after = order.public_view() | {"status": new_status}
+        return CommandResult(
+            data=after,
+            audit=AuditRecord(
+                action=action,
+                entity_type="standingOrder",
+                entity_id=order.id,
+                before=order.public_view(),
+                after=after,
+            ),
+        )
+
+    async def _handle_pause_standing_order(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, PauseStandingOrder)
+        return await self._transition_standing_order(
+            command.standing_order_id, context, session, "paused", "goals.standing_order.paused"
+        )
+
+    async def _handle_resume_standing_order(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, ResumeStandingOrder)
+        return await self._transition_standing_order(
+            command.standing_order_id, context, session, "active", "goals.standing_order.resumed"
+        )
+
+    async def _handle_cancel_standing_order(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, CancelStandingOrder)
+        return await self._transition_standing_order(
+            command.standing_order_id,
+            context,
+            session,
+            "cancelled",
+            "goals.standing_order.cancelled",
+        )
+
+    async def _handle_run_standing_order(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, RunStandingOrder)
+        order = await self._standing_orders.get(command.standing_order_id)
+        if order is None or order.status != "active":
+            return CommandResult(
+                data={"status": "skipped", "reason": "not_active"},
+                audit=AuditRecord(
+                    action="goals.standing_order.skipped",
+                    entity_type="standingOrder",
+                    entity_id=command.standing_order_id,
+                    after={"reason": "not_active"},
+                ),
+            )
+
+        now = self._clock.now()
+        source = await self._accounts.get_owned(order.source_account_id, order.user_id)
+        target = await self._accounts.get_owned(order.target_account_id, order.user_id)
+
+        if source.status.value != "active":
+            await self._standing_orders.record_failure(
+                order.id, "source_account_inactive", now, session=session
+            )
+            return CommandResult(
+                data={"status": "skipped", "reason": "source_account_inactive"},
+                audit=AuditRecord(
+                    action="goals.standing_order.skipped",
+                    entity_type="standingOrder",
+                    entity_id=order.id,
+                    after={"reason": "source_account_inactive"},
+                ),
+            )
+
+        balance = await self._ledger.balance_of(source.id)
+        if balance < order.amount_minor:
+            await self._standing_orders.record_failure(
+                order.id, "insufficient_funds", now, session=session
+            )
+            return CommandResult(
+                data={"status": "skipped", "reason": "insufficient_funds"},
+                audit=AuditRecord(
+                    action="goals.standing_order.skipped",
+                    entity_type="standingOrder",
+                    entity_id=order.id,
+                    after={"reason": "insufficient_funds"},
+                ),
+            )
+
+        transaction = await self._ledger.transfer(
+            source_account_id=source.id,
+            target_account_id=target.id,
+            amount_minor=order.amount_minor,
+            currency=order.currency,
+            reference="Standing order",
+            counterparty=target.label,
+            category="savings",
+            correlation_id=context.correlation_id,
+            actor=context.actor.label(),
+            session=session,
+        )
+        next_run_at = _advance(order.next_run_at, order.frequency)
+        await self._standing_orders.record_run(order.id, next_run_at, now, session=session)
+
+        after = {
+            "journalTransactionId": transaction.id,
+            "amountMinorUnits": order.amount_minor,
+            "nextRunAt": next_run_at.isoformat(),
+        }
+        return CommandResult(
+            data={"status": "executed"} | after,
+            audit=AuditRecord(
+                action="goals.standing_order.executed",
+                entity_type="standingOrder",
+                entity_id=order.id,
+                after=after,
+            ),
+            events=[
+                DomainEvent(
+                    name="goals.standing_order.executed",
+                    aggregate_type="standingOrder",
+                    aggregate_id=order.id,
+                    payload=after,
+                )
+            ],
+        )
+
+    async def run_due_standing_orders(self) -> int:
+        now = self._clock.now()
+        due = await self._standing_orders.list_due(now)
+        executed = 0
+        for order in due:
+            actor = Actor(kind="system", id="standing-orders-job", on_behalf_of=order.user_id)
+            idempotency_key = f"{order.id}:{order.next_run_at.date().isoformat()}"
+            try:
+                await bus.execute(
+                    RunStandingOrder(standing_order_id=order.id), actor, idempotency_key
+                )
+                executed += 1
+            except Exception:
+                logger.exception(
+                    "standing_order_run_failed",
+                    extra={"context": {"standingOrderId": order.id}},
+                )
+        return executed
+
 
 @lru_cache(maxsize=1)
 def get_goals_service() -> GoalsService:
     service = GoalsService(
         goals=MongoGoalRepository(),
+        standing_orders=MongoStandingOrderRepository(),
         accounts=get_accounts_service(),
         ledger=get_ledger_service(),
         clock=SystemClock(),

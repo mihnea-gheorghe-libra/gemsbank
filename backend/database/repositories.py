@@ -30,10 +30,12 @@ from backend.database.mongo import (
     payments_collection,
     recovery_cases_collection,
     sessions_collection,
+    standing_orders_collection,
     users_collection,
 )
 from backend.escalations.handoff import Handoff, HandoffStatus
 from backend.goals.goal import Goal
+from backend.goals.standing_order import StandingOrder
 from backend.helpers.errors import ConflictError
 from backend.ledger.journal import JournalEntry, JournalTransaction, TransactionKind
 from backend.onboarding.kyc import (
@@ -466,17 +468,31 @@ class MongoAccountRepository:
         found = accounts_collection().find({"userId": user_id}).sort("openedAt", ASCENDING)
         return [_account_from_bson(raw) async for raw in found]
 
+    async def set_status(
+        self,
+        account_id: str,
+        status: AccountStatus,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool:
+        result = await accounts_collection().update_one(
+            {"_id": account_id}, {"$set": {"status": status.value}}, session=session
+        )
+        return result.modified_count == 1
+
 
 def _goal_to_bson(goal: Goal) -> dict[str, Any]:
     return {
         "_id": goal.id,
         "userId": goal.user_id,
         "accountId": goal.account_id,
+        "parentAccountId": goal.parent_account_id,
         "name": goal.name,
         "targetMinorUnits": goal.target_minor,
         "currency": goal.currency,
         "targetDate": datetime.combine(goal.target_date, datetime.min.time(), tzinfo=timezone.utc),
+        "status": goal.status,
         "createdAt": goal.created_at,
+        "closedAt": goal.closed_at,
     }
 
 
@@ -485,11 +501,14 @@ def _goal_from_bson(raw: dict[str, Any]) -> Goal:
         id=raw["_id"],
         user_id=raw["userId"],
         account_id=raw["accountId"],
+        parent_account_id=raw.get("parentAccountId", raw["accountId"]),
         name=raw["name"],
         target_minor=raw["targetMinorUnits"],
         currency=raw["currency"],
         target_date=raw["targetDate"].date(),
+        status=raw.get("status", "active"),
         created_at=raw["createdAt"],
+        closed_at=raw.get("closedAt"),
     )
 
 
@@ -508,8 +527,144 @@ class MongoGoalRepository:
         return _goal_from_bson(raw) if raw else None
 
     async def get_for_user(self, user_id: str) -> Goal | None:
-        raw = await goals_collection().find_one({"userId": user_id})
+        raw = await goals_collection().find_one(
+            {"userId": user_id, "status": {"$ne": "closed"}}
+        )
         return _goal_from_bson(raw) if raw else None
+
+    async def close(
+        self,
+        goal_id: str,
+        user_id: str,
+        closed_at: datetime,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool:
+        result = await goals_collection().update_one(
+            {"_id": goal_id, "userId": user_id, "status": {"$ne": "closed"}},
+            {"$set": {"status": "closed", "closedAt": closed_at}},
+            session=session,
+        )
+        return result.modified_count == 1
+
+
+def _standing_order_to_bson(order: StandingOrder) -> dict[str, Any]:
+    return {
+        "_id": order.id,
+        "goalId": order.goal_id,
+        "userId": order.user_id,
+        "sourceAccountId": order.source_account_id,
+        "targetAccountId": order.target_account_id,
+        "amountMinorUnits": order.amount_minor,
+        "currency": order.currency,
+        "frequency": order.frequency,
+        "nextRunAt": order.next_run_at,
+        "status": order.status,
+        "createdVia": order.created_via,
+        "createdAt": order.created_at,
+        "updatedAt": order.updated_at,
+        "lastRunAt": order.last_run_at,
+        "lastFailureReason": order.last_failure_reason,
+    }
+
+
+def _standing_order_from_bson(raw: dict[str, Any]) -> StandingOrder:
+    return StandingOrder(
+        id=raw["_id"],
+        goal_id=raw["goalId"],
+        user_id=raw["userId"],
+        source_account_id=raw["sourceAccountId"],
+        target_account_id=raw["targetAccountId"],
+        amount_minor=raw["amountMinorUnits"],
+        currency=raw["currency"],
+        frequency=raw["frequency"],
+        next_run_at=raw["nextRunAt"],
+        status=raw["status"],
+        created_via=raw["createdVia"],
+        created_at=raw["createdAt"],
+        updated_at=raw["updatedAt"],
+        last_run_at=raw.get("lastRunAt"),
+        last_failure_reason=raw.get("lastFailureReason"),
+    )
+
+
+class MongoStandingOrderRepository:
+    async def add(
+        self, order: StandingOrder, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        try:
+            await standing_orders_collection().insert_one(
+                _standing_order_to_bson(order), session=session
+            )
+        except DuplicateKeyError as exc:
+            raise ConflictError(
+                "This goal already has an open standing order.",
+                details={"field": "goalId"},
+            ) from exc
+
+    async def get(self, order_id: str) -> StandingOrder | None:
+        raw = await standing_orders_collection().find_one({"_id": order_id})
+        return _standing_order_from_bson(raw) if raw else None
+
+    async def get_open_for_goal(self, goal_id: str) -> StandingOrder | None:
+        raw = await standing_orders_collection().find_one(
+            {"goalId": goal_id, "status": {"$in": ["active", "paused"]}}
+        )
+        return _standing_order_from_bson(raw) if raw else None
+
+    async def list_due(self, now: datetime, limit: int = 200) -> list[StandingOrder]:
+        found = (
+            standing_orders_collection()
+            .find({"status": "active", "nextRunAt": {"$lte": now}})
+            .limit(limit)
+        )
+        return [_standing_order_from_bson(raw) async for raw in found]
+
+    async def set_status(
+        self,
+        order_id: str,
+        user_id: str,
+        status: str,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool:
+        result = await standing_orders_collection().update_one(
+            {"_id": order_id, "userId": user_id, "status": {"$ne": "cancelled"}},
+            {"$set": {"status": status, "updatedAt": datetime.now(timezone.utc)}},
+            session=session,
+        )
+        return result.modified_count == 1
+
+    async def record_run(
+        self,
+        order_id: str,
+        next_run_at: datetime,
+        ran_at: datetime,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> None:
+        await standing_orders_collection().update_one(
+            {"_id": order_id},
+            {
+                "$set": {
+                    "nextRunAt": next_run_at,
+                    "lastRunAt": ran_at,
+                    "lastFailureReason": None,
+                    "updatedAt": ran_at,
+                }
+            },
+            session=session,
+        )
+
+    async def record_failure(
+        self,
+        order_id: str,
+        reason: str,
+        failed_at: datetime,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> None:
+        await standing_orders_collection().update_one(
+            {"_id": order_id},
+            {"$set": {"lastFailureReason": reason, "updatedAt": failed_at}},
+            session=session,
+        )
 
 
 def _handoff_to_bson(handoff: Handoff) -> dict[str, Any]:

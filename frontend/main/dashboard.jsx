@@ -1116,7 +1116,7 @@
                 secureTimer={secureTimer}
               />
             ) : null}
-            {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} accounts={accounts} /> : null}
+            {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} /> : null}
             {screen === "education" ? <SCR.EducationScreen accounts={accounts} /> : null}
             {screen === "settings" ? (
               <SCR.SettingsScreen
