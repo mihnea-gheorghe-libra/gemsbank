@@ -180,6 +180,15 @@
         method: "POST",
         json: { username, limitMinor },
       }),
+    listInsights: (username) =>
+      send("/insights?username=" + encodeURIComponent(username || "")),
+
+    getGoalProgress: () => send("/goals/progress"),
+    createGoal: (accountId, name, targetMinorUnits, targetDate) =>
+      send("/goals", {
+        method: "POST",
+        json: { accountId, name, targetMinorUnits, targetDate },
+      }),
 
     askSupport: (question) =>
       send("/agents/support/ask", { method: "POST", json: { question } }),
