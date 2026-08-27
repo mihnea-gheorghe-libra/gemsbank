@@ -165,6 +165,8 @@
     const [me, setMe] = useState(null);
     const [insights, setInsights] = useState([]);
     const [insightHistory, setInsightHistory] = useState([]);
+    const [fxInsights, setFxInsights] = useState([]);
+    const [fxInsightHistory, setFxInsightHistory] = useState([]);
     const [payBusy, setPayBusy] = useState(false);
     const [payFormError, setPayFormError] = useState(null);
     const [signingPayment, setSigningPayment] = useState(null);
@@ -219,6 +221,8 @@
           if (!cancelled && response) {
             setInsights(response.insights || []);
             setInsightHistory(response.history || []);
+            setFxInsights((response.fx && response.fx.insights) || []);
+            setFxInsightHistory((response.fx && response.fx.history) || []);
           }
         })
         .catch(() => {});
@@ -1007,6 +1011,8 @@
                 }}
                 insights={insights}
                 insightHistory={insightHistory}
+                fxInsights={fxInsights}
+                fxInsightHistory={fxInsightHistory}
                 lang={lang}
               />
             ) : null}

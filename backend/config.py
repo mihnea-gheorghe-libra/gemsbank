@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     vendor_insights_source: str = "payments_seed_demo"
     vendor_insights_limit: int = 3
 
+    bnr_fx_feed_url: str = "https://curs.bnr.ro/nbrfxrates.xml"
+    bnr_fx_history_feed_url: str = "https://curs.bnr.ro/nbrfxrates10days.xml"
+    bnr_fx_source_page_url: str = (
+        "https://www.bnr.ro/23988-cursurile-pietei-valutare-in-format-xml"
+    )
+    fx_signal_threshold_percent: float = 1.5
+    fx_baseline_days: int = 7
+    fx_repeat_rate_tolerance_percent: float = 0.5
+    fx_insights_source: str = "bnr"
+    fx_insights_limit: int = 3
+
     pin_encryption_key: str | None = None
 
     web_dir: str = str(_REPO_ROOT / "frontend")

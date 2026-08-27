@@ -217,6 +217,27 @@ backend/
                      one signed-in user, deduplicates to the newest alert per vendor and caps
                      the list. A user with no notifications of their own gets an empty list —
                      it never substitutes another user's rows
+  fx/                BNR reference-rate monitoring — read-only over accounts, no money movement.
+                     Only service.py is reachable over HTTP; rates_watcher.py is a manual batch
+                     job. Separate from vendors/ on purpose: a vendor price and a currency rate
+                     are different signals with different orders of magnitude
+    adapters.py      the only file under fx/ that names an `accounts` or `journalTransactions`
+                     field. Holds the holding filter, the journal-derived balance pipeline, why
+                     each field is read the way it is, and a startup guard that warns when
+                     either schema drifts. `python -m backend.fx.adapters` prints the summary
+    validation.py    rate scaling to micro-units, percent change, minor-unit conversion, the
+                     ISO 4217 shape check the BNR feed is filtered through
+    bnr_feed.py      the BNR XML feed — stdlib xml.etree, namespace-agnostic, divides out the
+                     `multiplier` attribute so every stored rate is per one unit. Rejects a
+                     non-XML answer instead of parsing it, which is what catches the old
+                     www.bnr.ro/nbrfxrates.xml path now serving the redesigned homepage
+    signals.py       the pure rule and copy: baseline resolution, the threshold test into
+                     fxSignals, the repeat guard, and the RO/EN templates. No I/O, no Mongo
+    rates_watcher.py the job: feed -> fxRatesDaily -> fxSignals -> fxNotifications, all three
+                     idempotent on a unique key. Run by hand, never a daemon
+    service.py       the only HTTP-facing module under fx/. Reads fxNotifications for one
+                     signed-in user, newest per currency, capped — same scoping contract as
+                     vendors/service.py
   capabilities/      SEAM 6: the registry an agent layer reads its tool list from
     registry.py      Capability, SideEffect, the in-memory CapabilityRegistry
     service.py       the registered capabilities — name, in/out schema, resolver, scope
@@ -1028,6 +1049,127 @@ Money is never formatted in the backend. `decision_engine.py` writes `longText` 
 with `{baseline}` and `{observed}` placeholders plus the minor-unit values, and the frontend
 fills them through `UI.formatMoney`, so the card follows the same locale rules as the
 transactions table — `1.234,00 RON` in Romanian, not `1,234.00`.
+
+## FX insights — the BNR reference rate on the dashboard
+
+A second, separate pipeline. A vendor raising a subscription and the leu moving against the euro
+are different signals: different source, different cadence, different order of magnitude. They
+share nothing but the card they land on, so `backend/fx/` shares no collection, no schema and no
+threshold with `backend/vendors/`.
+
+**Source.** The public BNR XML feed, free, no API key:
+
+| feed | url | contents |
+| --- | --- | --- |
+| daily | `https://curs.bnr.ro/nbrfxrates.xml` | the latest banking day, 37 currencies |
+| last 10 days | `https://curs.bnr.ro/nbrfxrates10days.xml` | the last 10 banking days |
+
+Both live on `curs.bnr.ro`, **not** on `www.bnr.ro`. The historical `www.bnr.ro/nbrfxrates.xml`
+path now 302s to the redesigned homepage and answers `text/html`, so `bnr_feed.fetch_feed`
+refuses any answer whose content type is not XML rather than handing an HTML page to the parser.
+BNR publishes after 13:00 on banking days, so the newest cube in the feed is often *yesterday*.
+Every row is dated by the feed's own `Cube date`, never by the machine clock.
+
+Rates are stored as integer micro-units (rate × 10⁶), the same scale `backend/exchange/` already
+uses — a rate is not money, so the minor-unit rule does not apply, but no float reaches Mongo
+either. The feed's `multiplier="100"` attribute is divided out on the way in, so every stored
+rate is RON per **one** unit regardless of how BNR quotes it.
+
+**Which currencies.** Not all 37. The tracked set is the non-RON currencies actually held in
+`accounts`, unioned with `SUPPORTED_CURRENCIES - {RON}` so EUR and USD are always covered even
+before anyone opens such an account. `--currency EUR` overrides it.
+
+**The rule.** Per currency, the latest published rate against the last rate published on or
+before `baseline_days` (7) earlier — nearest-on-or-before, so a weekend or a holiday falls back
+to the previous banking day instead of losing the comparison. Over threshold in either direction
+becomes one row in `fxSignals` with `direction: "up" | "down"`.
+
+The threshold is `1.5%`, not the 8%/12% the vendor pipeline uses. Currency rates move roughly an
+order of magnitude less than consumer prices — EUR/RON moved 0.26% over the week of 2026-08-26 —
+so reusing a vendor-sized threshold would mean the rule never fires and a rate crisis would look
+identical to a quiet week.
+
+**Who hears about it.** Only a user with a positive balance in that currency. There is no
+read-only accounts adapter equivalent to `vendors/payments_adapter.py` — `accounts/service.py` is
+DI-wired into the app and unreachable from a standalone job — so `backend/fx/adapters.py` is that
+adapter, and every assumption it makes is printed by `python -m backend.fx.adapters`. The balance
+is **derived from journal lines**, mirroring `MongoJournalRepository.balances_for`; there is no
+balance field to read (rule 4). Several accounts in the same currency fold into one holding.
+
+**Idempotence.** All three collections upsert on a unique key: `fxRatesDaily` on
+`(source, currency, date)`, `fxSignals` on the same, `fxNotifications` on
+`(source, userId, currency, signalDate)`. Re-running the job any number of times replays the same
+documents. Beyond that, a *continuing* move is not re-announced: a signal on a later date whose
+current rate is within `repeat_rate_tolerance_percent` (0.5%) of what that user was last told is
+skipped as `same_rate_state_already_notified`, exactly as the vendor pipeline suppresses a
+persistent price. Only a genuinely new move notifies again.
+
+**Copy.** Templated off the signal, never per currency — one Romanian and one English template
+carrying the currency, the direction verb, the percent and the window, and nothing else. One
+sentence, under 90 characters:
+
+> EUR a crescut cu 0,3% în 7 zile — soldul tău de **{amount}** valorează acum **{ron}**, față de **{ronBefore}**.
+> EUR rose 0.3% in 7 days — your **{amount}** is now worth **{ron}**, vs **{ronBefore}** before.
+
+`{ronBefore}` is the *same* balance valued at the baseline rate, not what the account held a week
+ago — it isolates the rate move from any deposit or conversion the user made in between, which is
+the only comparison the rate alone can honestly support.
+
+The two raw rates stay in `baselineRate` / `currentRate` for anyone reading the API or the
+collection; they are not read out in the sentence. Money stays unformatted in the backend:
+`longText` carries `{amount}`, `{ron}` and `{ronBefore}` plus `amountMinorUnits` /
+`ronEquivalentMinorUnits` / `ronBaselineMinorUnits` / `currency` / `ronCurrency`, and the frontend
+fills them through `UI.formatMoney`, same as the vendor card. `{ronBefore}` is substituted before
+`{ron}` so the shorter key cannot eat the longer one.
+
+**Provenance.** Every notification carries `sourceName` and `sourceUrl`, and the card renders
+them as a clickable line under the text. For FX that is BNR's own page describing the feed
+(`bnr_fx_source_page_url`, overridable with `--source-page-url` — the old `.aspx` paths now
+redirect to the homepage, so this one is configuration, not a constant). Vendor insights link to
+the first URL in `newsUrls`, labelled with the publishers; an insight with no external source
+(`origin: internal_mathematical`) says so in words instead of offering a dead link.
+
+**The endpoint.** `GET /api/insights?username=...` was extended rather than duplicated, and the
+FX rows sit in their own `fx` key:
+
+```json
+{ "insights": [...], "history": [...], "total": 3,
+  "fx": { "insights": [...], "history": [...], "total": 2 } }
+```
+
+One request, one `useEffect`, and the vendor contract is byte-identical to what it was — nothing
+nullable was added to `VendorInsight` to make a currency fit a vendor shape.
+
+The card shows exactly two stories: the newest vendor one and the newest exchange-rate one
+(`INSIGHT_CARD_LIMIT`, applied per kind). Everything else — the rest of both histories — is
+behind "view all", where the dialog lists them under separate headings. The backend still decides
+which rows and in what order; the frontend only decides how many fit.
+
+**Running it.**
+
+```bash
+python -m backend.fx.rates_watcher                        # today's rates, then signals
+python -m backend.fx.rates_watcher --backfill-history     # also pull the 10-day feed first
+python -m backend.fx.rates_watcher --dry-run              # fetch and report, write nothing
+python -m backend.fx.rates_watcher --threshold-percent 0.5 --baseline-days 14
+python -m backend.fx.adapters                             # what fx/ assumes about accounts
+```
+
+A first run on an empty `fxRatesDaily` has no baseline and reports `no_baseline_in_window` for
+every currency — correct, not a failure. `--backfill-history` seeds ten banking days from the
+second feed in one go so the rule has something to compare against immediately.
+
+Checking it in mongosh:
+
+```js
+db.fxRatesDaily.find({currency:"EUR"}).sort({date:1})
+db.fxSignals.find().sort({date:-1})
+db.fxNotifications.find({userId:"<users._id>"})
+db.fxRatesDaily.getIndexes()          // fx_rate_unique on (source, currency, date)
+```
+
+`--source` labels every row the run writes, so a demo run at a lower threshold can be told apart
+from a production one and deleted on its own.
 
 ## What backend/vendors/ assumes about `payments`
 
