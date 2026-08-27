@@ -8,7 +8,7 @@
   const DATA = GEMS.dashboardData;
   const { useState, useCallback, useEffect } = React;
 
-  const SCREENS = ["home", "payments", "chat", "accounts", "portfolio", "cards", "analytics", "settings"];
+  const SCREENS = ["home", "payments", "chat", "accounts", "portfolio", "cards", "analytics", "education", "settings"];
   const REAL_ACCOUNT_KINDS = ["current", "savings", "invest"];
 
   const ANSWER_KEYS = {
@@ -1110,7 +1110,8 @@
                 secureTimer={secureTimer}
               />
             ) : null}
-            {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} /> : null}
+            {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} accounts={accounts} /> : null}
+            {screen === "education" ? <SCR.EducationScreen accounts={accounts} /> : null}
             {screen === "settings" ? (
               <SCR.SettingsScreen
                 lang={lang}

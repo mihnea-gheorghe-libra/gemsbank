@@ -17,8 +17,9 @@ sends it as `Authorization: Bearer …`; a page refresh signs you out, which is 
 behaviour while there is no refresh-token rotation (`PROMPT.md` §6: never `localStorage`).
 After a successful sign in you land on a **dashboard mockup**: a mostly frontend-only prototype
 (`frontend/main/dashboard.jsx` and `frontend/components/dashboard-*.jsx`) covering Dashboard,
-Payments, AI Assistant, Portfolio, Cards, Analytics and Settings. It is a deliberate, explicitly
-approved deviation from `PROMPT.md` §4 — cards, investments, analytics and the chatbot are listed
+Payments, AI Assistant, Portfolio, Cards, Analytics, Financial education and Settings. It is a
+deliberate, explicitly approved deviation from `PROMPT.md` §4 — cards, investments, analytics and
+the chatbot are listed
 there as *not in v0* — kept as UI only, with hand-authored demo data
 (`frontend/helpers/dashboard-data.js`) for the parts that are not wired to a real backend. The
 PIN-reveal screen (`AUTH.PinRevealScreen`) still runs first whenever a flow surfaces the PIN
@@ -256,7 +257,8 @@ frontend/            no build step; index.html script order is the module graph
                      and template dialogs) ·
                      dashboard-portfolio.jsx (open-account, deposit, invest and credit dialogs,
                      IBAN/rate/unit helpers) ·
-                     dashboard-screens.jsx (home, payments, chat, portfolio, cards, analytics, settings)
+                     dashboard-screens.jsx (home, payments, chat, portfolio, cards, analytics,
+                     education, settings)
   helpers/           api.js (the only fetch caller) · i18n.js · messages.js (en + ro) ·
                      people.js (name formatting for display) ·
                      dashboard-data.js (hand-authored demo data for the dashboard mockup)
@@ -616,19 +618,36 @@ papering over a gap with a guessed number.
   median. Zero qualifying groups → `insufficient_data`, not a silent best-effort guess.
 - `analytics.goal_gap.get` compares a savings goal's required monthly rate against the actual net
   rate observed on its linked account over the last 3 months. Backed by a new minimal feature,
-  `backend/goals/` (below) — no goal set → `no_goal_found`.
+  `backend/goals/` (below) — no goal set → `no_goal_found`. It also returns a
+  `projectedCompletionDate` (today's date if the target is already met, `null` if the actual rate
+  isn't positive, otherwise today plus the number of months the remaining gap needs at the actual
+  rate) and a `streakWeeks` count — consecutive weeks, counting back from now, with a net-positive
+  contribution to the goal's account, bucketed from a 26-week transaction lookback. Both are
+  computed here, never by the model; `GET /goals/progress` (`server/routes.py`) exposes the same
+  resolver output directly, read-only, for the Analytics screen's goal card below — one
+  computation, two callers, the same numbers either way.
 - `analytics.month_recap.get` and `analytics.what_changed.get` return facts only (biggest expense,
   busiest day, category deltas, per-category cause of a spend change — `new_merchant` /
   `increased_frequency` / `increased_price` / `no_clear_cause`), never prose; the agent's prompt
   does the narrating, so the numbers stay testable and localizable independent of phrasing.
+- `analytics.recommendations.get` assembles up to three deterministic recommendations from the
+  other resolvers' own logic — a `goal_projection` and a `savings_rate` entry (reusing
+  `resolve_goal_gap`'s output directly) when a goal exists, and a `category_alert` entry when one
+  category's spend grew ≥15% and ≥50 RON between the last two completed calendar months (the same
+  significance thresholds `what_changed` uses). No goal and no notable category growth →
+  `insufficient_data`. Every amount carries both the raw minor-units figure and a pre-formatted
+  string (`currentValueFormatted`/`suggestedValueFormatted`/`gapFormatted`, same `format_minor` as
+  `payments.balances.get`) — the prompt requires the model to quote the formatted string verbatim,
+  after a first pass narrated raw minor units as if they were whole currency ("economisești acum
+  33333 RON"), the exact failure mode `PaymentsAgent` had already hit once for balances.
 
-All four page through the existing `PaymentsService.list_transactions` cursor (already sorted
+All five page through the existing `PaymentsService.list_transactions` cursor (already sorted
 newest-first) and stop once a page crosses the requested date boundary
 (`capabilities/analytics.py::_transactions_in_range`) — no date-range parameter was added to
-`payments/` or `ledger/` for this; that boundary stayed untouched on purpose. All four are also
+`payments/` or `ledger/` for this; that boundary stayed untouched on purpose. All five are also
 scoped to RON transactions/accounts only: mixing currencies into one sum would be silently wrong,
 and multi-currency forecasting was never asked for — an explicit v0 cut, not an oversight.
-`GET /capabilities` describes all eight alongside the write-side command list.
+`GET /capabilities` describes all nine alongside the write-side command list.
 
 **`backend/goals/`** exists only so `analytics.goal_gap.get` has real data to read — it followed
 the same shape check as every other feature (aggregate, `service.py`, `validation.py`) and the same
@@ -689,12 +708,34 @@ shared base. Its prompt carries one stake-appropriate addition beyond `SupportAg
 number it says must come from a tool result, full stop, and any forecast or "capping X would help"
 framing must be said as an estimate, not a certainty — financial projections, not FAQ answers.
 `backend/tests/test_analytics_agent_scoping.py` mirrors `test_support_agent_scoping.py`'s allow-list
-proof; `backend/tests/test_analytics_capabilities.py` exercises the four resolvers' actual logic
-(recurring-pattern detection, the goal-gap rate math, the category-cause classifier) against a
-scripted `PaymentsService`, no Mongo. **No frontend wiring was added for it** — the task asked for
-the tools, not a second chat surface; when one is built, it should reuse the `aiGenerated`/
-"always double-check" disclaimer mechanism already in `dashboard.jsx`, not invent a new one,
-especially for a worker whose whole job is projections and recommendations.
+proof; `backend/tests/test_analytics_capabilities.py` exercises the five resolvers' actual logic
+(recurring-pattern detection, the goal-gap rate math, the category-cause classifier, the
+recommendations aggregation) against a scripted `PaymentsService`, no Mongo.
+
+The Analytics screen (`SCR.AnalyticsScreen`, `frontend/components/dashboard-screens.jsx`) now
+carries real frontend wiring for it, past the existing spend-by-category/income-vs-spend charts:
+a **recommendations card**, which replaced the screen's old hardcoded "insight" blurb with a real
+`askAnalytics(...)` call against `analytics.recommendations.get`, rendered with the same
+`aiGenerated`/disclaimer treatment that blurb already used, and next to it a **goal card** reading
+`GET /goals/progress` directly (a plain read, not narrated) for the progress bar, the projected
+date, and a streak badge — shown only at 3+ weeks, and worded as a neutral nudge to start one below
+that threshold, never as a broken-streak warning, per the stakes of encouraging compulsive
+"catch-up" spending around money. When no goal exists, the goal card offers a **"Set a goal"**
+button opening a dialog (name/description, target amount, target date, an account picker scoped to
+the user's non-invest accounts) that posts to `POST /goals` — the first real caller of that
+endpoint, closing the gap noted below. It is deliberately a normal confirmed UI action, not
+something `AnalyticsAgent` can do on the user's behalf, matching the "agent proposes, human
+confirms" line the rest of the app draws for anything that changes state.
+
+**Financial education is its own screen**, not a card on Analytics: a new `education` nav entry
+(`frontend/helpers/dashboard-data.js::navItems`, and the `SCREENS` allow-list in
+`frontend/main/dashboard.jsx` — a screen key not in that array silently fails to navigate, which is
+exactly how this one was missed on the first pass) renders `SCR.EducationScreen`: a grid of short,
+hand-authored, non-personalized tips (`dashboard.education.*` in `messages.js`, no LLM call), plus
+— at the requester's explicit request — the same live `RecommendationsCard` and `GoalProgressCard`
+already on the Analytics screen, reused as-is rather than duplicated. The two are visually and
+architecturally distinct on this page: the tip grid never calls out to a user's own data, the two
+cards below it are exactly the personalized, agent-backed pair from Analytics.
 
 The frontend's "Ask GEMS" dock and the chat screen's free-text box (`frontend/main/dashboard.jsx`)
 call `SupportAgent` for whatever the user types — busy state, error fallback, and an
@@ -792,6 +833,18 @@ outside this agent's grant is a security signal and still raises, as before — 
 `test_support_agent_scoping.py` has always asserted, and it still does. Malformed tool arguments
 are handled the same forgiving way as a mis-typed name.
 
+The same mis-typed-name slip resurfaced later, live, for `analytics.recommendations.get`:
+gpt-5-mini called `recommendations.get` and, unlike the `transfer.propose` case, did not
+self-correct within `MAX_TOOL_ROUNDS` — it repeated the exact same wrong name across all four
+rounds despite the fed-back error naming the correct one, and the request failed with a 422. The
+fix stops short of resolving a dropped prefix server-side (that would quietly change the
+already-tested contract above, where an unrecognised name is always the model's problem to fix,
+never the framework's to guess at) and instead makes the tool's `description` in the OpenAI
+function-calling schema restate its own exact name (`backend/agents/base.py::_tool_defs`) rather
+than just repeating the bare name as before — tool metadata the model weighs more heavily than
+system-prompt prose for which literal string to echo back. Cheap, applies to every agent's every
+tool, and left the retry contract and its tests untouched.
+
 `backend/tests/test_payments_agent_proposes_but_never_pays.py` is the proof: a `FakeLedger` whose
 `post_transaction` raises on contact, asserted across the clean, insufficient-funds, cross-currency,
 over-limit and over-daily-limit paths; the ambiguity and formatting rules; and the two refusal
@@ -867,7 +920,10 @@ two turns of history resolved to the right account. Zero movement in `journalTra
 `payments` across all of it.
 
 Not done: no mandates, no `settings.security.get` (see above), no
-UI for `AnalyticsAgent`, no multi-goal support. `PaymentsAgent` cannot see transactions, cards or
+multi-goal support — the Analytics screen's "Set a goal" dialog only ever offers to create one,
+and `backend/goals/` still enforces exactly one active goal per user with no edit or close
+endpoint, so replacing a goal today still means deleting the Mongo document by hand.
+`PaymentsAgent` cannot see transactions, cards or
 settings, and `payments.transactions.list` is still not in the registry — add it there, not as a
 new pathway, when a worker needs it. The proposal is stateless: `proposalId` is a display string,
 nothing persists it, and the confirmation step re-validates from scratch rather than trusting it.
