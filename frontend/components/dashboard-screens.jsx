@@ -112,7 +112,6 @@
     );
   }
 
-SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onNavigate, onAddFunds, onExchange, onOpenAccount }) {
   const INSIGHT_CARD_LIMIT = 2;
 
   function renderInsightText(insight, currentLang) {
@@ -159,7 +158,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     );
   }
 
-  SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onNavigate, onAddFunds, onExchange, insights, insightHistory, lang }) {
+  SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onNavigate, onAddFunds, onExchange, onOpenAccount, insights, insightHistory, lang }) {
     const { useState } = React;
     const [showAllInsights, setShowAllInsights] = useState(false);
     const allInsights = insightHistory || [];
