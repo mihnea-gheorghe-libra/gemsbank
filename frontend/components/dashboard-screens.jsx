@@ -2443,7 +2443,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   };
 
-  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, onToggleMic, onPromptClick, onConfirmTx, onConfirmProposal, onRequestHuman, handoffBusy, handoffSent, username }) {
+  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, micBusy, micError, onToggleMic, onPromptClick, onConfirmTx, onConfirmProposal, onRequestHuman, handoffBusy, handoffSent, username }) {
     const inputRef = useRef(null);
 
     useEffect(() => {
@@ -2599,11 +2599,30 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                 placeholder={t("dashboard.chat.inputPlaceholder")}
                 aria-label={t("dashboard.chat.inputPlaceholder")}
               />
-              <UI.Button type="button" variant="secondary" aria-pressed={micOn} disabled={busy} onClick={onToggleMic}>
-                {micOn ? t("dashboard.chat.micOn") : t("dashboard.chat.micOff")}
+              <UI.Button
+                type="button"
+                variant="secondary"
+                className={micOn ? "dash-mic-live" : null}
+                aria-pressed={micOn}
+                disabled={busy || micBusy}
+                onClick={onToggleMic}
+              >
+                {micBusy ? t("dashboard.chat.micBusy") : micOn ? t("dashboard.chat.micOn") : t("dashboard.chat.micOff")}
               </UI.Button>
-              <UI.Button type="button" variant="primary" disabled={busy} onClick={onSend}>{t("dashboard.chat.send")}</UI.Button>
+              <UI.Button type="button" variant="primary" disabled={busy || micOn} onClick={onSend}>{t("dashboard.chat.send")}</UI.Button>
             </UI.Plate>
+            {micOn || micBusy || micError ? (
+              <div className="dash-mic-status" role="status">
+                {micOn ? <span className="dash-mic-dot" aria-hidden="true" /> : null}
+                <span>
+                  {micOn
+                    ? t("dashboard.chat.micRecording")
+                    : micBusy
+                      ? t("dashboard.chat.micBusy")
+                      : micError}
+                </span>
+              </div>
+            ) : null}
             <div className="dash-chat-hint">
               <span>{t("dashboard.chat.orchestratorNote")}</span>
               <button

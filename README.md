@@ -254,6 +254,8 @@ backend/
     transcript.py    sanitises the client-supplied conversation history
     service.py       wraps the actor as kind="agent", on_behalf_of=user_id
     analytics_service.py / payments_service.py   the same wrapping, per worker
+    transcription.py AzureSpeechTranscriber — Azure AI Speech REST, one call, no tools
+    transcription_service.py   the voice-input door: bounds, rate limit, audit
   escalations/       handing a conversation to a human
     handoff.py       the Handoff aggregate
     service.py       RequestHandoff — a normal command through bus.execute
@@ -948,6 +950,49 @@ endpoint, so replacing a goal today still means deleting the Mongo document by h
 settings, and `payments.transactions.list` is still not in the registry — add it there, not as a
 new pathway, when a worker needs it. The proposal is stateless: `proposalId` is a display string,
 nothing persists it, and the confirmation step re-validates from scratch rather than trusting it.
+
+## Voice input — dictation, not a second way in
+
+The microphone next to Send in the AI Assistant chat records with the browser's own
+`MediaRecorder`, posts the clip to `POST /agents/transcribe`, and drops the returned text **into
+the input box**. Nothing is sent, asked or moved by speaking: the customer still reads what was
+heard, edits it, and presses Send, which then takes the ordinary `POST /agents/ask` path. Voice is
+a keyboard, not a new pathway — the seven seams are crossed by the message the user finally sends,
+exactly as if they had typed it.
+
+`AzureSpeechTranscriber` (`backend/agents/transcription.py`) talks to **Azure AI Speech**, not
+Azure OpenAI — a different service with a different key, so it shares nothing with the
+`AZURE_OPENAI_*` pair. It is one POST to the fast-transcription REST endpoint
+(`/speechtotext/transcriptions:transcribe`), no SDK, no tools, no capability registry, built lazily
+like the workers, so a clone without `AZURE_SPEECH_API_KEY` still boots. The URL comes from
+`AZURE_SPEECH_REGION` alone; `AZURE_SPEECH_ENDPOINT` overrides it for a custom resource host, and a
+404 is turned into an error that names that as the likely cause — Speech Studio shows an
+`*.stt.speech.microsoft.com` endpoint that belongs to a *different* API and will not answer here.
+
+Both locales are always sent as candidates (`ro-RO`, `en-US`), with the interface's own language
+first, so Azure runs language identification rather than being told what it will hear. A customer
+whose interface is in English can still dictate in Romanian, which in this market is the normal
+case, not the edge one.
+
+`TranscriptionService` is the door: an empty clip, a clip over `SPEECH_MAX_UPLOAD_BYTES`, or a
+format Azure does not accept is refused **before** the network call, the per-user
+`AgentRateLimiter` is spent next (keyed `voice:{userId}`, sharing the agent budget), and only then
+does the audio leave. The browser stops recording on its own after 60 seconds, so the cap is a
+second line rather than the first.
+
+The audio is never stored and never reaches the journal. The audit row
+(`agents.voice.transcribed`, `entityType: "voice_input"`) records the actor, byte count, content
+type, language hint and the *number of characters* heard — never the words themselves. If the
+customer acts on what was dictated, the sentence is audited then, on the message they chose to
+send. `backend/tests/test_voice_input_is_bounded_and_never_transcribed_into_the_audit_log.py`
+defends both halves against a fake transcriber, and
+`backend/tests/test_azure_speech_transcriber.py` covers the adapter's own shaping — locale
+candidates, phrase joining, endpoint-vs-region, and which HTTP status is the caller's fault versus
+ours. No network in either.
+
+Not done: no streaming (the clip is transcribed once, on stop, not as you speak), no
+speaker verification, no server-side language detection beyond the `ro`/`en` hint the interface
+already knows, and no voice on the docked assistant — only the full chat screen.
 
 ## What the payments screen does not do yet
 

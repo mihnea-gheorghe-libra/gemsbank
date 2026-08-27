@@ -519,6 +519,9 @@
 .dash-chat-input { border: 0; background: transparent; flex: 1; min-height: 32px; font: inherit; color: var(--color-text); }
 .dash-chat-input:focus-visible { outline: none; }
 .dash-chat-hint { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em; opacity: 0.45; margin-top: 8px; }
+.dash-mic-status { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--color-muted); }
+.dash-mic-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--color-negative); display: block; animation: dashPulse 1.4s infinite; }
+.dash-mic-live { color: var(--color-negative); box-shadow: inset 0 0 0 1px var(--color-negative); }
 .dash-chat-side { box-shadow: -1px 0 0 var(--color-border); padding-left: 18px; display: flex; flex-direction: column; gap: 16px; }
 .dash-chat-log { font-family: var(--font-mono); font-size: 10px; line-height: 1.9; opacity: 0.6; }
 .dash-tx-card { margin-top: 12px; padding: 16px; max-width: 420px; background: var(--color-surface); color: var(--color-text); }

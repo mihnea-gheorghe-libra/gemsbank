@@ -200,5 +200,11 @@
       send("/agents/ask", { method: "POST", json: { question, history, screen } }),
     requestHandoff: (question, reason, history) =>
       send("/agents/handoff", { method: "POST", json: { question, reason, history } }),
+    transcribeVoice: (blob, language) => {
+      const form = new FormData();
+      form.append("audio", blob, "voice");
+      if (language) form.append("language", language);
+      return send("/agents/transcribe", { method: "POST", form });
+    },
   };
 })();
