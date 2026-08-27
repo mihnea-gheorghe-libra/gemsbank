@@ -1,11 +1,26 @@
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
-from openai import AsyncAzureOpenAI, BadRequestError
+from openai import AsyncAzureOpenAI, BadRequestError, RateLimitError
 
 from backend.config import Settings
+from backend.helpers.errors import RateLimitedError
 
 CONTENT_FILTER_REFUSAL = "I can't help with that request."
+
+
+DEFAULT_RETRY_AFTER_SECONDS = 20
+
+
+def _retry_after_seconds(exc: RateLimitError) -> int:
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    raw: str | None = headers.get("retry-after") if headers else None
+    if raw is None:
+        return DEFAULT_RETRY_AFTER_SECONDS
+    try:
+        return max(1, int(float(raw)))
+    except (TypeError, ValueError):
+        return DEFAULT_RETRY_AFTER_SECONDS
 
 
 @dataclass(slots=True)
@@ -57,6 +72,11 @@ class AzureChatCompleter:
                 tools=cast(Any, tools or None),
                 **extra,
             )
+        except RateLimitError as exc:
+            raise RateLimitedError(
+                "GEMS is handling a lot of questions right now. Try again in a moment.",
+                details={"retryAfterSeconds": _retry_after_seconds(exc)},
+            ) from exc
         except BadRequestError as exc:
             if exc.code != "content_filter":
                 raise

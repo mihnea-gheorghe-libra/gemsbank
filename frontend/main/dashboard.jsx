@@ -22,6 +22,64 @@
     settings2fa: "answerSettings2fa",
   };
 
+  const PROMPT_SETS = {
+    payments: ["balanceTotal", "moveToSavings", "recentSpending"],
+    analytics: ["whyHigher", "monthRecap", "cashflow"],
+    cards: ["freezeCard", "cardLimits", "newVirtualCard"],
+    investments: ["marketMonth", "investAccount", "btcPrice"],
+    deposits: ["depositRates", "depositMaturity", "savingsGoal"],
+    credits: ["loanCost", "creditOptions", "creditMax"],
+    support: ["changePin", "activeSessions", "changeLanguage"],
+  };
+
+  const SCREEN_PROMPTS = {
+    home: "payments",
+    payments: "payments",
+    analytics: "analytics",
+    cards: "cards",
+    portfolio: "investments",
+    settings: "support",
+  };
+
+  function promptKeysFor(screen, lastAgents) {
+    const fromAgent = (lastAgents || []).find((name) => PROMPT_SETS[name]);
+    if (fromAgent) return PROMPT_SETS[fromAgent];
+    return PROMPT_SETS[SCREEN_PROMPTS[screen] || "payments"];
+  }
+
+  function totalsByCurrency(accounts) {
+    const grouped = {};
+    accounts.forEach((account) => {
+      grouped[account.cur] = (grouped[account.cur] || 0) + account.minor;
+    });
+    return Object.keys(grouped)
+      .sort()
+      .map((currency) => DASH.formatMinor(grouped[currency]) + " " + currency)
+      .join(" · ");
+  }
+
+  function seedMessage(name, accounts, pending, ready) {
+    if (!ready || !accounts.length) {
+      return t("dashboard.chat.seedPlain");
+    }
+    const opening = t(
+      accounts.length === 1 ? "dashboard.chat.seedAccountOne" : "dashboard.chat.seedAccounts",
+      {
+        name,
+        count: GEMS.i18n.countFor(accounts.length),
+        totals: totalsByCurrency(accounts),
+      }
+    );
+    const waiting = (pending || []).length;
+    const tail = !waiting
+      ? t("dashboard.chat.seedPendingNone")
+      : t(
+          waiting === 1 ? "dashboard.chat.seedPendingOne" : "dashboard.chat.seedPendingSome",
+          { count: GEMS.i18n.countFor(waiting) }
+        );
+    return opening + " " + tail;
+  }
+
   const MAX_HISTORY_TURNS = 10;
 
   function transcriptOf(messages) {
@@ -159,8 +217,10 @@
     const [lastQuestion, setLastQuestion] = useState("");
     const [handoffBusy, setHandoffBusy] = useState(false);
     const [handoffSent, setHandoffSent] = useState(false);
+    const [lastAgents, setLastAgents] = useState([]);
+    const [dataLoaded, setDataLoaded] = useState(false);
     const [messages, setMessages] = useState([
-      { role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) },
+      { role: "ai", kind: "text", text: t("dashboard.chat.seedPlain") },
     ]);
     const [me, setMe] = useState(null);
     const [insights, setInsights] = useState([]);
@@ -243,6 +303,7 @@
 
       const investAccount = mappedAccounts.find((account) => account.typeKey === "invest");
       setInvestCashMinor(investAccount ? investAccount.minor : null);
+      setDataLoaded(true);
     }, []);
 
     useEffect(() => {
@@ -255,12 +316,18 @@
     const navigate = useCallback((key) => {
       if (SCREENS.indexOf(key) >= 0) {
         if (key === "chat" && screen !== "chat") {
-          setMessages([{ role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) }]);
+          setMessages([
+            {
+              role: "ai",
+              kind: "text",
+              text: seedMessage(firstName, accounts, pending, dataLoaded),
+            },
+          ]);
         }
         setScreen(key);
         setBalanceHidden(true);
       }
-    }, [screen]);
+    }, [screen, firstName, accounts, pending, dataLoaded]);
 
     const toggleBalance = useCallback(() => {
       setBalanceHidden((hidden) => !hidden);
@@ -275,8 +342,8 @@
       setBalanceHidden(true);
     }, [screen]);
 
-    const sendDraft = useCallback(() => {
-      const text = draft.trim();
+    const sendQuestion = useCallback((raw) => {
+      const text = String(raw || "").trim();
       if (!text || chatBusy) return;
       const history = transcriptOf(messages);
       const origin = screen;
@@ -284,7 +351,6 @@
       setLastQuestion(text);
       setScreen("chat");
       setBalanceHidden(true);
-      setDraft("");
       setChatBusy(true);
       api
         .askGems(text, history, origin)
@@ -295,6 +361,7 @@
           const escalation = result.escalation || {};
           const escalated = Boolean(escalation.offered);
           const answer = (result.answer || "").trim() || (escalated ? t("dashboard.chat.handoffOffered") : t("dashboard.chat.errorNote"));
+          setLastAgents(result.agentsUsed || []);
           setMessages((list) =>
             list.concat([
               proposal
@@ -314,7 +381,14 @@
           setMessages((list) => list.concat([{ role: "ai", kind: "text", text: note }]));
         })
         .finally(() => setChatBusy(false));
-    }, [draft, chatBusy, messages, screen]);
+    }, [chatBusy, messages, screen]);
+
+    const sendDraft = useCallback(() => {
+      const text = draft.trim();
+      if (!text || chatBusy) return;
+      setDraft("");
+      sendQuestion(text);
+    }, [draft, chatBusy, sendQuestion]);
 
     const requestHuman = useCallback(() => {
       if (handoffBusy || handoffSent) return;
@@ -341,6 +415,17 @@
       pushExchange(label, answerFor(key));
     }, [pushExchange]);
 
+    const chatPrompts = React.useMemo(
+      () =>
+        promptKeysFor(screen, lastAgents).map((key) => ({
+          key,
+          label: t("dashboard.chat.suggest." + key),
+        })),
+      [screen, lastAgents]
+    );
+
+    const askSuggestion = useCallback((label) => sendQuestion(label), [sendQuestion]);
+
     const confirmTx = useCallback(() => {
       setMessages((list) => list.concat([{ role: "ai", kind: "text", text: t("dashboard.chat.txConfirmedNote") }]));
     }, []);
@@ -354,7 +439,7 @@
       setCardsLoading(true);
       setCardsError(null);
       try {
-        const response = await api.listCards(username);
+        const response = await api.listCards();
         setCards(response.cards);
         setCardsLoaded(true);
         setSelectedCardId((current) =>
@@ -426,8 +511,8 @@
       setCardsError(null);
       try {
         const card = issueKind === "physical"
-          ? await api.issuePhysicalCard(username)
-          : await api.issueVirtualCard(username);
+          ? await api.issuePhysicalCard()
+          : await api.issueVirtualCard();
         setCards((list) => list.concat([card]));
         selectCard(card.cardId);
         setIssueOpen(false);
@@ -443,7 +528,7 @@
       setCardBusy(true);
       setCardsError(null);
       try {
-        applyCard(await api.freezeCard(username, selectedCardId));
+        applyCard(await api.freezeCard(selectedCardId));
       } catch (err) {
         setCardsError(err);
       } finally {
@@ -456,7 +541,7 @@
       setCardBusy(true);
       setCardsError(null);
       try {
-        applyCard(await api.unfreezeCard(username, selectedCardId));
+        applyCard(await api.unfreezeCard(selectedCardId));
       } catch (err) {
         setCardsError(err);
       } finally {
@@ -469,7 +554,7 @@
       setCardBusy(true);
       setCardsError(null);
       try {
-        const updated = await api.blockCard(username, selectedCardId);
+        const updated = await api.blockCard(selectedCardId);
         applyCard(updated);
         const next = cards.find((row) => row.cardId !== updated.cardId && row.state !== "blocked");
         selectCard(next ? next.cardId : null);
@@ -485,7 +570,7 @@
       setCardBusy(true);
       setCardsError(null);
       try {
-        const result = await api.revealCardPin(username, selectedCardId);
+        const result = await api.revealCardPin(selectedCardId);
         setCardPin(result.pin);
         setPinShown(true);
         return true;
@@ -513,7 +598,7 @@
       setCardBusy(true);
       setCardsError(null);
       try {
-        const result = await api.revealCardDetails(username, selectedCardId);
+        const result = await api.revealCardDetails(selectedCardId);
         setCardCvv(result.cvv);
         setDetailsShown(true);
       } catch (err) {
@@ -564,7 +649,7 @@
       setCardBusy(true);
       setCardsError(null);
       try {
-        applyCard(await api.setCardAtmLimit(username, selectedCardId, minor));
+        applyCard(await api.setCardAtmLimit(selectedCardId, minor));
       } catch (err) {
         setCardsError(err);
       } finally {
@@ -577,7 +662,7 @@
       setCardBusy(true);
       setCardsError(null);
       try {
-        applyCard(await api.setCardOnlineLimit(username, selectedCardId, minor));
+        applyCard(await api.setCardOnlineLimit(selectedCardId, minor));
       } catch (err) {
         setCardsError(err);
       } finally {
@@ -602,8 +687,57 @@
       setPayOpen(true);
     }, []);
 
+    const confirmCardProposal = useCallback(async (proposal) => {
+      const cardId = proposal.cardId;
+      if (proposal.action === "reveal_pin" || proposal.action === "reveal_details") {
+        setSelectedCardId(cardId);
+        navigate("cards");
+        return;
+      }
+      setCardBusy(true);
+      setCardsError(null);
+      try {
+        if (proposal.action === "issue_virtual") {
+          const card = await api.issueVirtualCard();
+          setCards((list) => list.concat([card]));
+        } else if (proposal.action === "issue_physical") {
+          const card = await api.issuePhysicalCard();
+          setCards((list) => list.concat([card]));
+        } else if (proposal.action === "freeze") {
+          applyCard(await api.freezeCard(cardId));
+        } else if (proposal.action === "unfreeze") {
+          applyCard(await api.unfreezeCard(cardId));
+        } else if (proposal.action === "block") {
+          applyCard(await api.blockCard(cardId));
+        } else if (proposal.action === "set_atm_limit") {
+          applyCard(await api.setCardAtmLimit(cardId, proposal.limitMinorUnits));
+        } else if (proposal.action === "set_online_limit") {
+          applyCard(await api.setCardOnlineLimit(cardId, proposal.limitMinorUnits));
+        }
+        setMessages((list) =>
+          list.concat([{ role: "ai", kind: "text", text: t("dashboard.chat.cardActionDone") }])
+        );
+      } catch (error) {
+        setMessages((list) =>
+          list.concat([
+            {
+              role: "ai",
+              kind: "text",
+              text: GEMS.i18n.tError((error && error.message) || "") || t("dashboard.chat.cardActionFailed"),
+            },
+          ])
+        );
+      } finally {
+        setCardBusy(false);
+      }
+    }, [applyCard, navigate]);
+
     const confirmProposal = useCallback((proposal) => {
       if (!proposal) return;
+      if (proposal.action) {
+        confirmCardProposal(proposal);
+        return;
+      }
       const internal = Boolean(proposal.targetAccountId);
       openPayment({
         payType: internal ? "internal" : "iban",
@@ -614,7 +748,7 @@
         reference: proposal.reference || "",
         amount: DASH.formatMinor(proposal.amountMinorUnits),
       });
-    }, [openPayment]);
+    }, [openPayment, confirmCardProposal]);
 
     const closePayment = useCallback(() => {
       setPayOpen(false);
@@ -1048,7 +1182,8 @@
                 onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) sendDraft(); }}
                 micOn={micOn}
                 onToggleMic={() => setMicOn((value) => !value)}
-                onPromptClick={onDockPrompt}
+                prompts={chatPrompts}
+                onPromptClick={askSuggestion}
                 onConfirmTx={confirmTx}
                 onConfirmProposal={confirmProposal}
                 onRequestHuman={requestHuman}

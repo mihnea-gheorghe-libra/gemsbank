@@ -78,9 +78,6 @@ class Settings(BaseSettings):
     azure_openai_api_version: str = "2024-10-21"
     azure_openai_deployment: str | None = None
 
-    agent_rate_limit_max_calls: int = 20
-    agent_rate_limit_window_seconds: int = 3600
-
     cashflow_low_balance_threshold_minor: int = 0
 
     yahoo_chart_base_url: str = "https://query1.finance.yahoo.com"
