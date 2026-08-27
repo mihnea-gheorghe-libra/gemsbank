@@ -267,6 +267,25 @@
 
 /* ── portfolio ───────────────────────────────────────────── */
 .dash-portfolio-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+.dash-account-tile-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.dash-tile-menu { position: relative; flex: none; margin: -6px -6px 0 0; }
+.dash-tile-menu-trigger {
+  appearance: none; border: 0; padding: 4px; margin: 0; cursor: pointer;
+  background: transparent; color: var(--color-muted); border-radius: var(--radius-pill);
+  display: grid; place-items: center; min-width: 28px; min-height: 28px;
+}
+.dash-tile-menu-trigger:hover { background: color-mix(in srgb, var(--color-primary) 8%, transparent); color: var(--color-text); }
+.dash-tile-menu-list {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 20;
+  min-width: 180px; padding: 6px; display: flex; flex-direction: column; gap: 2px;
+  background: var(--color-bg);
+}
+.dash-tile-menu-item {
+  appearance: none; border: 0; font: inherit; text-align: left; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--radius-md);
+  background: transparent; color: var(--color-text);
+}
+.dash-tile-menu-item:hover { background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
 .dash-portfolio-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .dash-product-list { display: flex; flex-direction: column; gap: 12px; }
 .dash-product-row { padding: 12px 14px; border-radius: var(--radius-lg); background: var(--color-surface); }

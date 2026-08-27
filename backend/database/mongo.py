@@ -74,6 +74,10 @@ def beneficiaries_collection() -> AsyncIOMotorCollection:
     return get_db()["beneficiaries"]
 
 
+def payment_templates_collection() -> AsyncIOMotorCollection:
+    return get_db()["paymentTemplates"]
+
+
 def cards_collection() -> AsyncIOMotorCollection:
     return get_db()["cards"]
 
@@ -146,6 +150,9 @@ async def ensure_indexes() -> None:
 
     await beneficiaries_collection().create_index(
         [("userId", ASCENDING), ("iban", ASCENDING)], unique=True, name="uq_user_iban"
+    )
+    await payment_templates_collection().create_index(
+        [("userId", ASCENDING), ("createdAt", ASCENDING)], name="ix_user_created"
     )
     await handoffs_collection().create_index(
         [("userId", ASCENDING), ("createdAt", DESCENDING)], name="ix_user_created"

@@ -27,6 +27,7 @@ class TransactionKind(StrEnum):
     FEE = "fee"
     REVERSAL = "reversal"
     FX_CONVERSION = "fx_conversion"
+    DEMO_TOPUP = "demo_topup"
 
 
 class EntrySide(StrEnum):

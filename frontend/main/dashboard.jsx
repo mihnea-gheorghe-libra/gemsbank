@@ -145,6 +145,17 @@
     };
   }
 
+  function mapTemplateRow(template) {
+    return {
+      id: template.templateId,
+      name: template.name,
+      beneficiary: template.beneficiary,
+      iban: template.iban,
+      cur: template.currency,
+      reference: template.reference,
+    };
+  }
+
   function mapPendingSignatureRow(payment) {
     return {
       date: formatApiDate(payment.createdAt),
@@ -176,6 +187,9 @@
     const [transactions, setTransactions] = useState(DATA.transactions);
     const [pending, setPending] = useState(DATA.pending);
     const [templates, setTemplates] = useState(DATA.templates);
+    const [templatesError, setTemplatesError] = useState(null);
+    const [templatesBusy, setTemplatesBusy] = useState(false);
+    const [templatesDialogError, setTemplatesDialogError] = useState(null);
     const [splitBills, setSplitBills] = useState([]);
     const [deposits, setDeposits] = useState(DATA.deposits);
     const [credits] = useState(DATA.credits);
@@ -235,10 +249,14 @@
     const [openAccountBusy, setOpenAccountBusy] = useState(false);
     const [openAccountError, setOpenAccountError] = useState(null);
     const [addFundsShown, setAddFundsShown] = useState(false);
+    const [addFundsBusy, setAddFundsBusy] = useState(false);
     const [addFundsError, setAddFundsError] = useState(null);
     const [exchangeShown, setExchangeShown] = useState(false);
     const [exchangeBusy, setExchangeBusy] = useState(false);
     const [exchangeError, setExchangeError] = useState(null);
+    const [statementAccount, setStatementAccount] = useState(null);
+    const [statementBusy, setStatementBusy] = useState(false);
+    const [statementError, setStatementError] = useState(null);
     const [secureTimer, setSecureTimer] = useState(0);
 
     useEffect(() => {
@@ -291,15 +309,17 @@
       };
     }, [username]);
     const loadPaymentsData = useCallback(async () => {
-      const [accountList, txList, pendingList] = await Promise.all([
+      const [accountList, txList, pendingList, templateList] = await Promise.all([
         api.listAccounts(),
         api.listTransactions({}),
         api.listPending(),
+        api.listTemplates(),
       ]);
       const mappedAccounts = accountList.accounts.map(mapAccountRow);
       setAccounts(mappedAccounts);
       setTransactions(pendingList.pending.map(mapPendingSignatureRow).concat(txList.transactions.map(mapMovementRow)));
       setPending(pendingList.pending);
+      setTemplates(templateList.templates.map(mapTemplateRow));
 
       const investAccount = mappedAccounts.find((account) => account.typeKey === "invest");
       setInvestCashMinor(investAccount ? investAccount.minor : null);
@@ -771,7 +791,18 @@
           acknowledgePayeeMismatch: payment.acknowledgeMismatch === true,
         });
 
-        if (payment.template) setTemplates((list) => list.concat([payment.template]));
+        if (payment.template) {
+          api
+            .createTemplate({
+              name: payment.template.name,
+              beneficiary: payment.template.beneficiary,
+              iban: payment.template.iban,
+              currency: payment.template.cur,
+              reference: payment.template.reference,
+            })
+            .then((created) => setTemplates((list) => list.concat([mapTemplateRow(created)])))
+            .catch(() => {});
+        }
         closePayment();
 
         if (response.status === "awaiting_signature") {
@@ -817,17 +848,42 @@
       });
     }, [accounts, openPayment]);
 
-    const saveTemplate = useCallback((template) => {
-      setTemplates((list) => {
-        const known = list.some((item) => item.id === template.id);
-        return known ? list.map((item) => (item.id === template.id ? template : item)) : list.concat([template]);
-      });
-      setTemplateOpen(false);
-      setTemplateDraft(null);
-    }, []);
+    const saveTemplate = useCallback(async (template) => {
+      const known = templates.some((item) => item.id === template.id);
+      const payload = {
+        name: template.name,
+        beneficiary: template.beneficiary,
+        iban: template.iban,
+        currency: template.cur,
+        reference: template.reference,
+      };
+      setTemplatesBusy(true);
+      setTemplatesDialogError(null);
+      try {
+        const saved = known
+          ? await api.updateTemplate(template.id, payload)
+          : await api.createTemplate(payload);
+        const mapped = mapTemplateRow(saved);
+        setTemplates((list) =>
+          known ? list.map((item) => (item.id === template.id ? mapped : item)) : list.concat([mapped])
+        );
+        setTemplateOpen(false);
+        setTemplateDraft(null);
+      } catch (err) {
+        setTemplatesDialogError(err);
+      } finally {
+        setTemplatesBusy(false);
+      }
+    }, [templates]);
 
-    const deleteTemplate = useCallback((templateId) => {
-      setTemplates((list) => list.filter((item) => item.id !== templateId));
+    const deleteTemplate = useCallback(async (templateId) => {
+      setTemplatesError(null);
+      try {
+        await api.deleteTemplate(templateId);
+        setTemplates((list) => list.filter((item) => item.id !== templateId));
+      } catch (err) {
+        setTemplatesError(err);
+      }
     }, []);
 
     const createSplitBill = useCallback((bill) => {
@@ -900,24 +956,50 @@
       setAddFundsError(null);
     }, []);
 
-    const submitAddFunds = useCallback((amountMinor) => {
+    const submitAddFunds = useCallback(async (amountMinor) => {
       const target = accounts.find((account) => account.typeKey === "current" && account.cur === "RON") || accounts[0];
       if (!target) {
         setAddFundsError({ message: t("dashboard.addFunds.noAccount") });
         return;
       }
-      creditAccount(target.id, amountMinor);
-      bookMovement({
-        who: t("dashboard.addFunds.title"),
-        ref: t("dashboard.addFunds.title"),
-        categoryKey: "income",
-        minor: amountMinor,
-        currency: target.cur,
-        direction: "in",
-        accountId: target.id,
-      });
-      closeAddFunds();
-    }, [accounts, creditAccount, bookMovement, closeAddFunds]);
+      setAddFundsBusy(true);
+      setAddFundsError(null);
+      try {
+        await api.addFunds(target.id, amountMinor);
+        closeAddFunds();
+        await loadPaymentsData();
+      } catch (err) {
+        setAddFundsError(err);
+      } finally {
+        setAddFundsBusy(false);
+      }
+    }, [accounts, closeAddFunds, loadPaymentsData]);
+
+    const openStatement = useCallback((account) => {
+      setStatementError(null);
+      setStatementAccount(account);
+    }, []);
+
+    const closeStatement = useCallback(() => {
+      setStatementAccount(null);
+      setStatementError(null);
+    }, []);
+
+    const submitStatement = useCallback(async (payload) => {
+      setStatementBusy(true);
+      setStatementError(null);
+      try {
+        const { blob, filename } = await api.downloadStatement(
+          payload.accountId, payload.format, payload.from, payload.to
+        );
+        DASH.saveBlob(blob, filename);
+        closeStatement();
+      } catch (err) {
+        setStatementError(err);
+      } finally {
+        setStatementBusy(false);
+      }
+    }, [closeStatement]);
 
     const openExchange = useCallback(() => {
       setExchangeError(null);
@@ -1156,6 +1238,7 @@
                 transactions={transactions}
                 pending={pending}
                 templates={templates}
+                templatesError={templatesError}
                 splitBills={splitBills}
                 filter={filter}
                 onFilter={setFilter}
@@ -1163,8 +1246,8 @@
                 onQuery={setQuery}
                 onOpenPay={() => openPayment(null)}
                 onOpenSplit={() => setSplitOpen(true)}
-                onNewTemplate={() => { setTemplateDraft(null); setTemplateOpen(true); }}
-                onEditTemplate={(template) => { setTemplateDraft(template); setTemplateOpen(true); }}
+                onNewTemplate={() => { setTemplateDraft(null); setTemplatesDialogError(null); setTemplateOpen(true); }}
+                onEditTemplate={(template) => { setTemplateDraft(template); setTemplatesDialogError(null); setTemplateOpen(true); }}
                 onDeleteTemplate={deleteTemplate}
                 onUseTemplate={useTemplate}
                 onSettleShare={settleShare}
@@ -1207,6 +1290,7 @@
                 onCloseDeposit={closeDeposit}
                 onApplyCredit={() => setCreditShown(true)}
                 onWithdrawApplication={withdrawApplication}
+                onOpenStatement={openStatement}
               />
             ) : null}
             {screen === "portfolio" ? (
@@ -1326,9 +1410,20 @@
         {addFundsShown ? (
           <DASH.AddFundsDialog
             account={accounts.find((account) => account.typeKey === "current" && account.cur === "RON") || accounts[0] || null}
+            busy={addFundsBusy}
             error={addFundsError}
             onClose={closeAddFunds}
             onSubmit={submitAddFunds}
+          />
+        ) : null}
+
+        {statementAccount ? (
+          <DASH.StatementDialog
+            account={statementAccount}
+            busy={statementBusy}
+            error={statementError}
+            onClose={closeStatement}
+            onSubmit={submitStatement}
           />
         ) : null}
 
@@ -1390,6 +1485,8 @@
             key={templateDraft ? templateDraft.id : "new"}
             accounts={accounts}
             template={templateDraft}
+            busy={templatesBusy}
+            error={templatesDialogError}
             onClose={() => { setTemplateOpen(false); setTemplateDraft(null); }}
             onSubmit={saveTemplate}
           />

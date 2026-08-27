@@ -307,10 +307,8 @@
       },
       addFunds: {
         title: "Add funds",
-        subtitle: "Add demo money to {account}. This is a mock top-up — nothing leaves any real account.",
         amount: "Amount ({currency})",
         noAccount: "You need a current account to add funds to.",
-        note: "Demo data only — this does not reach the ledger and resets on refresh.",
         submit: "Add funds",
       },
       exchange: {
@@ -369,6 +367,25 @@
       },
       accounts: {
         title: "Portfolio",
+        moreActions: "More actions",
+        statementMenuItem: "Account statement",
+      },
+      statement: {
+        title: "Account statement",
+        format: "Format",
+        formatCsv: "CSV",
+        formatPdf: "PDF",
+        period: "Period",
+        periodMonth: "Last month",
+        periodFiscal: "Fiscal year",
+        periodAll: "All time",
+        periodCustom: "Custom",
+        from: "From",
+        to: "To",
+        cancel: "Cancel",
+        download: "Download",
+        downloading: "Preparing…",
+        invalidRange: "Pick a valid date range.",
       },
       portfolio: {
         title: "Investments",
@@ -1288,10 +1305,8 @@
       },
       addFunds: {
         title: "Adaugă fonduri",
-        subtitle: "Adaugă bani demo în {account}. E o alimentare simulată — nimic nu părăsește vreun cont real.",
         amount: "Suma ({currency})",
         noAccount: "Ai nevoie de un cont curent în care să adaugi fonduri.",
-        note: "Doar date demo — nu ajunge în ledger și dispare la refresh.",
         submit: "Adaugă fonduri",
       },
       exchange: {
@@ -1350,6 +1365,25 @@
       },
       accounts: {
         title: "Portofoliu",
+        moreActions: "Mai multe acțiuni",
+        statementMenuItem: "Extras de cont",
+      },
+      statement: {
+        title: "Extras de cont",
+        format: "Format",
+        formatCsv: "CSV",
+        formatPdf: "PDF",
+        period: "Perioadă",
+        periodMonth: "Ultima lună",
+        periodFiscal: "An fiscal",
+        periodAll: "Din toate timpurile",
+        periodCustom: "Personalizat",
+        from: "De la",
+        to: "Până la",
+        cancel: "Renunță",
+        download: "Descarcă",
+        downloading: "Se pregătește…",
+        invalidRange: "Alege un interval de date valid.",
       },
       portfolio: {
         title: "Investiții",

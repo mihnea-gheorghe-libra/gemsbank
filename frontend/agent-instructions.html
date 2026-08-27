@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GEMS — AI Agent Instructions</title>
+
+  <link rel="stylesheet" href="./styles/tokens.css">
+  <link rel="stylesheet" href="./styles/app.css">
+
+  <style>
+    body { padding: 0; }
+    .help-shell { max-width: 860px; margin: 0 auto; padding: 32px 24px 64px; }
+    .help-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+    .help-lang-toggle { display: inline-flex; border: 1px solid var(--color-border); border-radius: var(--radius-pill); overflow: hidden; }
+    .help-lang-toggle button {
+      appearance: none; border: 0; font: inherit; cursor: pointer;
+      padding: 7px 16px; font-size: 13px; background: transparent; color: var(--color-text);
+      min-height: var(--target-min);
+    }
+    .help-lang-toggle button + button { border-left: 1px solid var(--color-border); }
+    .help-lang-toggle button[aria-pressed="true"] { background: var(--color-primary); color: var(--color-on-primary); }
+    .help-banner { font-size: 11px; letter-spacing: 0.08em; color: var(--color-muted); margin-bottom: 28px; }
+    h1.help-title { font-size: var(--text-h3); margin: 0 0 6px; }
+    p.help-lede { color: var(--color-muted); margin: 0 0 28px; max-width: 60ch; }
+    .help-section { margin-bottom: 34px; }
+    .help-section h2 { font-size: var(--text-h5); margin: 0 0 14px; }
+    .help-guide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .help-card { padding: 16px; }
+    .help-card h3 { font-family: var(--font-heading); font-size: 15px; margin: 0 0 6px; color: var(--color-heading); display: flex; align-items: center; gap: 8px; }
+    .help-card p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--color-text); }
+    .help-card .icon { width: 16px; height: 16px; flex: none; color: var(--color-primary); }
+    .instr-examples { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+    .instr-examples li {
+      padding: 10px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      background: var(--color-surface); font-size: 13px; color: var(--color-text);
+    }
+    .instr-examples li::before { content: "“"; color: var(--color-primary); }
+    .instr-examples li::after { content: "”"; color: var(--color-primary); }
+    .instr-never {
+      padding: 14px 16px; border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      background: var(--color-surface);
+    }
+    .instr-never ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.6; color: var(--color-text); }
+    .help-faq details {
+      padding: 14px 16px; border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      margin-bottom: 10px; background: var(--color-surface);
+    }
+    .help-faq summary {
+      cursor: pointer; font-family: var(--font-heading); font-size: 14px; color: var(--color-heading);
+      list-style: none;
+    }
+    .help-faq summary::-webkit-details-marker { display: none; }
+    .help-faq summary::before { content: "+"; display: inline-block; width: 16px; color: var(--color-primary); }
+    .help-faq details[open] summary::before { content: "–"; }
+    .help-faq p { margin: 10px 0 0 16px; font-size: 13px; line-height: 1.55; color: var(--color-text); }
+    [data-lang="ro"] .lang-en { display: none; }
+    [data-lang="en"] .lang-ro { display: none; }
+    @media (max-width: 640px) { .help-guide-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="help-shell">
+    <div class="help-topbar">
+      <span class="brand-logo">
+        <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="brand-logo-mark" aria-hidden="true">
+          <polygon points="12,2 22,11 12,22 2,11" />
+          <polyline points="7,6.5 17,6.5" />
+          <polyline points="7,6.5 12,22" />
+          <polyline points="17,6.5 12,22" />
+        </svg>
+        <span class="brand-logo-word" style="font-size: 22px">
+          <span class="brand-logo-name">GEMS</span>
+          <span class="brand-logo-suffix">BANK</span>
+        </span>
+      </span>
+      <div class="help-lang-toggle" role="radiogroup" aria-label="Language / Limbă">
+        <button type="button" id="lang-en" aria-pressed="true">English</button>
+        <button type="button" id="lang-ro" aria-pressed="false">Română</button>
+      </div>
+    </div>
+
+    <div class="help-banner">DEMO SYSTEM · NO LICENCE · NO REAL FUNDS · NO REAL CARD DATA</div>
+
+    <h1 class="help-title">
+      <span class="lang-en">AI agent instructions</span>
+      <span class="lang-ro">Instrucțiuni agent AI</span>
+    </h1>
+    <p class="help-lede">
+      <span class="lang-en">How to get the most out of GEMS's AI agent — what it can do for you, how it asks for your confirmation, and what it will never do on its own.</span>
+      <span class="lang-ro">Cum să folosești cât mai bine agentul AI din GEMS — ce poate face pentru tine, cum îți cere confirmarea și ce nu va face niciodată singur.</span>
+    </p>
+
+    <section class="help-section">
+      <h2><span class="lang-en">How it works</span><span class="lang-ro">Cum funcționează</span></h2>
+      <p style="font-size: 13px; line-height: 1.6; color: var(--color-text); max-width: 68ch;">
+        <span class="lang-en">Type a question in plain language, in either English or Romanian — no special syntax or commands. Behind the scenes a lead agent reads your question and routes it to the specialist best suited to answer it; you never have to say which one you want.</span>
+        <span class="lang-ro">Scrie o întrebare în limbaj natural, în română sau engleză — fără sintaxă sau comenzi speciale. Un agent coordonator îți citește întrebarea și o trimite specialistului potrivit; nu trebuie niciodată să spui tu pe cine vrei.</span>
+      </p>
+    </section>
+
+    <section class="help-section">
+      <h2><span class="lang-en">The specialists</span><span class="lang-ro">Specialiștii</span></h2>
+      <div class="help-guide-grid">
+        <div class="plate help-card">
+          <h3><span class="lang-en">Payments</span><span class="lang-ro">Plăți</span></h3>
+          <p>
+            <span class="lang-en">Checks balances and can draft a transfer for you — it never sends one on its own.</span>
+            <span class="lang-ro">Verifică soldurile și poate pregăti un transfer pentru tine — nu îl trimite niciodată singur.</span>
+          </p>
+        </div>
+        <div class="plate help-card">
+          <h3><span class="lang-en">Cards</span><span class="lang-ro">Carduri</span></h3>
+          <p>
+            <span class="lang-en">Lists your cards (masked), and can prepare a freeze, block, limit change or new card for you to confirm. It never shows a PIN or CVV in the chat itself.</span>
+            <span class="lang-ro">Îți listează cardurile (mascate) și poate pregăti o înghețare, blocare, schimbare de limită sau un card nou, pentru confirmarea ta. Nu arată niciodată PIN-ul sau CVV-ul direct în chat.</span>
+          </p>
+        </div>
+        <div class="plate help-card">
+          <h3><span class="lang-en">Analytics</span><span class="lang-ro">Analize</span></h3>
+          <p>
+            <span class="lang-en">Explains where your money went, month over month, and can project your balance forward. Read-only — it never changes anything.</span>
+            <span class="lang-ro">Explică pe ce ai cheltuit, lună de lună, și poate estima soldul viitor. Doar citește date — nu schimbă niciodată nimic.</span>
+          </p>
+        </div>
+        <div class="plate help-card">
+          <h3><span class="lang-en">Investments</span><span class="lang-ro">Investiții</span></h3>
+          <p>
+            <span class="lang-en">Quotes real, live market prices. It cannot trade, and it gives no buy/sell/hold advice or predictions — that call stays yours.</span>
+            <span class="lang-ro">Oferă prețuri de piață reale, live. Nu poate tranzacționa și nu dă sfaturi de cumpărare/vânzare sau predicții — decizia rămâne a ta.</span>
+          </p>
+        </div>
+        <div class="plate help-card">
+          <h3><span class="lang-en">Deposits</span><span class="lang-ro">Depozite</span></h3>
+          <p>
+            <span class="lang-en">Explains term deposit rates and estimates what an amount would earn. Catalogue only — it cannot open one for you.</span>
+            <span class="lang-ro">Explică dobânzile la depozite la termen și estimează câștigul pentru o sumă. Doar din catalog — nu poate deschide unul pentru tine.</span>
+          </p>
+        </div>
+        <div class="plate help-card">
+          <h3><span class="lang-en">Credits</span><span class="lang-ro">Credite</span></h3>
+          <p>
+            <span class="lang-en">Explains loan terms and estimates a repayment. It will never say you're eligible, likely to be approved, or pre-approved.</span>
+            <span class="lang-ro">Explică termenii unui credit și estimează o rambursare. Nu va spune niciodată că ești eligibil, aprobat probabil sau pre-aprobat.</span>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="help-section">
+      <h2><span class="lang-en">Good questions to try</span><span class="lang-ro">Întrebări bune de încercat</span></h2>
+      <ul class="instr-examples">
+        <li><span class="lang-en">Move 200 lei to my savings account</span><span class="lang-ro">Mută 200 de lei în contul de economii</span></li>
+        <li><span class="lang-en">Why was my spending higher last month?</span><span class="lang-ro">De ce am cheltuit mai mult luna trecută?</span></li>
+        <li><span class="lang-en">Freeze my virtual card</span><span class="lang-ro">Îngheață-mi cardul virtual</span></li>
+        <li><span class="lang-en">What deposit rate do you offer on 12 months?</span><span class="lang-ro">Ce dobândă oferiți la un depozit pe 12 luni?</span></li>
+        <li><span class="lang-en">What is Bitcoin worth right now?</span><span class="lang-ro">Cât valorează Bitcoin acum?</span></li>
+      </ul>
+    </section>
+
+    <section class="help-section">
+      <h2><span class="lang-en">Proposals, not actions</span><span class="lang-ro">Propuneri, nu acțiuni</span></h2>
+      <p style="font-size: 13px; line-height: 1.6; color: var(--color-text); max-width: 68ch;">
+        <span class="lang-en">Anything that would move money, touch a card or open a product always comes back as a proposal card in the chat, showing exactly what would happen. Nothing is applied until you press confirm — and for a payment, you still sign it the normal way afterwards.</span>
+        <span class="lang-ro">Orice ar mișca bani, ar atinge un card sau ar deschide un produs se întoarce mereu ca un card de propunere în chat, care arată exact ce s-ar întâmpla. Nimic nu se aplică până nu apeși confirmă — iar pentru o plată, tot o semnezi tu, în modul obișnuit, după aceea.</span>
+      </p>
+    </section>
+
+    <section class="help-section">
+      <div class="instr-never">
+        <h2 style="margin: 0;"><span class="lang-en">What it will never do</span><span class="lang-ro">Ce nu va face niciodată</span></h2>
+        <ul>
+          <li><span class="lang-en">Move money, freeze/block a card, or open a product without your explicit confirmation.</span><span class="lang-ro">Nu mișcă bani, nu îngheață/blochează un card și nu deschide un produs fără confirmarea ta explicită.</span></li>
+          <li><span class="lang-en">Show a PIN or CVV inside the chat — those are only ever revealed on the Cards screen itself.</span><span class="lang-ro">Nu arată un PIN sau CVV în chat — acestea se dezvăluie doar pe ecranul Carduri.</span></li>
+          <li><span class="lang-en">Give investment advice, or predict a price.</span><span class="lang-ro">Nu dă sfaturi de investiții și nu prezice un preț.</span></li>
+          <li><span class="lang-en">Tell you that you're eligible, pre-approved, or likely to get a loan.</span><span class="lang-ro">Nu îți spune că ești eligibil, pre-aprobat sau probabil să obții un credit.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="help-section help-faq">
+      <h2><span class="lang-en">Frequently asked questions</span><span class="lang-ro">Întrebări frecvente</span></h2>
+
+      <details>
+        <summary>
+          <span class="lang-en">The agent isn't sure which card or account I mean — what happens?</span>
+          <span class="lang-ro">Agentul nu e sigur despre ce cont sau card vorbesc — ce se întâmplă?</span>
+        </summary>
+        <p>
+          <span class="lang-en">It asks you to clarify rather than guessing — for example by listing your cards so you can point at the right one.</span>
+          <span class="lang-ro">Îți cere să clarifici, în loc să ghicească — de exemplu îți listează cardurile ca să indici tu cel corect.</span>
+        </p>
+      </details>
+
+      <details>
+        <summary>
+          <span class="lang-en">Can it talk to a human instead?</span>
+          <span class="lang-ro">Poate să mă treacă la un om?</span>
+        </summary>
+        <p>
+          <span class="lang-en">Yes — ask to speak to a person, or use the "Request a human" option that appears in chat. It hands over your question and recent conversation, nothing is lost.</span>
+          <span class="lang-ro">Da — cere să vorbești cu o persoană, sau folosește opțiunea „Cere un om” care apare în chat. Îți preia întrebarea și conversația recentă, nu se pierde nimic.</span>
+        </p>
+      </details>
+
+      <details>
+        <summary>
+          <span class="lang-en">Why did it refuse to say I'm eligible for a loan?</span>
+          <span class="lang-ro">De ce a refuzat să spună că sunt eligibil pentru un credit?</span>
+        </summary>
+        <p>
+          <span class="lang-en">By design. It can explain terms and estimate a repayment, but a real credit decision is never made by the agent — only a human process can decide that, so it will not imply an outcome.</span>
+          <span class="lang-ro">Este intenționat. Poate explica termeni și estima o rambursare, dar o decizie reală de credit nu e luată niciodată de agent — doar un proces uman poate decide asta, deci nu va sugera un rezultat.</span>
+        </p>
+      </details>
+
+      <details>
+        <summary>
+          <span class="lang-en">Does it remember earlier turns in the conversation?</span>
+          <span class="lang-ro">Ține minte ce am spus mai devreme în conversație?</span>
+        </summary>
+        <p>
+          <span class="lang-en">Yes, within the same chat session — so "and the second one" or "make that 300 instead" after a question works as expected.</span>
+          <span class="lang-ro">Da, în cadrul aceleiași sesiuni de chat — deci „și al doilea” sau „fă-o 300” după o întrebare funcționează cum te-ai aștepta.</span>
+        </p>
+      </details>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      var root = document.documentElement;
+
+      var theme = "light";
+      try {
+        if (window.localStorage.getItem("gems.theme") === "dark") theme = "dark";
+      } catch (err) {
+        theme = "light";
+      }
+      root.setAttribute("data-theme", theme);
+
+      var buttons = { en: document.getElementById("lang-en"), ro: document.getElementById("lang-ro") };
+
+      function apply(lang) {
+        root.setAttribute("data-lang", lang);
+        root.lang = lang;
+        buttons.en.setAttribute("aria-pressed", String(lang === "en"));
+        buttons.ro.setAttribute("aria-pressed", String(lang === "ro"));
+      }
+
+      var stored = null;
+      try {
+        stored = window.localStorage.getItem("gems.lang");
+      } catch (err) {
+        stored = null;
+      }
+      apply(stored === "ro" ? "ro" : "en");
+
+      buttons.en.addEventListener("click", function () { apply("en"); });
+      buttons.ro.addEventListener("click", function () { apply("ro"); });
+    })();
+  </script>
+</body>
+</html>
