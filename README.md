@@ -17,8 +17,9 @@ sends it as `Authorization: Bearer …`; a page refresh signs you out, which is 
 behaviour while there is no refresh-token rotation (`PROMPT.md` §6: never `localStorage`).
 After a successful sign in you land on a **dashboard mockup**: a mostly frontend-only prototype
 (`frontend/main/dashboard.jsx` and `frontend/components/dashboard-*.jsx`) covering Dashboard,
-Payments, AI Assistant, Portfolio, Cards, Analytics and Settings. It is a deliberate, explicitly
-approved deviation from `PROMPT.md` §4 — cards, investments, analytics and the chatbot are listed
+Payments, AI Assistant, Portfolio, Cards, Analytics, Financial education and Settings. It is a
+deliberate, explicitly approved deviation from `PROMPT.md` §4 — cards, investments, analytics and
+the chatbot are listed
 there as *not in v0* — kept as UI only, with hand-authored demo data
 (`frontend/helpers/dashboard-data.js`) for the parts that are not wired to a real backend. The
 PIN-reveal screen (`AUTH.PinRevealScreen`) still runs first whenever a flow surfaces the PIN
@@ -180,22 +181,67 @@ backend/
     payment.py       the Payment state machine and the Beneficiary aggregate
     validation.py    reference, counterparty, category, cursor codec
     adapters.py      clock, limit policy, step-up stub, Verification-of-Payee stub
+  vendors/           analytics over payments — no money movement. Only service.py is reachable
+                     over HTTP; every other module is a manual batch job
+    payments_adapter.py  the only file under vendors/ that names a `payments` field. Holds
+                     the external-vendor filter, the field names, why each one is read the
+                     way it is, and a startup guard that warns when that schema drifts.
+                     `python -m backend.vendors.payments_adapter` prints the summary
+    extractor.py     external-vendor filter, counterparty normaliser, monthly stats pipeline
+                     into the rebuildable vendorMonthlyStats read model
+    user_prices.py   per (vendor, user, month) price read model into vendorUserMonthlyPrices,
+                     one median price per user-month so a personal baseline can be computed
+    detector.py      two price signals into vendorAlerts — predictive, from users whose own
+                     price rose against their own baseline or from a new shared price point,
+                     and confirmed, from the vendor median. Baselines prefer the same month
+                     last year so a seasonal tariff is not read as a price rise
+    decision_engine.py  vendorAlerts -> userNotifications: one pending document per affected
+                     user. Confidence follows the baseline alone — a year-old comparable is
+                     trusted, a cold-start one is not — and never the alert type, so a seasonal
+                     false positive cannot be promoted by arriving as a confirmed alert.
+                     Romanian copy is templated off the vendor's category
+    news_sources.py  the two article feeds — GNews (licensed, carries a summary) and Google
+                     News RSS (headline only, no key, broad) — normalised to one shape and
+                     merged on a folded title, since RSS links are Google redirects and never
+                     match a publisher URL
+    news_watcher.py  the external layer: a manual batch job that classifies those articles with
+                     Azure OpenAI into newsSignals. Three cost gates stand before every paid
+                     call — cross-source dedupe against already-seen, keyword filter over title
+                     and summary, per-run call budget. Nothing is merged into the internal
+                     signals yet
+    news_events.py   groups newsSignals into newsEvents by event, so several articles about
+                     one press announcement count as one confirmation and not as several
+                     independent ones. Never writes to newsSignals — the source articles stay
+                     traceable
+    service.py       the only HTTP-facing module under vendors/. Reads userNotifications for
+                     one signed-in user, deduplicates to the newest alert per vendor and caps
+                     the list. A user with no notifications of their own gets an empty list —
+                     it never substitutes another user's rows
   capabilities/      SEAM 6: the registry an agent layer reads its tool list from
     registry.py      Capability, SideEffect, the in-memory CapabilityRegistry
     service.py       the registered capabilities — name, in/out schema, resolver, scope
     support_docs.py  parses frontend/help.html into searchable FAQ/guide entries
     analytics.py     the four analytics.* resolvers
     payments.py      balances, beneficiaries, and the money-moving transfer *proposal*
+    cards.py         card list and the one card-action proposal
+    investments.py   market snapshot over backend/investments/, preformatted
+    products.py      deposit/credit catalogues and the two estimate calculators
   agents/            the workers — narrow callers of capabilities/, never of bus.execute
     adapters.py      AzureChatCompleter — Azure OpenAI, tool-calling
     base.py          ToolCallingAgent — the shared loop: capability-only, audits every run
     support.py       SupportAgent — read-only, FAQ/guide + own profile/sessions, tool-scoped
     analytics.py     AnalyticsAgent — read-only, forecasts and month-over-month explanations
     payments.py      PaymentsAgent — balances (read) + transfer proposals (money-moving)
+    cards.py         CardsAgent — list, freeze/block, limits, issue, reveal; proposes only
+    investments.py   InvestmentsAgent — real market prices, read-only, no advice
+    deposits.py      DepositsAgent — product terms and maturity estimates, opens nothing
+    credits.py       CreditsAgent — product terms and repayment estimates, decides nothing
     orchestrator.py  the lead agent: routes, fans out, aggregates; holds no capabilities
     transcript.py    sanitises the client-supplied conversation history
     service.py       wraps the actor as kind="agent", on_behalf_of=user_id
     analytics_service.py / payments_service.py   the same wrapping, per worker
+  products/          static deposit and credit product terms (no persistence)
+    catalogue.py     the rates and maxima the advisory agents quote
   escalations/       handing a conversation to a human
     handoff.py       the Handoff aggregate
     service.py       RequestHandoff — a normal command through bus.execute
@@ -220,7 +266,8 @@ frontend/            no build step; index.html script order is the module graph
                      and template dialogs) ·
                      dashboard-portfolio.jsx (open-account, deposit, invest and credit dialogs,
                      IBAN/rate/unit helpers) ·
-                     dashboard-screens.jsx (home, payments, chat, portfolio, cards, analytics, settings)
+                     dashboard-screens.jsx (home, payments, chat, portfolio, cards, analytics,
+                     education, settings)
   helpers/           api.js (the only fetch caller) · i18n.js · messages.js (en + ro) ·
                      people.js (name formatting for display) ·
                      dashboard-data.js (hand-authored demo data for the dashboard mockup)
@@ -580,19 +627,36 @@ papering over a gap with a guessed number.
   median. Zero qualifying groups → `insufficient_data`, not a silent best-effort guess.
 - `analytics.goal_gap.get` compares a savings goal's required monthly rate against the actual net
   rate observed on its linked account over the last 3 months. Backed by a new minimal feature,
-  `backend/goals/` (below) — no goal set → `no_goal_found`.
+  `backend/goals/` (below) — no goal set → `no_goal_found`. It also returns a
+  `projectedCompletionDate` (today's date if the target is already met, `null` if the actual rate
+  isn't positive, otherwise today plus the number of months the remaining gap needs at the actual
+  rate) and a `streakWeeks` count — consecutive weeks, counting back from now, with a net-positive
+  contribution to the goal's account, bucketed from a 26-week transaction lookback. Both are
+  computed here, never by the model; `GET /goals/progress` (`server/routes.py`) exposes the same
+  resolver output directly, read-only, for the Analytics screen's goal card below — one
+  computation, two callers, the same numbers either way.
 - `analytics.month_recap.get` and `analytics.what_changed.get` return facts only (biggest expense,
   busiest day, category deltas, per-category cause of a spend change — `new_merchant` /
   `increased_frequency` / `increased_price` / `no_clear_cause`), never prose; the agent's prompt
   does the narrating, so the numbers stay testable and localizable independent of phrasing.
+- `analytics.recommendations.get` assembles up to three deterministic recommendations from the
+  other resolvers' own logic — a `goal_projection` and a `savings_rate` entry (reusing
+  `resolve_goal_gap`'s output directly) when a goal exists, and a `category_alert` entry when one
+  category's spend grew ≥15% and ≥50 RON between the last two completed calendar months (the same
+  significance thresholds `what_changed` uses). No goal and no notable category growth →
+  `insufficient_data`. Every amount carries both the raw minor-units figure and a pre-formatted
+  string (`currentValueFormatted`/`suggestedValueFormatted`/`gapFormatted`, same `format_minor` as
+  `payments.balances.get`) — the prompt requires the model to quote the formatted string verbatim,
+  after a first pass narrated raw minor units as if they were whole currency ("economisești acum
+  33333 RON"), the exact failure mode `PaymentsAgent` had already hit once for balances.
 
-All four page through the existing `PaymentsService.list_transactions` cursor (already sorted
+All five page through the existing `PaymentsService.list_transactions` cursor (already sorted
 newest-first) and stop once a page crosses the requested date boundary
 (`capabilities/analytics.py::_transactions_in_range`) — no date-range parameter was added to
-`payments/` or `ledger/` for this; that boundary stayed untouched on purpose. All four are also
+`payments/` or `ledger/` for this; that boundary stayed untouched on purpose. All five are also
 scoped to RON transactions/accounts only: mixing currencies into one sum would be silently wrong,
 and multi-currency forecasting was never asked for — an explicit v0 cut, not an oversight.
-`GET /capabilities` describes all eight alongside the write-side command list.
+`GET /capabilities` describes all nine alongside the write-side command list.
 
 **`backend/goals/`** exists only so `analytics.goal_gap.get` has real data to read — it followed
 the same shape check as every other feature (aggregate, `service.py`, `validation.py`) and the same
@@ -636,29 +700,58 @@ worth knowing:
   request's `correlationId`, so one agent-initiated answer is fully reconstructable from
   `auditLog` alone, the same way a payment is. `backend/tests/test_tool_calling_agent.py` verifies
   the linkage with a fake audit recorder — no live Mongo needed for that test.
-- **Rate-limited per user, in-process.** `AgentRateLimiter` (`backend/agents/service.py`) is a
-  sliding-window counter over `settings.agent_rate_limit_max_calls` /
-  `agent_rate_limit_window_seconds` (defaults: 20 calls/hour), keyed by the signed-in user's id,
-  checked in `SupportService.ask` before the agent runs. It is in-memory on purpose — no new Mongo
-  collection for a single-process demo — so it resets on restart and does not coordinate across
-  API instances; raises the existing `RateLimitedError` (429), no new error type or route code.
+- **No usage cap of our own.** GEMS used to run a per-user sliding-window counter
+  (`AgentRateLimiter`, 20 calls/hour, backed by an `agentRateLimits` collection). It is gone —
+  the code, the settings, the collection and its tests. It was capping demos long before it was
+  protecting anything, and the provider already enforces the limit that actually matters.
+  **Azure OpenAI is now the only limiter.** Its 429 is caught in
+  `AzureChatCompleter.complete` and re-raised as the same `RateLimitedError` (HTTP 429) the app
+  already knew how to render, carrying `retryAfterSeconds` from Azure's `Retry-After` header when
+  it sends one and a 20-second default when it does not — so the customer still sees a friendly
+  "try again in a moment" instead of a 500, and the wait it quotes is the provider's real one.
+  `backend/tests/test_azure_chat_completer.py` covers the header, the missing header and an
+  unparseable header. What we lost with the counter: nothing now bounds a runaway agent loop
+  per user, so a bug that asks in a tight loop is billable until Azure's quota stops it —
+  `MAX_TOOL_ROUNDS` still bounds a single run, but not a caller.
 
 `AnalyticsAgent` (`backend/agents/analytics.py`, `POST /agents/analytics/ask`) is the second
 worker, built the same way: a thin `ToolCallingAgent` subclass supplying only a system prompt and
-its `tool_names` allow-list (the four `analytics.*` capabilities above), same `AgentRateLimiter`
-class reused with its own instance (`backend/agents/analytics_service.py::AnalyticsService`), same
+its `tool_names` allow-list (the four `analytics.*` capabilities above), same
+`AnalyticsService` wrapper (`backend/agents/analytics_service.py`), same
 audited-run-per-`run_id` guarantee, same in-code allow-list/`SideEffect.READ` enforcement — nothing
 about the second worker changed how `ToolCallingAgent` works, which is the point of it being a
 shared base. Its prompt carries one stake-appropriate addition beyond `SupportAgent`'s: every
 number it says must come from a tool result, full stop, and any forecast or "capping X would help"
 framing must be said as an estimate, not a certainty — financial projections, not FAQ answers.
 `backend/tests/test_analytics_agent_scoping.py` mirrors `test_support_agent_scoping.py`'s allow-list
-proof; `backend/tests/test_analytics_capabilities.py` exercises the four resolvers' actual logic
-(recurring-pattern detection, the goal-gap rate math, the category-cause classifier) against a
-scripted `PaymentsService`, no Mongo. **No frontend wiring was added for it** — the task asked for
-the tools, not a second chat surface; when one is built, it should reuse the `aiGenerated`/
-"always double-check" disclaimer mechanism already in `dashboard.jsx`, not invent a new one,
-especially for a worker whose whole job is projections and recommendations.
+proof; `backend/tests/test_analytics_capabilities.py` exercises the five resolvers' actual logic
+(recurring-pattern detection, the goal-gap rate math, the category-cause classifier, the
+recommendations aggregation) against a scripted `PaymentsService`, no Mongo.
+
+The Analytics screen (`SCR.AnalyticsScreen`, `frontend/components/dashboard-screens.jsx`) now
+carries real frontend wiring for it, past the existing spend-by-category/income-vs-spend charts:
+a **recommendations card**, which replaced the screen's old hardcoded "insight" blurb with a real
+`askAnalytics(...)` call against `analytics.recommendations.get`, rendered with the same
+`aiGenerated`/disclaimer treatment that blurb already used, and next to it a **goal card** reading
+`GET /goals/progress` directly (a plain read, not narrated) for the progress bar, the projected
+date, and a streak badge — shown only at 3+ weeks, and worded as a neutral nudge to start one below
+that threshold, never as a broken-streak warning, per the stakes of encouraging compulsive
+"catch-up" spending around money. When no goal exists, the goal card offers a **"Set a goal"**
+button opening a dialog (name/description, target amount, target date, an account picker scoped to
+the user's non-invest accounts) that posts to `POST /goals` — the first real caller of that
+endpoint, closing the gap noted below. It is deliberately a normal confirmed UI action, not
+something `AnalyticsAgent` can do on the user's behalf, matching the "agent proposes, human
+confirms" line the rest of the app draws for anything that changes state.
+
+**Financial education is its own screen**, not a card on Analytics: a new `education` nav entry
+(`frontend/helpers/dashboard-data.js::navItems`, and the `SCREENS` allow-list in
+`frontend/main/dashboard.jsx` — a screen key not in that array silently fails to navigate, which is
+exactly how this one was missed on the first pass) renders `SCR.EducationScreen`: a grid of short,
+hand-authored, non-personalized tips (`dashboard.education.*` in `messages.js`, no LLM call), plus
+— at the requester's explicit request — the same live `RecommendationsCard` and `GoalProgressCard`
+already on the Analytics screen, reused as-is rather than duplicated. The two are visually and
+architecturally distinct on this page: the tip grid never calls out to a user's own data, the two
+cards below it are exactly the personalized, agent-backed pair from Analytics.
 
 The frontend's "Ask GEMS" dock and the chat screen's free-text box (`frontend/main/dashboard.jsx`)
 call `SupportAgent` for whatever the user types — busy state, error fallback, and an
@@ -692,7 +785,7 @@ Verified green three ways — `pytest` from the repo root, `pytest` from `backen
 order.
 
 The default run (`addopts = -m "not live_llm"`) is deterministic and free: harness-level guarantees like allow-list
-enforcement, the `MAX_TOOL_ROUNDS` giving-up path, and the rate limiter, all against a scripted
+enforcement, the `MAX_TOOL_ROUNDS` giving-up path, and the provider-429 mapping, all against a scripted
 fake chat completer, no network. `backend/tests/test_support_agent_live_eval.py` is marked
 `live_llm` and skipped by default — it calls the real Azure OpenAI deployment through
 `get_support_service()` / `get_analytics_service()` to grade prompt quality (injection resistance,
@@ -756,6 +849,18 @@ outside this agent's grant is a security signal and still raises, as before — 
 `test_support_agent_scoping.py` has always asserted, and it still does. Malformed tool arguments
 are handled the same forgiving way as a mis-typed name.
 
+The same mis-typed-name slip resurfaced later, live, for `analytics.recommendations.get`:
+gpt-5-mini called `recommendations.get` and, unlike the `transfer.propose` case, did not
+self-correct within `MAX_TOOL_ROUNDS` — it repeated the exact same wrong name across all four
+rounds despite the fed-back error naming the correct one, and the request failed with a 422. The
+fix stops short of resolving a dropped prefix server-side (that would quietly change the
+already-tested contract above, where an unrecognised name is always the model's problem to fix,
+never the framework's to guess at) and instead makes the tool's `description` in the OpenAI
+function-calling schema restate its own exact name (`backend/agents/base.py::_tool_defs`) rather
+than just repeating the bare name as before — tool metadata the model weighs more heavily than
+system-prompt prose for which literal string to echo back. Cheap, applies to every agent's every
+tool, and left the retry contract and its tests untouched.
+
 `backend/tests/test_payments_agent_proposes_but_never_pays.py` is the proof: a `FakeLedger` whose
 `post_transaction` raises on contact, asserted across the clean, insufficient-funds, cross-currency,
 over-limit and over-daily-limit paths; the ambiguity and formatting rules; and the two refusal
@@ -798,10 +903,9 @@ would outlive its own session — and needs no new collection. It is treated as 
 start on a dangling assistant reply. A forged transcript cannot widen access anyway — the actor
 comes from the bearer token and the per-worker allow-lists are enforced in code.
 
-Rate limiting is **per orchestrator run**, keyed `orchestrator:{userId}`: one customer question is
-one unit whether it fans out to one worker or three. The orchestrator holds the three agents
-directly rather than their services, which is what stops the per-worker limiters from
-double-counting.
+There is no per-user call cap; Azure OpenAI's own quota is the only limiter (see above). The
+orchestrator still holds the three agents directly rather than their services, so a fan-out is one
+customer question rather than three trips through a service wrapper.
 
 Escalation to a human is a first-class, always-visible option (§7's hard rule 4), and the workers
 did not have to change to get it. The orchestrator can *offer* a human — for fraud, a lost card,
@@ -830,8 +934,103 @@ card and someone is using it" → escalated with no worker forced; and "and the 
 two turns of history resolved to the right account. Zero movement in `journalTransactions` or
 `payments` across all of it.
 
+### Three advisory workers: investments, deposits, credits
+
+`InvestmentsAgent`, `DepositsAgent` and `CreditsAgent` (`backend/agents/`) are read-only workers
+the orchestrator can route to. All three are ordinary `ToolCallingAgent` subclasses with an empty
+`proposal_tool_names`, so none of them can be handed a money-moving capability even by mistake —
+`test_advisory_agents_explain_but_never_open.py` asserts exactly that against a registry that
+deliberately contains `payments.transfer.propose` and `accounts.open`.
+
+They differ sharply in how real they are, and the prompts say so out loud rather than hiding it:
+
+- **Investments is real.** `investments.market.get` wraps the existing `backend/investments/`
+  service, so prices, day change and the period low/high/change come from Yahoo and Frankfurter
+  converted to RON. When the provider is down the capability passes `live: false` plus a
+  `stalenessNote` instructing the agent to say so and give the timestamp before quoting anything.
+  It cannot trade, and it gives no advice: no buy/sell/hold, no price predictions, no ranking
+  instruments. It also cannot see the customer's *positions* — only prices — so "what are my
+  holdings worth" is answered honestly rather than guessed.
+- **Deposits and credits are catalogue-only.** `backend/deposits/` and `backend/credits/` are
+  still empty folders; nothing about a term deposit, savings goal or credit application survives a
+  refresh today. So these two agents explain products and do arithmetic, and nothing else.
+  `backend/products/catalogue.py` is now the server-side source of truth for the terms and rates
+  that `dashboard-data.js` renders in the mock UI — **the two copies are not yet linked, so a rate
+  changed in one must be changed in the other.** The credits prompt is the strictest in the
+  system: it may never say eligible, likely, pre-approved or refused, may never present a balance
+  as an affordability assessment, and must say that no application is filed.
+
+`deposits.maturity.estimate` and `credits.repayment.estimate` exist so the model never does money
+arithmetic. Both take a rate the agent must have read from the catalogue — inventing or
+interpolating one is forbidden — and both return preformatted strings plus a caveat (simple
+interest, straight-line, no compounding, fees or tax) that the agent has to pass on. Every figure
+crosses to the model already formatted, and the prompts forbid mentioning minor units or basis
+points to the customer at all.
+
+Verified live through the orchestrator: an ETF question routed to investments and quoted real
+prices; "what rate on a 12-month term deposit" to deposits (6,10%, with the "I cannot open one"
+caveat); "10.000 lei over 24 months" to credits, which **refused an invented APR** and used the
+catalogue's 8,30%; and "open a 12-month deposit with 500 lei right now" produced an estimate and an
+explicit refusal to open anything. Zero movement in `journalTransactions` or `payments` throughout.
+
+Worth tuning: "should I buy Bitcoin?" and "am I approved for the mortgage?" both escalate to a
+human rather than being declined by the specialist. That is defensible — a human does decide
+credit — but it will generate handoff noise for questions the agents are already instructed to
+decline politely. If that proves annoying, the fix is in the orchestrator prompt, not in the
+workers.
+
+### CardsAgent, and the auth hole it forced shut
+
+`CardsAgent` (`backend/agents/cards.py`) covers the whole card surface: list, freeze, unfreeze,
+block, ATM and online limits, issuing virtual or physical, and revealing the PIN or the details.
+`cards.list` is a plain read; everything else goes through one `cards.action.propose` capability
+registered `SideEffect.WRITE`. It **writes nothing** — it validates the action against the real
+card's state and returns a proposal the customer confirms on screen, and the confirmation runs the
+existing command through `bus.execute`. `ToolCallingAgent` was widened so `proposal_tool_names`
+accepts `WRITE` as well as `MONEY_MOVING`; the invariant is unchanged and now broader: **no agent
+ever writes, in any domain.**
+
+Building it required closing the oldest hole in the repo. Every `/cards/*` endpoint took a
+`username` in the body or query and ran as `Actor.public_cards()`, so anyone who knew a username
+could list another customer's cards, change their limits, block a card, or reveal their PIN and
+CVV — while `/accounts` had required a bearer token all along. An agent acting `on_behalf_of` a
+signed-in user cannot work against that, because there is nothing to propagate. The commands now
+carry no `username`, the routes take `CurrentActor`, and `CardsService` resolves the caller by
+user id. `Actor.public_cards()` is gone. `GET /cards` without a token now returns 401.
+
+**PIN and CVV never enter the conversation.** They would otherwise land in the model's context and
+in the client-held transcript. `cards.list` returns only masked numbers, and a `reveal_pin` /
+`reveal_details` proposal carries `revealsSecret: true` and no secret; confirming it navigates to
+the Cards screen so the existing PIN gate runs there. `block` carries `irreversible: true` and
+gets its own red-flag copy and confirm label. Tests assert no field of a card view or a proposal
+can contain a PIN or CVV.
+
+Verified live: routed correctly on all five card questions, refused to show a PIN in chat,
+correctly refused to act on an already-blocked card, and asked which card when the customer had
+two. With an unambiguous card named, all four proposal shapes came back correctly flagged — and
+card states were byte-identical afterwards, with no card issued.
+
+### The chat suggestions are real now
+
+The three buttons above the chat box used to insert **canned answers** from `dashboard-data.js` —
+the mock "Ionescu John" transfer card, a hardcoded table, a fake chart. They never called an
+agent. They now send a real question through the orchestrator like anything the customer types.
+
+They are also **contextual, for free**. The set shown is chosen from the agent that answered last
+(`agentsUsed` on the orchestrator response), falling back to the current screen before a
+conversation has started — so after a cards answer you get card follow-ups, after an analytics
+answer you get spending ones. This deliberately costs no extra LLM call: generating follow-ups
+with the model would add a round trip to every turn for suggestions people mostly ignore once
+they start typing. Seven sets of three, `dashboard.chat.suggest.*`, en and ro.
+
+Still canned: the **Ask GEMS dock's** per-screen prompt buttons, which remain wired to
+`answerFor()` and `dashboard-data.js`. Only the chat screen's three were in scope here.
+
 Not done: no mandates, no `settings.security.get` (see above), no
-UI for `AnalyticsAgent`, no multi-goal support. `PaymentsAgent` cannot see transactions, cards or
+multi-goal support — the Analytics screen's "Set a goal" dialog only ever offers to create one,
+and `backend/goals/` still enforces exactly one active goal per user with no edit or close
+endpoint, so replacing a goal today still means deleting the Mongo document by hand.
+`PaymentsAgent` cannot see transactions, cards or
 settings, and `payments.transactions.list` is still not in the registry — add it there, not as a
 new pathway, when a worker needs it. The proposal is stateless: `proposalId` is a display string,
 nothing persists it, and the confirmation step re-validates from scratch rather than trusting it.
@@ -871,6 +1070,109 @@ Also missing, and worth knowing:
   and they are not there yet. `backend/tests/test_payments_agent_proposes_but_never_pays.py` is the
   closest thing so far, and it only proves the *agent* cannot move money, not that the ledger is
   right.
+
+## Agent insights on the dashboard
+
+The AGENT INSIGHTS card reads `GET /api/insights?username=...`. That endpoint is scoped to the
+signed-in user and nothing else: a user with no notifications of their own gets an empty card.
+It never falls back to another user's rows — an earlier version did, and showed one synthetic
+user's bill as if it were yours.
+
+`userNotifications.userId` must therefore hold a real `users._id`. The synthetic cohort in
+`payments_seed_dev` / `payments_seed_seasonal` uses generated ids that match no real account, so
+those rows are unreachable by design. To give a real account its own history, seed it into its
+own source collection:
+
+```bash
+python -m ops.seed_vendor_payments --collection payments_seed_demo --batch vendor-demo-v1 \
+  --months 18 --increase-month-index 14 --seasonal --real-user gabriela --vendor-increase enel
+python -m backend.vendors.extractor       --source payments_seed_demo
+python -m backend.vendors.user_prices     --source payments_seed_demo
+python -m backend.vendors.detector        --source payments_seed_demo
+python -m backend.vendors.decision_engine --source payments_seed_demo
+```
+
+`--real-user` resolves the username against `users`, debits their real RON account, and fails
+loudly if either is missing — seeding a history for an account that does not exist is the bug
+this flag exists to prevent. The synthetic cohort is still generated alongside them, because
+`detector.py` needs at least `min_cohort_users` (2) per vendor before it will raise anything.
+
+`--vendor-increase KEY` applies that vendor's `tariff_increase` from the increase month onward.
+It is opt-in so a re-run without it reproduces the older collections byte for byte. Enel carries
+a 22% rise, and 18 months of history is what makes it visible for the right reason: the detector
+then has the same month last year to compare against, so the winter seasonal swing cancels out
+and only the tariff rise is left. With a short history the same data yields a `rolling_3_month`
+baseline, the alert comes out `low`, and it is suppressed.
+
+`vendor_insights_source` and `vendor_insights_limit` in `backend/config.py` select which source
+collection the card reads and how many vendors it shows. The card itself renders the first
+`INSIGHT_CARD_LIMIT` of those and offers "view all" when there is more — the backend decides
+which alerts and in what order, the frontend only decides how many fit. The full list collapses
+a predictive and a confirmed alert for the same vendor and month into one row: that is one price
+rise seen by two mechanisms, not two rises.
+
+One price rise is one notification. `vendorAlerts` and `newsEvents` keep every month and every
+article — the filter sits only where rows reach the user:
+
+- **A persistent rise is not re-sent every month.** A year-over-year baseline moves from month to
+  month even when the tariff behind it never changed again, so comparing baselines cannot tell a
+  reconfirmation from a new rise. `decision_engine.py` instead remembers the price state it last
+  notified per (user, vendor, currency) and suppresses a new row while *either* the absolute price
+  *or* the size of the step is materially unchanged — `repeat_price_tolerance` (3%) and
+  `repeat_step_tolerance` (12pp). A flat vendor is caught by the price test, a seasonal one whose
+  bill keeps sliding by the step test. Only when both have moved is it treated as a new rise.
+- **Later articles about a known announcement enrich it, they do not repeat it.** News events are
+  grouped once more into episodes — same vendor, compatible market and percent, within
+  `news_episode_window_days` (180). Dated and undated events are grouped separately, so a dated
+  foreign announcement never absorbs undated domestic coverage. Once an episode has notified a
+  user, further events in it add their publishers to that row's source list instead of creating
+  another.
+
+Both suppressions are recorded in the run report as `same_price_state_already_notified` and
+`same_news_episode_already_notified`, so nothing disappears silently.
+
+Money is never formatted in the backend. `decision_engine.py` writes `longText` / `longTextEn`
+with `{baseline}` and `{observed}` placeholders plus the minor-unit values, and the frontend
+fills them through `UI.formatMoney`, so the card follows the same locale rules as the
+transactions table — `1.234,00 RON` in Romanian, not `1,234.00`.
+
+## What backend/vendors/ assumes about `payments`
+
+`payments` belongs to the Payments & Cards track. `backend/vendors/` only ever reads it,
+never writes, and every assumption is centralised in `backend/vendors/payments_adapter.py`
+so a schema change breaks one file loudly instead of six quietly.
+
+A payment counts as "to an external vendor" when all of these hold:
+
+| condition | why |
+|---|---|
+| `status` is `posted` | only settled money belongs in a price statistic; a rejected payment would poison a vendor's max and median |
+| `targetAccountId` is `null` | the structural discriminator. `payments/service.py` asserts it is set before posting and money can only reach a GEMS account, so a posted payment with it set *is* an internal P2P transfer — guaranteed by code, not by user input |
+| `rail` is not `internal` | secondary check. System-assigned and enum-constrained, never typed by a customer. Excluded rather than whitelisted, so a new external rail is picked up automatically |
+| `amountMinorUnits` > 0 | integer minor units; the money core forbids floats |
+| `counterparty` is a non-empty string | it is the vendor identity, after folding |
+
+Fields read, and what each is used for:
+
+| field | used for |
+|---|---|
+| `userId` | per-user price history and cohort counts |
+| `targetAccountId` | the external-vendor discriminator above |
+| `rail` | secondary discriminator; also reported per vendor |
+| `status` | settlement filter |
+| `amountMinorUnits` | the price — min, max, median, per-user series |
+| `counterparty` | vendor identity, folded for diacritics, case and whitespace |
+| `category` | reported only |
+| `currency` | part of every grouping key, so RON and EUR never mix |
+| `createdAt` | the month a payment is bucketed into, in Europe/Bucharest |
+
+**`category` is deliberately not a discriminator.** It is chosen by the customer from a
+whitelist, and on real data 6 of 13 P2P transfers carry `utilities`, `entertainment`,
+`transport` or `groceries` rather than `transfer`. Filtering P2P on
+`category == "transfer"` misses about 46% of it.
+
+If any of this changes, `backend/vendors/` prints a loud warning at startup and keeps
+going — it never silently returns nothing. The fix is always in `payments_adapter.py`.
 
 ## Adding a feature
 

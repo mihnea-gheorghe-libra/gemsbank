@@ -1,9 +1,7 @@
 import asyncio
 import hashlib
 import logging
-import re
 from datetime import date, datetime, timezone
-from typing import Any
 
 from backend.config import Settings
 from backend.helpers.context import log_event
@@ -51,8 +49,8 @@ class AzureDocIntelDocumentExtractor:
         self._min_confidence = min_confidence
         self._client = None
         if endpoint and key:
-            from azure.core.credentials import AzureKeyCredential
             from azure.ai.documentintelligence import DocumentIntelligenceClient
+            from azure.core.credentials import AzureKeyCredential
             self._client = DocumentIntelligenceClient(
                 endpoint=endpoint, credential=AzureKeyCredential(key)
             )
@@ -245,6 +243,14 @@ class AzureDocIntelDocumentExtractor:
             expires_on=expires_on,
             cnp_raw=cnp,
         )
+
+
+def _cnp_gender_digit(birth_year: int, male: bool) -> int:
+    if 2000 <= birth_year <= 2099:
+        return 5 if male else 6
+    if 1800 <= birth_year <= 1899:
+        return 3 if male else 4
+    return 1 if male else 2
 
 
 class DemoDocumentExtractor:

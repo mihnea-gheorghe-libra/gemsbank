@@ -134,9 +134,17 @@ def test_the_orchestrator_is_given_no_capabilities_only_specialists() -> None:
     _ask(_build(chat, support=support))
 
     offered = {tool["function"]["name"] for tool in chat.calls[0]["tools"]}
-    assert offered == {"ask_support", "ask_analytics", "ask_payments", "escalate_to_human"}
-    assert not any(name.startswith("payments.") for name in offered)
-    assert not any(name.startswith("analytics.") for name in offered)
+    assert offered == {
+        "ask_support",
+        "ask_analytics",
+        "ask_payments",
+        "ask_investments",
+        "ask_deposits",
+        "ask_credits",
+        "ask_cards",
+        "escalate_to_human",
+    }
+    assert not any("." in name for name in offered)
 
 
 def test_a_worker_named_twice_is_only_run_once() -> None:

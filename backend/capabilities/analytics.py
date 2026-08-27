@@ -1,11 +1,13 @@
+import calendar
 import statistics
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 from backend.accounts.service import get_accounts_service
+from backend.capabilities.payments import format_minor
 from backend.config import settings
 from backend.goals.service import get_goals_service
 from backend.helpers.context import Actor
@@ -18,11 +20,39 @@ _RECURRING_MAX_GAP_DAYS = 40
 _RECURRING_AMOUNT_TOLERANCE = 0.15
 
 _GOAL_RATE_LOOKBACK_MONTHS = 3
+_GOAL_STREAK_LOOKBACK_WEEKS = 26
 
 _SIGNIFICANT_PCT_THRESHOLD = 15.0
 _SIGNIFICANT_ABSOLUTE_FLOOR_MINOR = 5000
 
 _HOME_CURRENCY = "RON"
+
+
+def _add_months(base: date, months: int) -> date:
+    month_index = base.month - 1 + months
+    year = base.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(base.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def _streak_weeks(rows: list[dict], account_id: str, now: datetime) -> int:
+    buckets: dict[int, int] = defaultdict(int)
+    for row in rows:
+        if row["accountId"] != account_id:
+            continue
+        posted_at = datetime.fromisoformat(row["postedAt"])
+        age_days = (now - posted_at).days
+        if age_days < 0:
+            continue
+        buckets[age_days // 7] += row["amount"]["minorUnits"]
+
+    streak = 0
+    week = 0
+    while buckets.get(week, 0) > 0:
+        streak += 1
+        week += 1
+    return streak
 
 
 async def _transactions_in_range(
@@ -193,6 +223,10 @@ class GoalGapOutput(BaseModel):
     )
     actual_minor_per_month: int | None = Field(default=None, alias="actualMinorUnitsPerMonth")
     gap_minor_per_month: int | None = Field(default=None, alias="gapMinorUnitsPerMonth")
+    projected_completion_date: str | None = Field(
+        default=None, alias="projectedCompletionDate"
+    )
+    streak_weeks: int = Field(default=0, alias="streakWeeks")
     model_config = {"populate_by_name": True}
 
 
@@ -219,6 +253,18 @@ async def resolve_goal_gap(actor: Actor, payload: BaseModel) -> BaseModel:
     net_movement = sum(row["amount"]["minorUnits"] for row in account_rows)
     actual_per_month = net_movement // _GOAL_RATE_LOOKBACK_MONTHS
 
+    if remaining_minor <= 0:
+        projected_completion_date = today.isoformat()
+    elif actual_per_month <= 0:
+        projected_completion_date = None
+    else:
+        months_needed = -(-remaining_minor // actual_per_month)
+        projected_completion_date = _add_months(today, months_needed).isoformat()
+
+    streak_lookback_start = now - timedelta(weeks=_GOAL_STREAK_LOOKBACK_WEEKS)
+    streak_rows = await _transactions_in_range(payments, user_id, streak_lookback_start, now)
+    streak = _streak_weeks(streak_rows, goal.account_id, now)
+
     return GoalGapOutput(
         status="ok",
         goalId=goal.id,
@@ -230,6 +276,8 @@ async def resolve_goal_gap(actor: Actor, payload: BaseModel) -> BaseModel:
         requiredMinorUnitsPerMonth=required_per_month,
         actualMinorUnitsPerMonth=actual_per_month,
         gapMinorUnitsPerMonth=required_per_month - actual_per_month,
+        projectedCompletionDate=projected_completion_date,
+        streakWeeks=streak,
     )
 
 
@@ -478,3 +526,124 @@ async def resolve_what_changed(actor: Actor, payload: BaseModel) -> BaseModel:
 
     changes.sort(key=lambda change: abs(change.change_pct), reverse=True)
     return WhatChangedOutput(status="ok", changes=changes)
+
+
+class RecommendationsInput(BaseModel):
+    pass
+
+
+class Recommendation(BaseModel):
+    kind: Literal["savings_rate", "spending_cap", "category_alert", "goal_projection"]
+    category: str | None = None
+    current_value_minor: int | None = Field(default=None, alias="currentValueMinorUnits")
+    suggested_value_minor: int | None = Field(default=None, alias="suggestedValueMinorUnits")
+    message_data: dict = Field(default_factory=dict, alias="messageData")
+    model_config = {"populate_by_name": True}
+
+
+class RecommendationsOutput(BaseModel):
+    status: Literal["ok", "insufficient_data"]
+    recommendations: list[Recommendation] = Field(default_factory=list)
+
+
+async def resolve_recommendations(actor: Actor, payload: BaseModel) -> BaseModel:
+    assert isinstance(payload, RecommendationsInput)
+    user_id = actor.subject_id()
+    recommendations: list[Recommendation] = []
+
+    goal_gap = await resolve_goal_gap(actor, GoalGapInput())
+    assert isinstance(goal_gap, GoalGapOutput)
+    if goal_gap.status == "ok":
+        recommendations.append(
+            Recommendation(
+                kind="goal_projection",
+                messageData={
+                    "goalName": goal_gap.name,
+                    "currency": goal_gap.currency,
+                    "targetDate": goal_gap.target_date,
+                    "projectedCompletionDate": goal_gap.projected_completion_date,
+                    "streakWeeks": goal_gap.streak_weeks,
+                },
+            )
+        )
+        recommendations.append(
+            Recommendation(
+                kind="savings_rate",
+                currentValueMinorUnits=goal_gap.actual_minor_per_month,
+                suggestedValueMinorUnits=goal_gap.required_minor_per_month,
+                messageData={
+                    "currency": goal_gap.currency,
+                    "currentValueFormatted": format_minor(
+                        goal_gap.actual_minor_per_month or 0, goal_gap.currency or _HOME_CURRENCY
+                    ),
+                    "suggestedValueFormatted": format_minor(
+                        goal_gap.required_minor_per_month or 0,
+                        goal_gap.currency or _HOME_CURRENCY,
+                    ),
+                    "gapMinorUnits": goal_gap.gap_minor_per_month,
+                    "gapFormatted": format_minor(
+                        goal_gap.gap_minor_per_month or 0, goal_gap.currency or _HOME_CURRENCY
+                    ),
+                },
+            )
+        )
+
+    payments = get_payments_service()
+    now = datetime.now(timezone.utc)
+    last_year, last_month = (now.year - 1, 12) if now.month == 1 else (now.year, now.month - 1)
+    prior_year, prior_month = (
+        (last_year - 1, 12) if last_month == 1 else (last_year, last_month - 1)
+    )
+    start_prior, end_prior = _month_bounds(prior_year, prior_month)
+    start_last, end_last = _month_bounds(last_year, last_month)
+
+    rows_prior = [
+        row
+        for row in await _transactions_in_range(payments, user_id, start_prior, end_prior)
+        if row["amount"]["currency"] == _HOME_CURRENCY
+    ]
+    rows_last = [
+        row
+        for row in await _transactions_in_range(payments, user_id, start_last, end_last)
+        if row["amount"]["currency"] == _HOME_CURRENCY
+    ]
+    totals_prior = _spend_by_category(rows_prior)
+    totals_last = _spend_by_category(rows_last)
+
+    best_category: str | None = None
+    best_delta = 0
+    best_pct = 0.0
+    for category, spent_last in totals_last.items():
+        spent_prior = totals_prior.get(category, 0)
+        delta = spent_last - spent_prior
+        if delta < _SIGNIFICANT_ABSOLUTE_FLOOR_MINOR:
+            continue
+        pct = (delta / spent_prior * 100) if spent_prior else 100.0
+        if spent_prior and pct < _SIGNIFICANT_PCT_THRESHOLD:
+            continue
+        if delta > best_delta:
+            best_delta = delta
+            best_category = category
+            best_pct = pct
+
+    if best_category is not None:
+        recommendations.append(
+            Recommendation(
+                kind="category_alert",
+                category=best_category,
+                currentValueMinorUnits=totals_last[best_category],
+                suggestedValueMinorUnits=totals_prior.get(best_category, 0),
+                messageData={
+                    "currency": _HOME_CURRENCY,
+                    "currentValueFormatted": format_minor(totals_last[best_category], _HOME_CURRENCY),
+                    "suggestedValueFormatted": format_minor(
+                        totals_prior.get(best_category, 0), _HOME_CURRENCY
+                    ),
+                    "growthPct": round(best_pct, 1),
+                    "month": f"{last_year:04d}-{last_month:02d}",
+                },
+            )
+        )
+
+    status: Literal["ok", "insufficient_data"] = "ok" if recommendations else "insufficient_data"
+    return RecommendationsOutput(status=status, recommendations=recommendations)

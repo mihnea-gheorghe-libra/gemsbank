@@ -17,6 +17,18 @@ class Settings(BaseSettings):
     azure_docintel_endpoint: str | None = None
     azure_docintel_key: str | None = None
 
+    azure_openai_endpoint: str | None = None
+    azure_openai_api_key: str | None = None
+    azure_openai_deployment_name: str | None = None
+    azure_openai_api_version: str = "2024-12-01-preview"
+
+    gnews_api_key: str | None = None
+    gnews_base_url: str = "https://gnews.io/api/v4"
+    gnews_min_request_interval_seconds: float = 1.1
+
+    vendor_insights_source: str = "payments_seed_demo"
+    vendor_insights_limit: int = 3
+
     pin_encryption_key: str | None = None
 
     web_dir: str = str(_REPO_ROOT / "frontend")
@@ -54,9 +66,6 @@ class Settings(BaseSettings):
     azure_openai_api_key: str | None = None
     azure_openai_api_version: str = "2024-10-21"
     azure_openai_deployment: str | None = None
-
-    agent_rate_limit_max_calls: int = 20
-    agent_rate_limit_window_seconds: int = 3600
 
     cashflow_low_balance_threshold_minor: int = 0
 

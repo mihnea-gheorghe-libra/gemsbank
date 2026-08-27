@@ -1,5 +1,5 @@
 from datetime import date, datetime, timezone
-from decimal import Decimal, InvalidOperation, ROUND_HALF_EVEN
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 
 from backend.helpers.errors import ValidationError
 

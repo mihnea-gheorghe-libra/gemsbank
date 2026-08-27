@@ -31,6 +31,12 @@
     );
   }
 
+  function countFor(n) {
+    const value = Number(n) || 0;
+    if (state.locale === "ro" && Math.abs(value) >= 20) return value + " de";
+    return String(value);
+  }
+
   function tError(message) {
     if (!message) return message;
     const value = state.dictionary.serverErrors && state.dictionary.serverErrors[message];
@@ -58,6 +64,7 @@ function setLocale(next) {
   GEMS.i18n = { 
     locale: state.locale, 
     t, 
+    countFor,
     tError, // Păstrat de pe branch-ul main
     dictionary: state.dictionary, 
     isoToDisplayDate, 
