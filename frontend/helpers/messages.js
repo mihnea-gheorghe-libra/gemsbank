@@ -184,7 +184,6 @@
       greeting: "Good afternoon, {username}",
       readAloudOn: "Read aloud: on",
       readAloudOff: "Read aloud: off",
-      searchPlaceholder: "Search transactions, IBANs, or ask the agent…",
       signOut: "Log out",
       profileMenu: {
         trigger: "Account menu",
@@ -1249,7 +1248,6 @@
       greeting: "Bună ziua, {username}",
       readAloudOn: "Citire cu voce tare: activă",
       readAloudOff: "Citire cu voce tare: inactivă",
-      searchPlaceholder: "Caută tranzacții, IBAN-uri sau întreabă agentul…",
       signOut: "Ieși din cont",
       profileMenu: {
         trigger: "Meniu cont",
