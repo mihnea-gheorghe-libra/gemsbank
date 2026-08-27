@@ -4,8 +4,9 @@ from typing import Any, Protocol
 
 import httpx
 
+from backend.agents.adapters import DEFAULT_RETRY_AFTER_SECONDS
 from backend.config import Settings
-from backend.helpers.errors import DeliveryError, ValidationError
+from backend.helpers.errors import DeliveryError, RateLimitedError, ValidationError
 
 SUPPORTED_CONTENT_TYPES: dict[str, str] = {
     "audio/webm": "webm",
@@ -123,12 +124,29 @@ class AzureSpeechTranscriber:
         return Transcript(text=combined_text(payload))
 
 
-def error_for_status(exc: httpx.HTTPStatusError, url: str) -> DeliveryError | ValidationError:
+def retry_after_seconds(response: httpx.Response) -> int:
+    raw = response.headers.get("retry-after")
+    if raw is None:
+        return DEFAULT_RETRY_AFTER_SECONDS
+    try:
+        return max(1, int(float(raw)))
+    except (TypeError, ValueError):
+        return DEFAULT_RETRY_AFTER_SECONDS
+
+
+def error_for_status(
+    exc: httpx.HTTPStatusError, url: str
+) -> DeliveryError | RateLimitedError | ValidationError:
     status = exc.response.status_code
     if status in (400, 415):
         return ValidationError(
             "That recording could not be transcribed.",
             details={"field": "audio", "status": status},
+        )
+    if status == 429:
+        return RateLimitedError(
+            "The speech service is busy right now. Try again in a moment.",
+            details={"retryAfterSeconds": retry_after_seconds(exc.response)},
         )
     if status == 404:
         return DeliveryError(

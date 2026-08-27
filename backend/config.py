@@ -85,9 +85,6 @@ class Settings(BaseSettings):
     speech_max_upload_bytes: int = 12_000_000
     speech_timeout_seconds: float = 30.0
 
-    agent_rate_limit_max_calls: int = 20
-    agent_rate_limit_window_seconds: int = 3600
-
     cashflow_low_balance_threshold_minor: int = 0
 
     yahoo_chart_base_url: str = "https://query1.finance.yahoo.com"

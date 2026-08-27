@@ -244,18 +244,27 @@ backend/
     support_docs.py  parses frontend/help.html into searchable FAQ/guide entries
     analytics.py     the four analytics.* resolvers
     payments.py      balances, beneficiaries, and the money-moving transfer *proposal*
+    cards.py         card list and the one card-action proposal
+    investments.py   market snapshot over backend/investments/, preformatted
+    products.py      deposit/credit catalogues and the two estimate calculators
   agents/            the workers — narrow callers of capabilities/, never of bus.execute
     adapters.py      AzureChatCompleter — Azure OpenAI, tool-calling
     base.py          ToolCallingAgent — the shared loop: capability-only, audits every run
     support.py       SupportAgent — read-only, FAQ/guide + own profile/sessions, tool-scoped
     analytics.py     AnalyticsAgent — read-only, forecasts and month-over-month explanations
     payments.py      PaymentsAgent — balances (read) + transfer proposals (money-moving)
+    cards.py         CardsAgent — list, freeze/block, limits, issue, reveal; proposes only
+    investments.py   InvestmentsAgent — real market prices, read-only, no advice
+    deposits.py      DepositsAgent — product terms and maturity estimates, opens nothing
+    credits.py       CreditsAgent — product terms and repayment estimates, decides nothing
     orchestrator.py  the lead agent: routes, fans out, aggregates; holds no capabilities
     transcript.py    sanitises the client-supplied conversation history
     service.py       wraps the actor as kind="agent", on_behalf_of=user_id
     analytics_service.py / payments_service.py   the same wrapping, per worker
     transcription.py AzureSpeechTranscriber — Azure AI Speech REST, one call, no tools
-    transcription_service.py   the voice-input door: bounds, rate limit, audit
+    transcription_service.py   the voice-input door: bounds, audit, never stores audio
+  products/          static deposit and credit product terms (no persistence)
+    catalogue.py     the rates and maxima the advisory agents quote
   escalations/       handing a conversation to a human
     handoff.py       the Handoff aggregate
     service.py       RequestHandoff — a normal command through bus.execute
@@ -714,17 +723,24 @@ worth knowing:
   request's `correlationId`, so one agent-initiated answer is fully reconstructable from
   `auditLog` alone, the same way a payment is. `backend/tests/test_tool_calling_agent.py` verifies
   the linkage with a fake audit recorder — no live Mongo needed for that test.
-- **Rate-limited per user, in-process.** `AgentRateLimiter` (`backend/agents/service.py`) is a
-  sliding-window counter over `settings.agent_rate_limit_max_calls` /
-  `agent_rate_limit_window_seconds` (defaults: 20 calls/hour), keyed by the signed-in user's id,
-  checked in `SupportService.ask` before the agent runs. It is in-memory on purpose — no new Mongo
-  collection for a single-process demo — so it resets on restart and does not coordinate across
-  API instances; raises the existing `RateLimitedError` (429), no new error type or route code.
+- **No usage cap of our own.** GEMS used to run a per-user sliding-window counter
+  (`AgentRateLimiter`, 20 calls/hour, backed by an `agentRateLimits` collection). It is gone —
+  the code, the settings, the collection and its tests. It was capping demos long before it was
+  protecting anything, and the provider already enforces the limit that actually matters.
+  **Azure OpenAI is now the only limiter.** Its 429 is caught in
+  `AzureChatCompleter.complete` and re-raised as the same `RateLimitedError` (HTTP 429) the app
+  already knew how to render, carrying `retryAfterSeconds` from Azure's `Retry-After` header when
+  it sends one and a 20-second default when it does not — so the customer still sees a friendly
+  "try again in a moment" instead of a 500, and the wait it quotes is the provider's real one.
+  `backend/tests/test_azure_chat_completer.py` covers the header, the missing header and an
+  unparseable header. What we lost with the counter: nothing now bounds a runaway agent loop
+  per user, so a bug that asks in a tight loop is billable until Azure's quota stops it —
+  `MAX_TOOL_ROUNDS` still bounds a single run, but not a caller.
 
 `AnalyticsAgent` (`backend/agents/analytics.py`, `POST /agents/analytics/ask`) is the second
 worker, built the same way: a thin `ToolCallingAgent` subclass supplying only a system prompt and
-its `tool_names` allow-list (the four `analytics.*` capabilities above), same `AgentRateLimiter`
-class reused with its own instance (`backend/agents/analytics_service.py::AnalyticsService`), same
+its `tool_names` allow-list (the four `analytics.*` capabilities above), same
+`AnalyticsService` wrapper (`backend/agents/analytics_service.py`), same
 audited-run-per-`run_id` guarantee, same in-code allow-list/`SideEffect.READ` enforcement — nothing
 about the second worker changed how `ToolCallingAgent` works, which is the point of it being a
 shared base. Its prompt carries one stake-appropriate addition beyond `SupportAgent`'s: every
@@ -792,7 +808,7 @@ Verified green three ways — `pytest` from the repo root, `pytest` from `backen
 order.
 
 The default run (`addopts = -m "not live_llm"`) is deterministic and free: harness-level guarantees like allow-list
-enforcement, the `MAX_TOOL_ROUNDS` giving-up path, and the rate limiter, all against a scripted
+enforcement, the `MAX_TOOL_ROUNDS` giving-up path, and the provider-429 mapping, all against a scripted
 fake chat completer, no network. `backend/tests/test_support_agent_live_eval.py` is marked
 `live_llm` and skipped by default — it calls the real Azure OpenAI deployment through
 `get_support_service()` / `get_analytics_service()` to grade prompt quality (injection resistance,
@@ -910,10 +926,9 @@ would outlive its own session — and needs no new collection. It is treated as 
 start on a dangling assistant reply. A forged transcript cannot widen access anyway — the actor
 comes from the bearer token and the per-worker allow-lists are enforced in code.
 
-Rate limiting is **per orchestrator run**, keyed `orchestrator:{userId}`: one customer question is
-one unit whether it fans out to one worker or three. The orchestrator holds the three agents
-directly rather than their services, which is what stops the per-worker limiters from
-double-counting.
+There is no per-user call cap; Azure OpenAI's own quota is the only limiter (see above). The
+orchestrator still holds the three agents directly rather than their services, so a fan-out is one
+customer question rather than three trips through a service wrapper.
 
 Escalation to a human is a first-class, always-visible option (§7's hard rule 4), and the workers
 did not have to change to get it. The orchestrator can *offer* a human — for fraud, a lost card,
@@ -941,6 +956,98 @@ afford to send 200 lei to my savings?" → payments + analytics fanned out and m
 card and someone is using it" → escalated with no worker forced; and "and the current one?" with
 two turns of history resolved to the right account. Zero movement in `journalTransactions` or
 `payments` across all of it.
+
+### Three advisory workers: investments, deposits, credits
+
+`InvestmentsAgent`, `DepositsAgent` and `CreditsAgent` (`backend/agents/`) are read-only workers
+the orchestrator can route to. All three are ordinary `ToolCallingAgent` subclasses with an empty
+`proposal_tool_names`, so none of them can be handed a money-moving capability even by mistake —
+`test_advisory_agents_explain_but_never_open.py` asserts exactly that against a registry that
+deliberately contains `payments.transfer.propose` and `accounts.open`.
+
+They differ sharply in how real they are, and the prompts say so out loud rather than hiding it:
+
+- **Investments is real.** `investments.market.get` wraps the existing `backend/investments/`
+  service, so prices, day change and the period low/high/change come from Yahoo and Frankfurter
+  converted to RON. When the provider is down the capability passes `live: false` plus a
+  `stalenessNote` instructing the agent to say so and give the timestamp before quoting anything.
+  It cannot trade, and it gives no advice: no buy/sell/hold, no price predictions, no ranking
+  instruments. It also cannot see the customer's *positions* — only prices — so "what are my
+  holdings worth" is answered honestly rather than guessed.
+- **Deposits and credits are catalogue-only.** `backend/deposits/` and `backend/credits/` are
+  still empty folders; nothing about a term deposit, savings goal or credit application survives a
+  refresh today. So these two agents explain products and do arithmetic, and nothing else.
+  `backend/products/catalogue.py` is now the server-side source of truth for the terms and rates
+  that `dashboard-data.js` renders in the mock UI — **the two copies are not yet linked, so a rate
+  changed in one must be changed in the other.** The credits prompt is the strictest in the
+  system: it may never say eligible, likely, pre-approved or refused, may never present a balance
+  as an affordability assessment, and must say that no application is filed.
+
+`deposits.maturity.estimate` and `credits.repayment.estimate` exist so the model never does money
+arithmetic. Both take a rate the agent must have read from the catalogue — inventing or
+interpolating one is forbidden — and both return preformatted strings plus a caveat (simple
+interest, straight-line, no compounding, fees or tax) that the agent has to pass on. Every figure
+crosses to the model already formatted, and the prompts forbid mentioning minor units or basis
+points to the customer at all.
+
+Verified live through the orchestrator: an ETF question routed to investments and quoted real
+prices; "what rate on a 12-month term deposit" to deposits (6,10%, with the "I cannot open one"
+caveat); "10.000 lei over 24 months" to credits, which **refused an invented APR** and used the
+catalogue's 8,30%; and "open a 12-month deposit with 500 lei right now" produced an estimate and an
+explicit refusal to open anything. Zero movement in `journalTransactions` or `payments` throughout.
+
+Worth tuning: "should I buy Bitcoin?" and "am I approved for the mortgage?" both escalate to a
+human rather than being declined by the specialist. That is defensible — a human does decide
+credit — but it will generate handoff noise for questions the agents are already instructed to
+decline politely. If that proves annoying, the fix is in the orchestrator prompt, not in the
+workers.
+
+### CardsAgent, and the auth hole it forced shut
+
+`CardsAgent` (`backend/agents/cards.py`) covers the whole card surface: list, freeze, unfreeze,
+block, ATM and online limits, issuing virtual or physical, and revealing the PIN or the details.
+`cards.list` is a plain read; everything else goes through one `cards.action.propose` capability
+registered `SideEffect.WRITE`. It **writes nothing** — it validates the action against the real
+card's state and returns a proposal the customer confirms on screen, and the confirmation runs the
+existing command through `bus.execute`. `ToolCallingAgent` was widened so `proposal_tool_names`
+accepts `WRITE` as well as `MONEY_MOVING`; the invariant is unchanged and now broader: **no agent
+ever writes, in any domain.**
+
+Building it required closing the oldest hole in the repo. Every `/cards/*` endpoint took a
+`username` in the body or query and ran as `Actor.public_cards()`, so anyone who knew a username
+could list another customer's cards, change their limits, block a card, or reveal their PIN and
+CVV — while `/accounts` had required a bearer token all along. An agent acting `on_behalf_of` a
+signed-in user cannot work against that, because there is nothing to propagate. The commands now
+carry no `username`, the routes take `CurrentActor`, and `CardsService` resolves the caller by
+user id. `Actor.public_cards()` is gone. `GET /cards` without a token now returns 401.
+
+**PIN and CVV never enter the conversation.** They would otherwise land in the model's context and
+in the client-held transcript. `cards.list` returns only masked numbers, and a `reveal_pin` /
+`reveal_details` proposal carries `revealsSecret: true` and no secret; confirming it navigates to
+the Cards screen so the existing PIN gate runs there. `block` carries `irreversible: true` and
+gets its own red-flag copy and confirm label. Tests assert no field of a card view or a proposal
+can contain a PIN or CVV.
+
+Verified live: routed correctly on all five card questions, refused to show a PIN in chat,
+correctly refused to act on an already-blocked card, and asked which card when the customer had
+two. With an unambiguous card named, all four proposal shapes came back correctly flagged — and
+card states were byte-identical afterwards, with no card issued.
+
+### The chat suggestions are real now
+
+The three buttons above the chat box used to insert **canned answers** from `dashboard-data.js` —
+the mock "Ionescu John" transfer card, a hardcoded table, a fake chart. They never called an
+agent. They now send a real question through the orchestrator like anything the customer types.
+
+They are also **contextual, for free**. The set shown is chosen from the agent that answered last
+(`agentsUsed` on the orchestrator response), falling back to the current screen before a
+conversation has started — so after a cards answer you get card follow-ups, after an analytics
+answer you get spending ones. This deliberately costs no extra LLM call: generating follow-ups
+with the model would add a round trip to every turn for suggestions people mostly ignore once
+they start typing. Seven sets of three, `dashboard.chat.suggest.*`, en and ro.
+
+Still canned: the **Ask GEMS dock's** per-screen prompt buttons, which remain wired to
+`answerFor()` and `dashboard-data.js`. Only the chat screen's three were in scope here.
 
 Not done: no mandates, no `settings.security.get` (see above), no
 multi-goal support — the Analytics screen's "Set a goal" dialog only ever offers to create one,
@@ -975,10 +1082,13 @@ whose interface is in English can still dictate in Romanian, which in this marke
 case, not the edge one.
 
 `TranscriptionService` is the door: an empty clip, a clip over `SPEECH_MAX_UPLOAD_BYTES`, or a
-format Azure does not accept is refused **before** the network call, the per-user
-`AgentRateLimiter` is spent next (keyed `voice:{userId}`, sharing the agent budget), and only then
-does the audio leave. The browser stops recording on its own after 60 seconds, so the cap is a
-second line rather than the first.
+format Azure does not accept is refused **before** the network call, and only then does the audio
+leave. The browser stops recording on its own after 60 seconds, so the byte cap is a second line
+rather than the first. There is no usage counter of our own, for the same reason the chat path no
+longer has one (see "No usage cap of our own" above): **Azure is the only limiter**, and its 429 is
+caught in `error_for_status` and re-raised as the same `RateLimitedError` the app already renders,
+carrying `retryAfterSeconds` from `Retry-After` when Azure sends one and the shared 20-second
+default when it does not.
 
 The audio is never stored and never reaches the journal. The audit row
 (`agents.voice.transcribed`, `entityType: "voice_input"`) records the actor, byte count, content
