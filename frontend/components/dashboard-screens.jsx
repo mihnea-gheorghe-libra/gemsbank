@@ -112,7 +112,58 @@
     );
   }
 
-SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onNavigate, onAddFunds, onExchange }) {
+  const INSIGHT_CARD_LIMIT = 2;
+
+  function renderInsightText(insight, currentLang) {
+    if (!insight) return "";
+    const isEn = (currentLang || (GEMS.i18n && GEMS.i18n.locale) || "en") === "en";
+    const template = (isEn ? insight.longTextEn : insight.longText) || "";
+    if (!template || !insight.currency) return "";
+    return template
+      .replace("{baseline}", UI.formatMoney(insight.baselineMinorUnits || 0, insight.currency))
+      .replace("{observed}", UI.formatMoney(insight.observedMinorUnits || 0, insight.currency));
+  }
+
+  function InsightsDialog({ rows, lang, onDismiss }) {
+    return (
+      <UI.Dialog labelledBy="insights-title" onDismiss={onDismiss}>
+        <h2 id="insights-title" className="dialog-title">{t("dashboard.home.insightsAllTitle")}</h2>
+        {rows.length === 0 ? (
+          <p className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.home.insightsEmpty")}</p>
+        ) : (
+          <div className="dash-settings-list">
+            {rows.map((insight) => (
+              <div className="dash-settings-row" key={insight.id} style={{ alignItems: "flex-start" }}>
+                <div>
+                  <div style={{ fontFamily: "var(--font-heading)", fontSize: 15 }}>
+                    {insight.vendorDisplayName}
+                  </div>
+                  <div style={{ fontSize: 13, lineHeight: 1.5, marginTop: 2 }}>
+                    {renderInsightText(insight, lang)}
+                  </div>
+                  <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+                    {insight.month}
+                    {" · "}
+                    {t("dashboard.home.insightConfidence." + insight.confidence)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <UI.Button type="button" variant="ghost" onClick={onDismiss}>
+          {t("dashboard.home.insightsClose")}
+        </UI.Button>
+      </UI.Dialog>
+    );
+  }
+
+  SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onNavigate, onAddFunds, onExchange, onOpenAccount, insights, insightHistory, lang }) {
+    const { useState } = React;
+    const [showAllInsights, setShowAllInsights] = useState(false);
+    const allInsights = insightHistory || [];
+    const visibleInsights = (insights || []).slice(0, INSIGHT_CARD_LIMIT);
+    const hasMoreInsights = allInsights.length > visibleInsights.length;
     const totalBalanceMinor = accounts
       .filter((account) => account.cur === "RON")
       .reduce((sum, account) => sum + account.minor, 0);
@@ -159,7 +210,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
         <UI.Plate className="dash-accounts-card elev-sm">
           <div className="dash-kicker-row">
             <UI.Kicker>{t("dashboard.home.accounts")}</UI.Kicker>
-            <a href="#" onClick={(event) => { event.preventDefault(); onNavigate("portfolio"); }}>{t("dashboard.home.openAccount")}</a>
+            <a href="#" onClick={(event) => { event.preventDefault(); onOpenAccount(); }}>{t("dashboard.home.openAccount")}</a>
           </div>
           <div className="dash-accounts-tiles">
             {accounts.map((account, index) => (
@@ -176,16 +227,47 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
 
         {/* Moved below the accounts frame, same footprint (grid-column: span 2) per request. */}
         <UI.Plate className="dash-accounts-card elev-sm">
-          <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.home.insights")}</UI.Kicker>
+          <div className="dash-kicker-row" style={{ marginBottom: 10 }}>
+            <UI.Kicker>{t("dashboard.home.insights")}</UI.Kicker>
+            {visibleInsights.length > 0 ? (
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--color-primary)", letterSpacing: "0.08em" }}>
+                {allInsights.length} {t("dashboard.home.insightsCount")}
+              </span>
+            ) : null}
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13, lineHeight: 1.5 }}>
-            <div>{t("dashboard.home.insightNetflix")}</div>
-            <div className="hr" style={{ margin: 0 }} />
-            <div>{t("dashboard.home.insightFx")}</div>
-            <UI.Button type="button" variant="ghost" style={{ alignSelf: "flex-start", padding: 0 }} onClick={() => onNavigate("chat")}>
-              {t("dashboard.home.askAgent")}
-            </UI.Button>
+            {visibleInsights.length > 0 ? (
+              visibleInsights.map((insight, idx) => (
+                <div key={insight.id || idx}>
+                  <div>{renderInsightText(insight, lang)}</div>
+                  {idx < visibleInsights.length - 1 ? (
+                    <div className="hr" style={{ margin: "10px 0 0 0" }} />
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <div className="text-muted">{t("dashboard.home.insightsEmpty")}</div>
+            )}
+            <div className="dash-ai-disclaimer">
+              <UI.Icon name="Sparkles" size={13} />
+              {t("dashboard.home.insightsAiDisclaimer")}
+            </div>
+            <div className="dash-kicker-row" style={{ marginBottom: 0 }}>
+              <UI.Button type="button" variant="ghost" style={{ padding: 0 }} onClick={() => onNavigate("chat")}>
+                {t("dashboard.home.askAgent")}
+              </UI.Button>
+              {hasMoreInsights ? (
+                <UI.Button type="button" variant="ghost" style={{ padding: 0 }} onClick={() => setShowAllInsights(true)}>
+                  {t("dashboard.home.insightsViewAll", { count: allInsights.length })}
+                </UI.Button>
+              ) : null}
+            </div>
           </div>
         </UI.Plate>
+
+        {showAllInsights ? (
+          <InsightsDialog rows={allInsights} lang={lang} onDismiss={() => setShowAllInsights(false)} />
+        ) : null}
 
         <UI.Plate className="elev-sm" style={{ padding: 18, gridColumn: "1 / -1" }}>
           <div className="dash-kicker-row">
@@ -576,6 +658,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     onOpenAccount,
   }) {
     const investedMinor = holdings.reduce((sum, holding) => sum + DASH.holdingValue(holding), 0) + (investCashMinor || 0);
+    const ownedHoldings = holdings.filter((holding) => DASH.holdingValue(holding) > 0);
     const [focusId, setFocusId] = useState(null);
     const [chartRange, setChartRange] = useState("month");
 
@@ -706,7 +789,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
             <div className="dash-holdings-table-wrap">
               <table className="dash-table">
                 <tbody>
-                {holdings.map((holding) => (
+                {ownedHoldings.map((holding) => (
                   <tr
                     key={holding.id}
                     className={UI.classNames(
@@ -1192,7 +1275,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     utilities: "var(--color-lime-600)",
     transport: "var(--color-plum-400)",
     entertainment: "var(--color-lime-400)",
-    transfer: "var(--color-plum-700)",
+    transfer: "var(--color-plum-400)",
     income: "var(--color-lime-700)",
     other: "var(--color-neutral-600)",
   };
@@ -1314,7 +1397,265 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     );
   }
 
-  SCR.AnalyticsScreen = function AnalyticsScreen({ range, onRange }) {
+  function EducationTip({ tip }) {
+    const [expanded, setExpanded] = useState(false);
+    return (
+      <UI.Plate className="elev-sm dash-tip-card">
+        <div className="dash-tip-title">{tip.title}</div>
+        <p className="text-muted" style={{ fontSize: 13, margin: "4px 0 8px" }}>
+          {expanded ? tip.body : tip.summary}
+        </p>
+        <button type="button" className="dash-tip-toggle" onClick={() => setExpanded((value) => !value)}>
+          {expanded ? t("dashboard.education.showLess") : t("dashboard.education.readMore")}
+        </button>
+      </UI.Plate>
+    );
+  }
+
+  SCR.EducationScreen = function EducationScreen({ accounts }) {
+    const section = GEMS.i18n.dictionary.dashboard.education;
+    const tips = (section && section.tips) || [];
+    return (
+      <div>
+        <div className="dash-screen-head">
+          <h3 style={{ margin: 0 }}>{t("dashboard.education.title")}</h3>
+        </div>
+        <div className="dash-tip-grid">
+          {tips.map((tip, index) => (
+            <EducationTip tip={tip} key={index} />
+          ))}
+        </div>
+
+        <div className="dash-analytics-cols" style={{ marginTop: 20 }}>
+          <RecommendationsCard />
+          <GoalProgressCard accounts={accounts} />
+        </div>
+      </div>
+    );
+  };
+
+  function RecommendationsCard() {
+    const [state, setState] = useState({ loading: true, answer: null, error: null });
+
+    useEffect(() => {
+      let cancelled = false;
+      const prompt =
+        GEMS.i18n.locale === "ro"
+          ? "Dă-mi recomandări personalizate de economisire și buget, pe baza tranzacțiilor mele reale."
+          : "Give me personalized savings and budgeting recommendations based on my real transactions.";
+      api
+        .askAnalytics(prompt)
+        .then((result) => {
+          if (cancelled) return;
+          setState({ loading: false, answer: (result && result.answer ? result.answer : "").trim(), error: null });
+        })
+        .catch((err) => {
+          if (!cancelled) setState({ loading: false, answer: null, error: err });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []);
+
+    const body = state.loading
+      ? t("dashboard.analytics.recommendations.loading")
+      : state.error
+      ? t("dashboard.analytics.recommendations.error")
+      : state.answer || t("dashboard.analytics.recommendations.empty");
+
+    return (
+      <UI.Plate className="dash-agent-note elev-sm">
+        <span className="dash-agent-dot" aria-hidden="true" style={{ marginTop: 6, flex: "none" }} />
+        <div style={{ fontSize: 14, lineHeight: 1.6, flex: 1 }}>
+          <UI.Kicker style={{ marginBottom: 8 }}>{t("dashboard.analytics.recommendations.title")}</UI.Kicker>
+          {body}
+          {!state.loading && !state.error && state.answer ? (
+            <div className="dash-ai-disclaimer">
+              <UI.Icon name="Sparkles" size={13} />
+              {t("dashboard.analytics.aiDisclaimer")}
+            </div>
+          ) : null}
+        </div>
+      </UI.Plate>
+    );
+  }
+
+  function accountPickerLabel(account) {
+    return t("dashboard.accountType." + account.typeKey) + " · " + account.cur + " · " + account.ibanShort;
+  }
+
+  function SetGoalDialog({ accounts, busy, error, onSubmit, onDismiss }) {
+    const [accountId, setAccountId] = useState((accounts[0] && accounts[0].id) || "");
+    const [name, setName] = useState("");
+    const [amount, setAmount] = useState("");
+    const [targetDate, setTargetDate] = useState("");
+
+    const amountMinor = DASH.parseMinor(amount);
+    const minDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const ready = Boolean(accountId) && name.trim() !== "" && amountMinor > 0 && Boolean(targetDate);
+
+    function submit(event) {
+      event.preventDefault();
+      if (!ready) return;
+      onSubmit({ accountId, name: name.trim(), targetMinorUnits: amountMinor, targetDate });
+    }
+
+    return (
+      <UI.Dialog labelledBy="goal-dialog-title" onDismiss={onDismiss}>
+        <h2 id="goal-dialog-title" className="dialog-title">{t("dashboard.analytics.goal.dialog.title")}</h2>
+        <p className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.analytics.goal.dialog.subtitle")}</p>
+        <form noValidate onSubmit={submit}>
+          <UI.Field id="goal-account" label={t("dashboard.analytics.goal.dialog.account")}>
+            <UI.Select id="goal-account" value={accountId} onChange={(event) => setAccountId(event.target.value)}>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {accountPickerLabel(account)}
+                </option>
+              ))}
+            </UI.Select>
+          </UI.Field>
+          <UI.Field id="goal-name" label={t("dashboard.analytics.goal.dialog.name")} error={error ? error.message : null}>
+            <UI.TextInput
+              id="goal-name"
+              autoFocus
+              value={name}
+              placeholder={t("dashboard.analytics.goal.dialog.namePlaceholder")}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </UI.Field>
+          <UI.Field id="goal-amount" label={t("dashboard.analytics.goal.dialog.amount")}>
+            <UI.TextInput id="goal-amount" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} />
+          </UI.Field>
+          <UI.Field id="goal-date" label={t("dashboard.analytics.goal.dialog.date")}>
+            <UI.TextInput id="goal-date" type="date" min={minDate} value={targetDate} onChange={(event) => setTargetDate(event.target.value)} />
+          </UI.Field>
+          <div className="dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onDismiss}>{t("dashboard.analytics.goal.dialog.cancel")}</UI.Button>
+            <UI.Button type="submit" variant="primary" disabled={!ready || busy}>
+              {busy ? t("dashboard.analytics.goal.dialog.submitting") : t("dashboard.analytics.goal.dialog.submit")}
+            </UI.Button>
+          </div>
+        </form>
+      </UI.Dialog>
+    );
+  }
+
+  function GoalProgressCard({ accounts }) {
+    const [state, setState] = useState({ loading: true, data: null, error: null });
+    const [refreshKey, setRefreshKey] = useState(0);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [creating, setCreating] = useState(false);
+    const [createError, setCreateError] = useState(null);
+
+    useEffect(() => {
+      let cancelled = false;
+      setState((previous) => ({ loading: true, data: previous.data, error: null }));
+      api
+        .getGoalProgress()
+        .then((result) => {
+          if (!cancelled) setState({ loading: false, data: result, error: null });
+        })
+        .catch((err) => {
+          if (!cancelled) setState({ loading: false, data: null, error: err });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [refreshKey]);
+
+    function submitGoal(payload) {
+      setCreating(true);
+      setCreateError(null);
+      api
+        .createGoal(payload.accountId, payload.name, payload.targetMinorUnits, payload.targetDate)
+        .then(() => {
+          setCreating(false);
+          setDialogOpen(false);
+          setRefreshKey((value) => value + 1);
+        })
+        .catch((err) => {
+          setCreating(false);
+          setCreateError(err);
+        });
+    }
+
+    const data = state.data;
+    const hasGoal = Boolean(data) && data.status === "ok";
+    const reached = hasGoal && data.progressMinorUnits >= data.targetMinorUnits;
+    const pct = hasGoal
+      ? Math.max(0, Math.min(100, Math.round((data.progressMinorUnits / data.targetMinorUnits) * 100)))
+      : 0;
+    const showStreak = hasGoal && data.streakWeeks >= 3;
+    const eligibleAccounts = (accounts || []).filter((account) => account.typeKey !== "invest");
+
+    return (
+      <UI.Plate className="elev-sm" style={{ padding: 18 }}>
+        <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.analytics.goal.title")}</UI.Kicker>
+        {state.loading ? (
+          <div className="dash-chart-empty">{t("dashboard.analytics.loading")}</div>
+        ) : !hasGoal ? (
+          <div>
+            <div className="dash-chart-empty">{t("dashboard.analytics.goal.noGoal")}</div>
+            <UI.Button
+              type="button"
+              variant="secondary"
+              style={{ marginTop: 10 }}
+              disabled={!eligibleAccounts.length}
+              onClick={() => setDialogOpen(true)}
+            >
+              {t("dashboard.analytics.goal.setGoal")}
+            </UI.Button>
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+              <span>{data.name}</span>
+              <span className="text-muted">
+                {t("dashboard.analytics.goal.progressOf", {
+                  progress: UI.formatMoney(data.progressMinorUnits, data.currency),
+                  target: UI.formatMoney(data.targetMinorUnits, data.currency),
+                })}
+              </span>
+            </div>
+            <DASH.ProgressBar pct={pct} label={t("dashboard.analytics.goal.title")} />
+            <p className="text-muted" style={{ fontSize: 13, marginTop: 10 }}>
+              {reached
+                ? t("dashboard.analytics.goal.reached")
+                : data.projectedCompletionDate
+                ? t("dashboard.analytics.goal.projected", {
+                    date: GEMS.i18n.isoToDisplayDate(data.projectedCompletionDate),
+                  })
+                : t("dashboard.analytics.goal.projectedUnknown")}
+            </p>
+            {showStreak ? (
+              <div className="dash-streak-badge" title={t("dashboard.analytics.goal.streakHint")}>
+                <UI.Icon name="Flame" size={14} />
+                {t("dashboard.analytics.goal.streak", { count: data.streakWeeks })}
+              </div>
+            ) : (
+              <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                {t("dashboard.analytics.goal.streakStart")}
+              </p>
+            )}
+          </div>
+        )}
+        {dialogOpen ? (
+          <SetGoalDialog
+            accounts={eligibleAccounts}
+            busy={creating}
+            error={createError}
+            onSubmit={submitGoal}
+            onDismiss={() => {
+              setDialogOpen(false);
+              setCreateError(null);
+            }}
+          />
+        ) : null}
+      </UI.Plate>
+    );
+  }
+
+  SCR.AnalyticsScreen = function AnalyticsScreen({ range, onRange, accounts }) {
     const RC = window.Recharts;
     const months = range === "3" ? 3 : range === "12" ? 12 : 6;
     const periods = [
@@ -1402,7 +1743,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
                     wrapperStyle={{ fontSize: 12, color: "var(--color-muted)" }}
                   />
                   <RC.Bar dataKey="income" name="income" fill="var(--color-lime-500)" radius={[6, 6, 0, 0]} />
-                  <RC.Bar dataKey="spend" name="spend" fill="var(--color-plum-900)" radius={[6, 6, 0, 0]} />
+                  <RC.Bar dataKey="spend" name="spend" fill="var(--color-plum-400)" radius={[6, 6, 0, 0]} />
                 </RC.BarChart>
               </RC.ResponsiveContainer>
             )}
@@ -1411,16 +1752,10 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
 
         <UI.ErrorNote error={error} />
 
-        <UI.Plate className="dash-agent-note elev-sm">
-          <span className="dash-agent-dot" aria-hidden="true" style={{ marginTop: 6, flex: "none" }} />
-          <div style={{ fontSize: 14, lineHeight: 1.6, flex: 1 }}>
-            {t("dashboard.analytics.agentNote")}
-            <div className="dash-ai-disclaimer">
-              <UI.Icon name="Sparkles" size={13} />
-              {t("dashboard.analytics.aiDisclaimer")}
-            </div>
-          </div>
-        </UI.Plate>
+        <div className="dash-analytics-cols" style={{ marginTop: 20 }}>
+          <RecommendationsCard />
+          <GoalProgressCard accounts={accounts} />
+        </div>
       </div>
     );
   };

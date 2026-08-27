@@ -8,7 +8,7 @@
   const DATA = GEMS.dashboardData;
   const { useState, useCallback, useEffect } = React;
 
-  const SCREENS = ["home", "payments", "chat", "accounts", "portfolio", "cards", "analytics", "settings"];
+  const SCREENS = ["home", "payments", "chat", "accounts", "portfolio", "cards", "analytics", "education", "settings"];
   const REAL_ACCOUNT_KINDS = ["current", "savings", "invest"];
 
   const ANSWER_KEYS = {
@@ -223,6 +223,8 @@
       { role: "ai", kind: "text", text: t("dashboard.chat.seedPlain") },
     ]);
     const [me, setMe] = useState(null);
+    const [insights, setInsights] = useState([]);
+    const [insightHistory, setInsightHistory] = useState([]);
     const [payBusy, setPayBusy] = useState(false);
     const [payFormError, setPayFormError] = useState(null);
     const [signingPayment, setSigningPayment] = useState(null);
@@ -269,6 +271,21 @@
       };
     }, [username]);
 
+    useEffect(() => {
+      let cancelled = false;
+      api
+        .listInsights(username)
+        .then((response) => {
+          if (!cancelled && response) {
+            setInsights(response.insights || []);
+            setInsightHistory(response.history || []);
+          }
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [username]);
     const loadPaymentsData = useCallback(async () => {
       const [accountList, txList, pendingList] = await Promise.all([
         api.listAccounts(),
@@ -1116,6 +1133,15 @@
                 onNavigate={navigate}
                 onAddFunds={openAddFunds}
                 onExchange={openExchange}
+                onOpenAccount={() => {
+                  setScreen("accounts");
+                  setOpenAccountError(null);
+                  setOpenAccountInitialType(null);
+                  setOpenAccountShown(true);
+                }}
+                insights={insights}
+                insightHistory={insightHistory}
+                lang={lang}
               />
             ) : null}
             {screen === "payments" ? (
@@ -1225,7 +1251,8 @@
                 secureTimer={secureTimer}
               />
             ) : null}
-            {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} /> : null}
+            {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} accounts={accounts} /> : null}
+            {screen === "education" ? <SCR.EducationScreen accounts={accounts} /> : null}
             {screen === "settings" ? (
               <SCR.SettingsScreen
                 lang={lang}

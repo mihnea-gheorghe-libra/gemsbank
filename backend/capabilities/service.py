@@ -204,6 +204,16 @@ def get_capabilities_service() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            name="analytics.recommendations.get",
+            input_schema=analytics.RecommendationsInput,
+            output_schema=analytics.RecommendationsOutput,
+            side_effect=SideEffect.READ,
+            required_scope="analytics:read",
+            resolver=analytics.resolve_recommendations,
+        )
+    )
+    registry.register(
+        Capability(
             name="payments.balances.get",
             input_schema=payments_capabilities.BalancesInput,
             output_schema=payments_capabilities.BalancesOutput,

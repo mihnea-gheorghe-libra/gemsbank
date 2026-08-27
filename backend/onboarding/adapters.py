@@ -245,6 +245,14 @@ class AzureDocIntelDocumentExtractor:
         )
 
 
+def _cnp_gender_digit(birth_year: int, male: bool) -> int:
+    if 2000 <= birth_year <= 2099:
+        return 5 if male else 6
+    if 1800 <= birth_year <= 1899:
+        return 3 if male else 4
+    return 1 if male else 2
+
+
 class DemoDocumentExtractor:
     def __init__(
         self,

@@ -40,6 +40,7 @@ from backend.auth.service import (
     VerifySecureChange,
     get_auth_service,
 )
+from backend.capabilities import analytics as analytics_capabilities
 from backend.capabilities.service import get_capabilities_service
 from backend.cards.service import (
     BlockCardPermanently,
@@ -86,6 +87,10 @@ from backend.payments.service import (
     PaymentsService,
     SignPayment,
     get_payments_service,
+)
+from backend.vendors.service import (
+    VendorInsightsService,
+    get_vendor_insights_service,
 )
 
 
@@ -243,6 +248,9 @@ AccountsDep = Annotated[AccountsService, Depends(get_accounts_service)]
 PaymentsDep = Annotated[PaymentsService, Depends(get_payments_service)]
 CardsServiceDep = Annotated[CardsService, Depends(get_cards_service)]
 InvestmentsDep = Annotated[InvestmentsService, Depends(get_investments_service)]
+VendorInsightsDep = Annotated[
+    VendorInsightsService, Depends(get_vendor_insights_service)
+]
 SupportDep = Annotated[SupportService, Depends(get_support_service)]
 AnalyticsDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
 PaymentsAgentDep = Annotated[PaymentsAgentService, Depends(get_payments_agent_service)]
@@ -261,6 +269,7 @@ payments_router = APIRouter(prefix="/payments", tags=["payments"])
 cards_router = APIRouter(prefix="/cards", tags=["cards"])
 exchange_router = APIRouter(prefix="/exchange", tags=["exchange"])
 investments_router = APIRouter(prefix="/investments", tags=["investments"])
+insights_router = APIRouter(prefix="/insights", tags=["insights"])
 goals_router = APIRouter(prefix="/goals", tags=["goals"])
 agents_router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -758,6 +767,14 @@ async def market_snapshot(
     return await service.market(range, force=refresh)
 
 
+@insights_router.get("")
+async def list_insights(
+    service: VendorInsightsDep,
+    username: str | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    board = await service.board_for_username(username, limit)
+    return board.model_dump()
 @agents_router.post("/support/ask")
 async def ask_support(
     actor: CurrentActor, support: SupportDep, payload: AskAgentRequest
@@ -841,12 +858,20 @@ async def create_goal(
     return await bus.execute(command, actor, idempotency_key)
 
 
+@goals_router.get("/progress")
+async def goal_progress(actor: CurrentActor) -> dict[str, Any]:
+    capability = get_capabilities_service().get("analytics.goal_gap.get")
+    result = await capability.resolve(actor, analytics_capabilities.GoalGapInput())
+    return result.model_dump(by_alias=True)
+
+
 api_router.include_router(onboarding_router)
 api_router.include_router(auth_router)
 api_router.include_router(accounts_router)
 api_router.include_router(payments_router)
 api_router.include_router(cards_router)
 api_router.include_router(investments_router)
+api_router.include_router(insights_router)
 api_router.include_router(goals_router)
 api_router.include_router(agents_router)
 api_router.include_router(exchange_router)
