@@ -2675,10 +2675,50 @@
           </UI.Plate>
         </div>
 
+        <UI.Plate className="elev-sm" style={{ padding: 18, marginTop: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+             <UI.Icon name="Sparkles" size={16} color="var(--color-primary)" />
+             <UI.Kicker style={{ margin: 0 }}>Interpretare AI</UI.Kicker>
+          </div>
+          <AnalyticsInsights range={range} />
+        </UI.Plate>
+
         <UI.ErrorNote error={error} />
       </div>
     );
   };
+
+  function AnalyticsInsights({ range }) {
+    const [insights, setInsights] = useState(null);
+    const [loading, setLoading] = useState(false);
+    
+    useEffect(() => {
+      let cancelled = false;
+      setLoading(true);
+      setInsights(null);
+      api.askAnalytics(`Oferă-mi fix 3 recomandări extrem de scurte despre cheltuielile mele din ultimele ${range} luni, strict pentru client. Fiecare pe un rând nou. Fără nicio introducere sau concluzie, doar cele 3 puncte.`)
+        .then(res => {
+          if (!cancelled) {
+             setInsights(res.answer);
+          }
+        })
+        .catch(err => {
+          if (!cancelled) {
+             setInsights("Nu am putut genera interpretarea.");
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+      return () => { cancelled = true; };
+    }, [range]);
+
+    if (loading) {
+       return <div className="dash-chart-empty">{t("dashboard.analytics.loading")}</div>;
+    }
+    if (!insights) return null;
+    return <div className="dash-msg-ai" style={{ maxWidth: "100%", background: "transparent", padding: 0, whiteSpace: "pre-wrap" }}>{insights}</div>;
+  }
 
 function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     const [code, setCode] = useState("");
