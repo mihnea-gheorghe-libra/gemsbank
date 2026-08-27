@@ -138,13 +138,7 @@ def test_the_orchestrator_is_given_no_capabilities_only_specialists() -> None:
         "ask_support",
         "ask_analytics",
         "ask_payments",
-<<<<<<< HEAD
         "ask_education",
-        "escalate_to_human",
-    }
-    assert not any(name.startswith("payments.") for name in offered)
-    assert not any(name.startswith("analytics.") for name in offered)
-=======
         "ask_investments",
         "ask_deposits",
         "ask_credits",
@@ -152,7 +146,6 @@ def test_the_orchestrator_is_given_no_capabilities_only_specialists() -> None:
         "escalate_to_human",
     }
     assert not any("." in name for name in offered)
->>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
 
 
 def test_a_worker_named_twice_is_only_run_once() -> None:

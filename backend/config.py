@@ -69,10 +69,9 @@ class Settings(BaseSettings):
     transactions_page_size: int = 25
     ocr_min_confidence: float = 0.60
 
-<<<<<<< HEAD
     agent_rate_limit_max_calls: int = 20
     agent_rate_limit_window_seconds: int = 3600
-=======
+
     azure_openai_endpoint: str | None = None
     azure_openai_api_key: str | None = None
     azure_openai_api_version: str = "2024-10-21"
@@ -102,7 +101,6 @@ class Settings(BaseSettings):
     speech_tts_max_chars: int = 5000
     azure_speech_tts_voice_ro: str = "ro-RO-AlinaNeural"
     azure_speech_tts_voice_en: str = "en-US-JennyNeural"
->>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
 
     cashflow_low_balance_threshold_minor: int = 0
 
