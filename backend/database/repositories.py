@@ -1,10 +1,9 @@
 import re
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClientSession
-from pymongo import ASCENDING, DESCENDING, ReturnDocument
+from pymongo import ASCENDING, DESCENDING
 from pymongo.errors import DuplicateKeyError
 
 from backend.accounts.account import Account, AccountKind, AccountStatus
@@ -20,7 +19,6 @@ from backend.auth.credentials import (
 from backend.cards.card import Card, CardKind, CardState
 from backend.database.mongo import (
     accounts_collection,
-    agent_rate_limits_collection,
     beneficiaries_collection,
     cards_collection,
     goals_collection,
@@ -545,33 +543,6 @@ class MongoHandoffRepository:
     async def list_for_user(self, user_id: str) -> list[Handoff]:
         cursor = handoffs_collection().find({"userId": user_id}).sort("createdAt", DESCENDING)
         return [_handoff_from_bson(raw) async for raw in cursor]
-
-
-@dataclass(slots=True, frozen=True)
-class RateLimitHit:
-    count: int
-    window_start: datetime
-
-
-class MongoRateLimitStore:
-    async def bump(self, doc_id: str, now: datetime, window_seconds: int) -> RateLimitHit:
-        window_cutoff = now - timedelta(seconds=window_seconds)
-        collection = agent_rate_limits_collection()
-
-        document = await collection.find_one_and_update(
-            {"_id": doc_id, "windowStart": {"$gt": window_cutoff}},
-            {"$inc": {"count": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-        if document is None:
-            document = await collection.find_one_and_update(
-                {"_id": doc_id},
-                {"$set": {"windowStart": now, "count": 1}},
-                upsert=True,
-                return_document=ReturnDocument.AFTER,
-            )
-
-        return RateLimitHit(count=document["count"], window_start=document["windowStart"])
 
 
 def _journal_to_bson(transaction: JournalTransaction) -> dict[str, Any]:

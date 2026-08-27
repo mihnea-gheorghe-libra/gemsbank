@@ -1,9 +1,7 @@
 import asyncio
 import hashlib
 import logging
-import re
 from datetime import date, datetime, timezone
-from typing import Any
 
 from backend.config import Settings
 from backend.helpers.context import log_event
@@ -51,8 +49,8 @@ class AzureDocIntelDocumentExtractor:
         self._min_confidence = min_confidence
         self._client = None
         if endpoint and key:
-            from azure.core.credentials import AzureKeyCredential
             from azure.ai.documentintelligence import DocumentIntelligenceClient
+            from azure.core.credentials import AzureKeyCredential
             self._client = DocumentIntelligenceClient(
                 endpoint=endpoint, credential=AzureKeyCredential(key)
             )

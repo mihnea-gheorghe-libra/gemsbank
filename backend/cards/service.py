@@ -29,54 +29,46 @@ PHYSICAL_CARD_VALIDITY_YEARS = 5
 class IssueVirtualCard(Command):
     command_name: ClassVar[str] = "cards.issue_virtual"
 
-    username: str
 
 
 class IssuePhysicalCard(Command):
     command_name: ClassVar[str] = "cards.issue_physical"
 
-    username: str
 
 
 class FreezeCard(Command):
     command_name: ClassVar[str] = "cards.freeze"
 
-    username: str
     card_id: str
 
 
 class UnfreezeCard(Command):
     command_name: ClassVar[str] = "cards.unfreeze"
 
-    username: str
     card_id: str
 
 
 class BlockCardPermanently(Command):
     command_name: ClassVar[str] = "cards.block"
 
-    username: str
     card_id: str
 
 
 class RevealCardPin(Command):
     command_name: ClassVar[str] = "cards.reveal_pin"
 
-    username: str
     card_id: str
 
 
 class RevealCardDetails(Command):
     command_name: ClassVar[str] = "cards.reveal_details"
 
-    username: str
     card_id: str
 
 
 class SetAtmLimit(Command):
     command_name: ClassVar[str] = "cards.set_atm_limit"
 
-    username: str
     card_id: str
     limit_minor: int
 
@@ -84,7 +76,6 @@ class SetAtmLimit(Command):
 class SetOnlineLimit(Command):
     command_name: ClassVar[str] = "cards.set_online_limit"
 
-    username: str
     card_id: str
     limit_minor: int
 
@@ -98,7 +89,7 @@ class ResolvedUser(Protocol):
 
 
 class UserDirectory(Protocol):
-    async def get_by_username(self, username: str) -> ResolvedUser | None: ...
+    async def get(self, user_id: str) -> ResolvedUser | None: ...
 
 
 class CardRepository(Protocol):
@@ -173,21 +164,19 @@ class CardsService:
         command_bus.register(SetAtmLimit, self._handle_set_atm_limit)
         command_bus.register(SetOnlineLimit, self._handle_set_online_limit)
 
-    async def list_cards(self, username: str) -> dict[str, Any]:
-        user = await self._require_user(username)
+    async def list_cards(self, user_id: str) -> dict[str, Any]:
+        user = await self._require_user(user_id)
         cards = await self._cards.list_for_user(user.id)
         return {"cards": [card.public_view() for card in cards]}
 
-    async def _require_user(self, username: str) -> ResolvedUser:
-        user = await self._users.get_by_username(username.strip().lower())
+    async def _require_user(self, user_id: str) -> ResolvedUser:
+        user = await self._users.get(user_id)
         if user is None:
-            raise NotFoundError(
-                "No account uses that username.", details={"field": "username"}
-            )
+            raise NotFoundError("That account no longer exists.", details={"field": "userId"})
         return user
 
-    async def _require_owned_card(self, username: str, card_id: str) -> tuple[ResolvedUser, Card]:
-        user = await self._require_user(username)
+    async def _require_owned_card(self, user_id: str, card_id: str) -> tuple[ResolvedUser, Card]:
+        user = await self._require_user(user_id)
         card = await self._cards.get(card_id)
         if card is None or card.user_id != user.id:
             raise NotFoundError(
@@ -197,12 +186,12 @@ class CardsService:
 
     async def _issue(
         self,
-        username: str,
+        user_id: str,
         kind: CardKind,
         validity_years: int,
         session: AsyncIOMotorClientSession,
     ) -> CommandResult:
-        user = await self._require_user(username)
+        user = await self._require_user(user_id)
 
         card_id = new_id()
         pin = self._pins.generate()
@@ -244,7 +233,7 @@ class CardsService:
     ) -> CommandResult:
         assert isinstance(command, IssueVirtualCard)
         return await self._issue(
-            command.username, CardKind.VIRTUAL_MASTERCARD, VIRTUAL_CARD_VALIDITY_YEARS, session
+            context.actor.subject_id(), CardKind.VIRTUAL_MASTERCARD, VIRTUAL_CARD_VALIDITY_YEARS, session
         )
 
     async def _handle_issue_physical(
@@ -252,14 +241,14 @@ class CardsService:
     ) -> CommandResult:
         assert isinstance(command, IssuePhysicalCard)
         return await self._issue(
-            command.username, CardKind.PHYSICAL_DEBIT, PHYSICAL_CARD_VALIDITY_YEARS, session
+            context.actor.subject_id(), CardKind.PHYSICAL_DEBIT, PHYSICAL_CARD_VALIDITY_YEARS, session
         )
 
     async def _handle_freeze(
         self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
     ) -> CommandResult:
         assert isinstance(command, FreezeCard)
-        user, card = await self._require_owned_card(command.username, command.card_id)
+        user, card = await self._require_owned_card(context.actor.subject_id(), command.card_id)
         before = card.state.value
         card.freeze()
         await self._cards.save(card, session=session)
@@ -287,7 +276,7 @@ class CardsService:
         self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
     ) -> CommandResult:
         assert isinstance(command, UnfreezeCard)
-        user, card = await self._require_owned_card(command.username, command.card_id)
+        user, card = await self._require_owned_card(context.actor.subject_id(), command.card_id)
         before = card.state.value
         card.unfreeze()
         await self._cards.save(card, session=session)
@@ -315,7 +304,7 @@ class CardsService:
         self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
     ) -> CommandResult:
         assert isinstance(command, BlockCardPermanently)
-        user, card = await self._require_owned_card(command.username, command.card_id)
+        user, card = await self._require_owned_card(context.actor.subject_id(), command.card_id)
         before = card.state.value
         card.block_permanently()
         await self._cards.save(card, session=session)
@@ -343,7 +332,7 @@ class CardsService:
         self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
     ) -> CommandResult:
         assert isinstance(command, RevealCardPin)
-        user, card = await self._require_owned_card(command.username, command.card_id)
+        user, card = await self._require_owned_card(context.actor.subject_id(), command.card_id)
         card.require_revealable()
         pin = self._cipher.decrypt(card.pin_encrypted, associated_data=card.id)
 
@@ -370,7 +359,7 @@ class CardsService:
         self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
     ) -> CommandResult:
         assert isinstance(command, RevealCardDetails)
-        user, card = await self._require_owned_card(command.username, command.card_id)
+        user, card = await self._require_owned_card(context.actor.subject_id(), command.card_id)
         cvv_encrypted = card.require_cvv_revealable()
         cvv = self._cipher.decrypt(cvv_encrypted, associated_data=card.id + ":cvv")
 
@@ -397,7 +386,7 @@ class CardsService:
         self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
     ) -> CommandResult:
         assert isinstance(command, SetAtmLimit)
-        user, card = await self._require_owned_card(command.username, command.card_id)
+        user, card = await self._require_owned_card(context.actor.subject_id(), command.card_id)
         before = card.atm_limit_minor
         limit = validation.validate_limit_minor(command.limit_minor, field="atmLimitMinor")
         card.set_atm_limit(limit)
@@ -426,7 +415,7 @@ class CardsService:
         self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
     ) -> CommandResult:
         assert isinstance(command, SetOnlineLimit)
-        user, card = await self._require_owned_card(command.username, command.card_id)
+        user, card = await self._require_owned_card(context.actor.subject_id(), command.card_id)
         before = card.online_limit_minor
         limit = validation.validate_limit_minor(command.limit_minor, field="onlineLimitMinor")
         card.set_online_limit(limit)

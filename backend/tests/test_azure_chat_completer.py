@@ -3,9 +3,14 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-from openai import BadRequestError
+from openai import BadRequestError, RateLimitError
 
-from backend.agents.adapters import CONTENT_FILTER_REFUSAL, AzureChatCompleter
+from backend.agents.adapters import (
+    CONTENT_FILTER_REFUSAL,
+    DEFAULT_RETRY_AFTER_SECONDS,
+    AzureChatCompleter,
+)
+from backend.helpers.errors import RateLimitedError
 
 
 def _bad_request_error(code: str) -> BadRequestError:
@@ -37,3 +42,38 @@ async def test_a_bad_request_that_is_not_a_content_filter_block_still_propagates
 
     with pytest.raises(BadRequestError):
         await completer.complete([{"role": "user", "content": "hi"}], [])
+
+
+def _rate_limit_error(retry_after: str | None) -> RateLimitError:
+    request = httpx.Request("POST", "https://example.test/chat/completions")
+    headers = {"retry-after": retry_after} if retry_after is not None else {}
+    response = httpx.Response(429, request=request, headers=headers)
+    return RateLimitError("slow down", response=response, body=None)
+
+
+async def test_the_providers_own_limit_becomes_the_same_friendly_error_as_before() -> None:
+    completer = _completer_with(AsyncMock(side_effect=_rate_limit_error("42")))
+
+    with pytest.raises(RateLimitedError) as caught:
+        await completer.complete([{"role": "user", "content": "hi"}], [])
+
+    assert caught.value.details["retryAfterSeconds"] == 42
+    assert caught.value.http_status == 429
+
+
+async def test_a_provider_limit_without_a_retry_header_still_suggests_a_wait() -> None:
+    completer = _completer_with(AsyncMock(side_effect=_rate_limit_error(None)))
+
+    with pytest.raises(RateLimitedError) as caught:
+        await completer.complete([{"role": "user", "content": "hi"}], [])
+
+    assert caught.value.details["retryAfterSeconds"] == DEFAULT_RETRY_AFTER_SECONDS
+
+
+async def test_an_unparseable_retry_header_does_not_crash_the_request() -> None:
+    completer = _completer_with(AsyncMock(side_effect=_rate_limit_error("soon-ish")))
+
+    with pytest.raises(RateLimitedError) as caught:
+        await completer.complete([{"role": "user", "content": "hi"}], [])
+
+    assert caught.value.details["retryAfterSeconds"] == DEFAULT_RETRY_AFTER_SECONDS

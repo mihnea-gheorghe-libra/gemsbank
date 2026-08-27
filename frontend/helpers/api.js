@@ -155,31 +155,20 @@
     marketSnapshot: (range, refresh) =>
       send("/investments/market" + query({ range, refresh: refresh ? "true" : "" })),
 
-    listCards: (username) => send("/cards?username=" + encodeURIComponent(username)),
-    issueVirtualCard: (username) =>
-      send("/cards/virtual", { method: "POST", json: { username } }),
-    issuePhysicalCard: (username) =>
-      send("/cards/physical", { method: "POST", json: { username } }),
-    freezeCard: (username, cardId) =>
-      send("/cards/" + cardId + "/freeze", { method: "POST", json: { username } }),
-    unfreezeCard: (username, cardId) =>
-      send("/cards/" + cardId + "/unfreeze", { method: "POST", json: { username } }),
-    blockCard: (username, cardId) =>
-      send("/cards/" + cardId + "/block", { method: "POST", json: { username } }),
-    revealCardPin: (username, cardId) =>
-      send("/cards/" + cardId + "/pin/reveal", { method: "POST", json: { username } }),
-    revealCardDetails: (username, cardId) =>
-      send("/cards/" + cardId + "/details/reveal", { method: "POST", json: { username } }),
-    setCardAtmLimit: (username, cardId, limitMinor) =>
-      send("/cards/" + cardId + "/limits/atm", {
-        method: "POST",
-        json: { username, limitMinor },
-      }),
-    setCardOnlineLimit: (username, cardId, limitMinor) =>
-      send("/cards/" + cardId + "/limits/online", {
-        method: "POST",
-        json: { username, limitMinor },
-      }),
+    listCards: () => send("/cards"),
+    issueVirtualCard: () => send("/cards/virtual", { method: "POST", json: {} }),
+    issuePhysicalCard: () => send("/cards/physical", { method: "POST", json: {} }),
+    freezeCard: (cardId) => send("/cards/" + cardId + "/freeze", { method: "POST", json: {} }),
+    unfreezeCard: (cardId) => send("/cards/" + cardId + "/unfreeze", { method: "POST", json: {} }),
+    blockCard: (cardId) => send("/cards/" + cardId + "/block", { method: "POST", json: {} }),
+    revealCardPin: (cardId) =>
+      send("/cards/" + cardId + "/pin/reveal", { method: "POST", json: {} }),
+    revealCardDetails: (cardId) =>
+      send("/cards/" + cardId + "/details/reveal", { method: "POST", json: {} }),
+    setCardAtmLimit: (cardId, limitMinor) =>
+      send("/cards/" + cardId + "/limits/atm", { method: "POST", json: { limitMinor } }),
+    setCardOnlineLimit: (cardId, limitMinor) =>
+      send("/cards/" + cardId + "/limits/online", { method: "POST", json: { limitMinor } }),
 
     askSupport: (question) =>
       send("/agents/support/ask", { method: "POST", json: { question } }),

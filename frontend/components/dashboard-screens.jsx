@@ -1992,7 +1992,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   };
 
-  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, onToggleMic, onPromptClick, onConfirmTx, onConfirmProposal, onRequestHuman, handoffBusy, handoffSent, username }) {
+  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, onToggleMic, onPromptClick, prompts, onConfirmTx, onConfirmProposal, onRequestHuman, handoffBusy, handoffSent, username }) {
     const inputRef = useRef(null);
 
     useEffect(() => {
@@ -2002,11 +2002,6 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
       inputRef.current.focus();
     }, [busy]);
 
-    const prompts = [
-      { key: "pay", label: t("dashboard.chat.promptPay") },
-      { key: "recurring", label: t("dashboard.chat.promptRecurring") },
-      { key: "groceries", label: t("dashboard.chat.promptGroceries") },
-    ];
 
     return (
       <div className="dash-chat-layout">
@@ -2040,7 +2035,48 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                         </UI.Plate>
                       ) : null}
 
-                      {message.kind === "proposal" && message.proposal ? (
+                      {message.kind === "proposal" && message.proposal && message.proposal.action ? (
+                        <UI.Plate className="dash-tx-card">
+                          <UI.Kicker style={{ marginBottom: 4 }}>{t("dashboard.chat.cardProposalTitle")}</UI.Kicker>
+                          <div className="dash-tx-grid">
+                            <span className="text-muted">{t("dashboard.chat.cardProposalAction")}</span>
+                            <span>{t("dashboard.chat.cardAction." + message.proposal.action)}</span>
+                            {message.proposal.cardLabel ? (
+                              <React.Fragment>
+                                <span className="text-muted">{t("dashboard.chat.cardProposalCard")}</span>
+                                <span>{message.proposal.cardLabel}</span>
+                              </React.Fragment>
+                            ) : null}
+                            {message.proposal.limitFormatted ? (
+                              <React.Fragment>
+                                <span className="text-muted">{t("dashboard.chat.cardProposalLimit")}</span>
+                                <span>{message.proposal.limitFormatted}</span>
+                              </React.Fragment>
+                            ) : null}
+                          </div>
+                          <p className="dash-proposal-note">
+                            {message.proposal.irreversible
+                              ? t("dashboard.chat.cardProposalIrreversible")
+                              : message.proposal.revealsSecret
+                                ? t("dashboard.chat.cardProposalSecret")
+                                : t("dashboard.chat.cardProposalNotDone")}
+                          </p>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <UI.Button
+                              type="button"
+                              variant={message.proposal.irreversible ? "secondary" : "primary"}
+                              style={{ flex: 1 }}
+                              onClick={() => onConfirmProposal && onConfirmProposal(message.proposal)}
+                            >
+                              {message.proposal.irreversible
+                                ? t("dashboard.chat.cardProposalConfirmBlock")
+                                : t("dashboard.chat.cardProposalConfirm")}
+                            </UI.Button>
+                          </div>
+                        </UI.Plate>
+                      ) : null}
+
+                      {message.kind === "proposal" && message.proposal && !message.proposal.action ? (
                         <UI.Plate className="dash-tx-card">
                           <UI.Kicker style={{ marginBottom: 4 }}>{t("dashboard.chat.proposalTitle")}</UI.Kicker>
                           <div className="dash-tx-amount">
@@ -2134,8 +2170,8 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
 
           <div style={{ paddingTop: 16 }}>
             <div className="dash-prompts-row">
-              {prompts.map((prompt) => (
-                <UI.Button key={prompt.key} type="button" variant="secondary" disabled={busy} onClick={() => onPromptClick(prompt.key)}>{prompt.label}</UI.Button>
+              {(prompts || []).map((prompt) => (
+                <UI.Button key={prompt.key} type="button" variant="secondary" disabled={busy} onClick={() => onPromptClick(prompt.label)}>{prompt.label}</UI.Button>
               ))}
             </div>
             <UI.Plate className="dash-chat-input-row">
