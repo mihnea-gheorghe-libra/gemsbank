@@ -21,6 +21,10 @@ from backend.agents.payments_service import (
 )
 from backend.agents.service import SupportService, get_support_service
 from backend.agents.transcript import sanitise_history
+from backend.agents.transcription_service import (
+    TranscriptionService,
+    get_transcription_service,
+)
 from backend.auth.service import (
     AuthService,
     RequestAccountClosure,
@@ -263,6 +267,9 @@ SupportDep = Annotated[SupportService, Depends(get_support_service)]
 AnalyticsDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
 PaymentsAgentDep = Annotated[PaymentsAgentService, Depends(get_payments_agent_service)]
 OrchestratorDep = Annotated[OrchestratorService, Depends(get_orchestrator_service)]
+TranscriptionDep = Annotated[
+    TranscriptionService, Depends(get_transcription_service)
+]
 EscalationsDep = Annotated[EscalationsService, Depends(get_escalations_service)]
 ExchangeDep = Annotated[ExchangeService, Depends(get_exchange_service)]
 
@@ -834,6 +841,20 @@ async def ask_orchestrator(
         },
         "runId": answer.run_id,
     }
+
+
+@agents_router.post("/transcribe")
+async def transcribe_voice_input(
+    actor: CurrentActor,
+    service: TranscriptionDep,
+    audio: Annotated[UploadFile, File()],
+    language: Annotated[str | None, Form()] = None,
+) -> dict[str, Any]:
+    content = await audio.read()
+    transcript = await service.transcribe(
+        actor.id, content, audio.content_type or "", language
+    )
+    return {"text": transcript.text}
 
 
 @agents_router.post("/handoff", status_code=201)

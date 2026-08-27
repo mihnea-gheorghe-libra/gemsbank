@@ -78,6 +78,13 @@ class Settings(BaseSettings):
     azure_openai_api_version: str = "2024-10-21"
     azure_openai_deployment: str | None = None
 
+    azure_speech_endpoint: str | None = None
+    azure_speech_api_key: str | None = None
+    azure_speech_region: str | None = None
+    azure_speech_api_version: str = "2024-11-15"
+    speech_max_upload_bytes: int = 12_000_000
+    speech_timeout_seconds: float = 30.0
+
     cashflow_low_balance_threshold_minor: int = 0
 
     yahoo_chart_base_url: str = "https://query1.finance.yahoo.com"

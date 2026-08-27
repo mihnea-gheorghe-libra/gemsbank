@@ -6,7 +6,7 @@
   const t = GEMS.i18n.t;
   const api = GEMS.api;
   const DATA = GEMS.dashboardData;
-  const { useState, useCallback, useEffect } = React;
+  const { useState, useCallback, useEffect, useRef } = React;
 
   const SCREENS = ["home", "payments", "chat", "accounts", "portfolio", "cards", "analytics", "education", "settings"];
   const REAL_ACCOUNT_KINDS = ["current", "savings", "invest"];
@@ -81,6 +81,23 @@
   }
 
   const MAX_HISTORY_TURNS = 10;
+  const MAX_RECORDING_MS = 60000;
+  const RECORDER_MIME_TYPES = ["audio/webm", "audio/mp4", "audio/ogg"];
+
+  function recorderMimeType() {
+    if (typeof window.MediaRecorder === "undefined") return null;
+    const supported = window.MediaRecorder.isTypeSupported;
+    if (!supported) return "";
+    return RECORDER_MIME_TYPES.filter((type) => supported(type))[0] || "";
+  }
+
+  function canRecord() {
+    return Boolean(
+      navigator.mediaDevices &&
+        navigator.mediaDevices.getUserMedia &&
+        typeof window.MediaRecorder !== "undefined"
+    );
+  }
 
   function transcriptOf(messages) {
     return messages
@@ -212,6 +229,9 @@
     const [pinPromptError, setPinPromptError] = useState(null);
     const [pinPromptTarget, setPinPromptTarget] = useState(null);
     const [micOn, setMicOn] = useState(false);
+    const [micBusy, setMicBusy] = useState(false);
+    const [micError, setMicError] = useState(null);
+    const recorderRef = useRef(null);
     const [draft, setDraft] = useState("");
     const [chatBusy, setChatBusy] = useState(false);
     const [lastQuestion, setLastQuestion] = useState("");
@@ -342,6 +362,85 @@
       setBalanceHidden(true);
     }, [screen]);
 
+    const stopRecording = useCallback(() => {
+      const recorder = recorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        recorder.stop();
+        return;
+      }
+      recorderRef.current = null;
+      setMicOn(false);
+    }, []);
+
+    const startRecording = useCallback(async () => {
+      setMicError(null);
+      if (!canRecord()) {
+        setMicError(t("dashboard.chat.micUnsupported"));
+        return;
+      }
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (error) {
+        setMicError(t("dashboard.chat.micDenied"));
+        return;
+      }
+      const mimeType = recorderMimeType();
+      const recorder = new window.MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks = [];
+      const stopTimer = setTimeout(() => {
+        if (recorder.state !== "inactive") recorder.stop();
+      }, MAX_RECORDING_MS);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size) chunks.push(event.data);
+      };
+      recorder.onstop = () => {
+        clearTimeout(stopTimer);
+        stream.getTracks().forEach((track) => track.stop());
+        recorderRef.current = null;
+        setMicOn(false);
+        const type = recorder.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(chunks, { type });
+        if (!blob.size) return;
+        setMicBusy(true);
+        api
+          .transcribeVoice(blob, GEMS.i18n.locale)
+          .then((result) => {
+            const text = ((result && result.text) || "").trim();
+            if (!text) {
+              setMicError(t("dashboard.chat.micEmpty"));
+              return;
+            }
+            setDraft((current) => (current.trim() ? current.trim() + " " + text : text));
+          })
+          .catch((error) => {
+            setMicError(
+              error && error.code === "rate_limited"
+                ? t("dashboard.chat.micRateLimited")
+                : t("dashboard.chat.micFailed")
+            );
+          })
+          .finally(() => setMicBusy(false));
+      };
+
+      recorderRef.current = recorder;
+      recorder.start();
+      setMicOn(true);
+    }, []);
+
+    const toggleMic = useCallback(() => {
+      if (micBusy) return;
+      if (micOn) stopRecording();
+      else startRecording();
+    }, [micOn, micBusy, startRecording, stopRecording]);
+
+    useEffect(() => {
+      if (screen !== "chat") stopRecording();
+    }, [screen, stopRecording]);
+
+    useEffect(() => stopRecording, [stopRecording]);
+
     const sendQuestion = useCallback((raw) => {
       const text = String(raw || "").trim();
       if (!text || chatBusy) return;
@@ -385,10 +484,10 @@
 
     const sendDraft = useCallback(() => {
       const text = draft.trim();
-      if (!text || chatBusy) return;
+      if (!text || chatBusy || micOn) return;
       setDraft("");
       sendQuestion(text);
-    }, [draft, chatBusy, sendQuestion]);
+    }, [draft, chatBusy, micOn, sendQuestion]);
 
     const requestHuman = useCallback(() => {
       if (handoffBusy || handoffSent) return;
@@ -1211,7 +1310,9 @@
                 onSend={sendDraft}
                 onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) sendDraft(); }}
                 micOn={micOn}
-                onToggleMic={() => setMicOn((value) => !value)}
+                micBusy={micBusy}
+                micError={micError}
+                onToggleMic={toggleMic}
                 prompts={chatPrompts}
                 onPromptClick={askSuggestion}
                 onConfirmTx={confirmTx}
