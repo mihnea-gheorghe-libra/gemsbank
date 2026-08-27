@@ -744,6 +744,7 @@ def _card_to_bson(card: Card) -> dict[str, Any]:
     return {
         "_id": card.id,
         "userId": card.user_id,
+        "accountId": card.account_id,
         "kind": card.kind.value,
         "last4": card.last4,
         "ownerName": card.owner_name,
@@ -763,6 +764,7 @@ def _card_from_bson(raw: dict[str, Any]) -> Card:
     return Card(
         id=raw["_id"],
         user_id=raw["userId"],
+        account_id=raw["accountId"],
         kind=CardKind(raw["kind"]),
         last4=raw["last4"],
         owner_name=raw["ownerName"],
@@ -809,6 +811,17 @@ class MongoPaymentRepository:
         return await payments_collection().count_documents(
             {"userId": user_id, "status": status.value}
         )
+
+    async def ibans_by_journal_transaction_ids(
+        self, journal_transaction_ids: list[str]
+    ) -> dict[str, str]:
+        if not journal_transaction_ids:
+            return {}
+        found = payments_collection().find(
+            {"journalTransactionId": {"$in": journal_transaction_ids}},
+            {"journalTransactionId": 1, "targetIban": 1},
+        )
+        return {raw["journalTransactionId"]: raw["targetIban"] async for raw in found}
 
 
 def _beneficiary_to_bson(beneficiary: Beneficiary) -> dict[str, Any]:

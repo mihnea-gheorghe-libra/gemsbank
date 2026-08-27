@@ -134,7 +134,7 @@
       date: formatApiDate(row.postedAt),
       who: row.counterparty,
       ref: row.reference,
-      iban: "",
+      iban: row.iban || "",
       categoryKey: row.category,
       statusKey: row.status,
       minor: Math.abs(row.amount.minorUnits),
@@ -506,13 +506,13 @@
       setIssueOpen(true);
     }, []);
 
-    const createCard = useCallback(async () => {
+    const createCard = useCallback(async (accountId) => {
       setCardIssuing(true);
       setCardsError(null);
       try {
         const card = issueKind === "physical"
-          ? await api.issuePhysicalCard()
-          : await api.issueVirtualCard();
+          ? await api.issuePhysicalCard(accountId)
+          : await api.issueVirtualCard(accountId);
         setCards((list) => list.concat([card]));
         selectCard(card.cardId);
         setIssueOpen(false);
@@ -521,7 +521,7 @@
       } finally {
         setCardIssuing(false);
       }
-    }, [username, issueKind, selectCard]);
+    }, [issueKind, selectCard]);
 
     const freezeCard = useCallback(async () => {
       if (!selectedCardId) return;
@@ -1229,6 +1229,7 @@
             {screen === "cards" ? (
               <SCR.CardsScreen
                 cards={visibleCards}
+                accounts={accounts}
                 transactions={transactions}
                 loading={cardsLoading && !cardsLoaded}
                 error={cardsError}
@@ -1398,6 +1399,7 @@
           <DASH.IssueCardDialog
             kind={issueKind}
             onKind={setIssueKind}
+            accounts={accounts}
             onClose={() => setIssueOpen(false)}
             onCreate={createCard}
             creating={cardIssuing}

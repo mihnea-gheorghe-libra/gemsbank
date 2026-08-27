@@ -156,8 +156,10 @@
       send("/investments/market" + query({ range, refresh: refresh ? "true" : "" })),
 
     listCards: () => send("/cards"),
-    issueVirtualCard: () => send("/cards/virtual", { method: "POST", json: {} }),
-    issuePhysicalCard: () => send("/cards/physical", { method: "POST", json: {} }),
+    issueVirtualCard: (accountId) =>
+      send("/cards/virtual", { method: "POST", json: { accountId } }),
+    issuePhysicalCard: (accountId) =>
+      send("/cards/physical", { method: "POST", json: { accountId } }),
     freezeCard: (cardId) => send("/cards/" + cardId + "/freeze", { method: "POST", json: {} }),
     unfreezeCard: (cardId) => send("/cards/" + cardId + "/unfreeze", { method: "POST", json: {} }),
     blockCard: (cardId) => send("/cards/" + cardId + "/block", { method: "POST", json: {} }),
