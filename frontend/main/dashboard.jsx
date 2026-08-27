@@ -507,13 +507,8 @@
       setCardsError(null);
       try {
         const card = issueKind === "physical"
-<<<<<<< HEAD
-          ? await api.issuePhysicalCard(username, accountId)
-          : await api.issueVirtualCard(username, accountId);
-=======
-          ? await api.issuePhysicalCard()
-          : await api.issueVirtualCard();
->>>>>>> 1ee52b4d5ab96d6198cf85923ca54a17c10d0bde
+          ? await api.issuePhysicalCard(accountId)
+          : await api.issueVirtualCard(accountId);
         setCards((list) => list.concat([card]));
         selectCard(card.cardId);
         setIssueOpen(false);
@@ -522,7 +517,7 @@
       } finally {
         setCardIssuing(false);
       }
-    }, [username, issueKind, selectCard]);
+    }, [issueKind, selectCard]);
 
     const freezeCard = useCallback(async () => {
       if (!selectedCardId) return;

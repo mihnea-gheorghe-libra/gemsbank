@@ -204,20 +204,12 @@ class BeneficiaryRequest(BaseModel):
     iban: str = Field(min_length=15, max_length=42)
 
 
-<<<<<<< HEAD
-class UsernameRequest(BaseModel):
-    username: str = Field(min_length=3, max_length=32)
-
-
 class IssueCardRequest(BaseModel):
-    username: str = Field(min_length=3, max_length=32)
     account_id: str = Field(alias="accountId")
 
     model_config = {"populate_by_name": True}
 
 
-=======
->>>>>>> 1ee52b4d5ab96d6198cf85923ca54a17c10d0bde
 class PreferencesRequest(BaseModel):
     prefs: dict[str, Any]
 
@@ -700,30 +692,18 @@ async def list_cards(actor: CurrentActor, service: CardsServiceDep) -> dict[str,
 
 @cards_router.post("/virtual", status_code=201)
 async def issue_virtual_card(
-<<<<<<< HEAD
-    payload: IssueCardRequest, idempotency_key: IdempotencyKey = None
+    actor: CurrentActor, payload: IssueCardRequest, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
-    command = IssueVirtualCard(username=payload.username, account_id=payload.account_id)
-    return await bus.execute(command, _cards_actor(), idempotency_key)
-=======
-    actor: CurrentActor, idempotency_key: IdempotencyKey = None
-) -> dict[str, Any]:
-    return await bus.execute(IssueVirtualCard(), actor, idempotency_key)
->>>>>>> 1ee52b4d5ab96d6198cf85923ca54a17c10d0bde
+    command = IssueVirtualCard(account_id=payload.account_id)
+    return await bus.execute(command, actor, idempotency_key)
 
 
 @cards_router.post("/physical", status_code=201)
 async def issue_physical_card(
-<<<<<<< HEAD
-    payload: IssueCardRequest, idempotency_key: IdempotencyKey = None
+    actor: CurrentActor, payload: IssueCardRequest, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
-    command = IssuePhysicalCard(username=payload.username, account_id=payload.account_id)
-    return await bus.execute(command, _cards_actor(), idempotency_key)
-=======
-    actor: CurrentActor, idempotency_key: IdempotencyKey = None
-) -> dict[str, Any]:
-    return await bus.execute(IssuePhysicalCard(), actor, idempotency_key)
->>>>>>> 1ee52b4d5ab96d6198cf85923ca54a17c10d0bde
+    command = IssuePhysicalCard(account_id=payload.account_id)
+    return await bus.execute(command, actor, idempotency_key)
 
 
 @cards_router.post("/{card_id}/freeze")

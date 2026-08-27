@@ -30,21 +30,13 @@ PHYSICAL_CARD_VALIDITY_YEARS = 5
 class IssueVirtualCard(Command):
     command_name: ClassVar[str] = "cards.issue_virtual"
 
-<<<<<<< HEAD
-    username: str
     account_id: str
-=======
->>>>>>> 1ee52b4d5ab96d6198cf85923ca54a17c10d0bde
 
 
 class IssuePhysicalCard(Command):
     command_name: ClassVar[str] = "cards.issue_physical"
 
-<<<<<<< HEAD
-    username: str
     account_id: str
-=======
->>>>>>> 1ee52b4d5ab96d6198cf85923ca54a17c10d0bde
 
 
 class FreezeCard(Command):
@@ -199,22 +191,14 @@ class CardsService:
 
     async def _issue(
         self,
-<<<<<<< HEAD
-        username: str,
-        account_id: str,
-=======
         user_id: str,
->>>>>>> 1ee52b4d5ab96d6198cf85923ca54a17c10d0bde
+        account_id: str,
         kind: CardKind,
         validity_years: int,
         session: AsyncIOMotorClientSession,
     ) -> CommandResult:
-<<<<<<< HEAD
-        user = await self._require_user(username)
-        account = await self._accounts.get_owned(account_id, user.id)
-=======
         user = await self._require_user(user_id)
->>>>>>> 1ee52b4d5ab96d6198cf85923ca54a17c10d0bde
+        account = await self._accounts.get_owned(account_id, user.id)
 
         card_id = new_id()
         pin = self._pins.generate()
@@ -258,15 +242,11 @@ class CardsService:
     ) -> CommandResult:
         assert isinstance(command, IssueVirtualCard)
         return await self._issue(
-<<<<<<< HEAD
-            command.username,
+            context.actor.subject_id(),
             command.account_id,
             CardKind.VIRTUAL_MASTERCARD,
             VIRTUAL_CARD_VALIDITY_YEARS,
             session,
-=======
-            context.actor.subject_id(), CardKind.VIRTUAL_MASTERCARD, VIRTUAL_CARD_VALIDITY_YEARS, session
->>>>>>> 1ee52b4d5ab96d6198cf85923ca54a17c10d0bde
         )
 
     async def _handle_issue_physical(
@@ -274,15 +254,11 @@ class CardsService:
     ) -> CommandResult:
         assert isinstance(command, IssuePhysicalCard)
         return await self._issue(
-<<<<<<< HEAD
-            command.username,
+            context.actor.subject_id(),
             command.account_id,
             CardKind.PHYSICAL_DEBIT,
             PHYSICAL_CARD_VALIDITY_YEARS,
             session,
-=======
-            context.actor.subject_id(), CardKind.PHYSICAL_DEBIT, PHYSICAL_CARD_VALIDITY_YEARS, session
->>>>>>> 1ee52b4d5ab96d6198cf85923ca54a17c10d0bde
         )
 
     async def _handle_freeze(
