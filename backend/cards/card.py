@@ -24,6 +24,7 @@ class CardState(StrEnum):
 class Card(BaseModel):
     id: str = Field(default_factory=new_id)
     user_id: str
+    account_id: str
     kind: CardKind
     last4: str
     owner_name: str
@@ -94,6 +95,7 @@ class Card(BaseModel):
     def public_view(self) -> dict[str, Any]:
         return {
             "cardId": self.id,
+            "accountId": self.account_id,
             "kind": self.kind.value,
             "numberMasked": self.masked_number(),
             "owner": self.owner_name,

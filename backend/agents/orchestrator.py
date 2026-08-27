@@ -26,9 +26,21 @@ SYSTEM_PROMPT = (
     "forecasts, savings-goal progress, a recap of a month, why a spending category changed.\n"
     "- ask_support: how the app itself works, from its FAQ and user guide, plus the customer's "
     "own profile, language/theme preference and active sign-in sessions.\n"
+<<<<<<< HEAD
     "- ask_education: general financial-literacy explanations (emergency funds, budgeting, "
     "compound interest, inflation, debt, deposit guarantee), personalised savings advice, and "
     "preparing a savings goal for the customer to confirm.\n"
+=======
+    "- ask_investments: what markets and prices have done — the MSCI World ETF, Banca "
+    "Transilvania and Bitcoin — using real live prices. It cannot trade and does not advise.\n"
+    "- ask_deposits: term deposits and savings goals — which terms and rates exist, and what an "
+    "amount would come to at maturity. It cannot open one.\n"
+    "- ask_credits: borrowing — loans, the credit line, the mortgage, their rates and maxima, "
+    "and what an amount would cost per month. It decides nothing and files nothing.\n"
+    "- ask_cards: their bank cards — listing them, freezing, unfreezing, blocking, changing an "
+    "ATM or online limit, issuing a new one, and showing a card's PIN or details. It prepares "
+    "these for the customer to confirm; it never does them itself.\n"
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
     f"- {ESCALATION_TOOL}: hand over to a human being.\n"
     "Call exactly one specialist when one can answer it alone — that is the normal case. Call "
     "two or three only when the question genuinely needs different specialities at once (for "
@@ -51,15 +63,22 @@ WORKER_TOOLS = {
     "ask_payments": "payments",
     "ask_analytics": "analytics",
     "ask_support": "support",
+<<<<<<< HEAD
     "ask_education": "education",
+=======
+    "ask_investments": "investments",
+    "ask_deposits": "deposits",
+    "ask_credits": "credits",
+    "ask_cards": "cards",
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
 }
 
 SCREEN_HINTS = {
     "home": "the Home screen, which shows their balances",
     "payments": "the Payments screen, which shows their accounts and movements",
     "analytics": "the Analytics screen, which shows spending breakdowns",
-    "portfolio": "the Portfolio screen, which shows accounts, deposits and investments",
-    "cards": "the Cards screen",
+    "portfolio": "the Portfolio screen, which shows accounts, deposits, investments and credit",
+    "cards": "the Cards screen, which shows their cards and limits",
     "settings": "the Settings screen",
     "education": (
         "the Financial Education screen, which offers general financial-literacy content and "
@@ -148,9 +167,12 @@ class Orchestrator:
         if hint:
             system = f"{system}\nThe customer is currently looking at {hint}. That is a hint "
             system = f"{system}about what they may mean, never a reason to override the question."
+        prior: list[dict[str, object]] = [
+            {"role": turn["role"], "content": turn["content"]} for turn in history
+        ]
         return [
             {"role": "system", "content": system},
-            *({"role": turn["role"], "content": turn["content"]} for turn in history),
+            *prior,
             {"role": "user", "content": question},
         ]
 
@@ -207,9 +229,9 @@ class Orchestrator:
 
         capabilities: list[str] = []
         proposals: list[dict[str, object]] = []
-        for _, answer in results:
-            capabilities.extend(answer.capabilities_used)
-            proposals.extend(answer.proposals)
+        for _, worker_answer in results:
+            capabilities.extend(worker_answer.capabilities_used)
+            proposals.extend(worker_answer.proposals)
 
         if len(results) == 1:
             text = results[0][1].answer
@@ -271,6 +293,9 @@ class Orchestrator:
         findings = "\n\n".join(
             f"[{name}]\n{answer.answer}" for name, answer in results if answer.answer
         )
+        prior: list[dict[str, object]] = [
+            {"role": turn["role"], "content": turn["content"]} for turn in history
+        ]
         messages: list[dict[str, object]] = [
             {
                 "role": "system",
@@ -286,7 +311,7 @@ class Orchestrator:
                     "customer used."
                 ),
             },
-            *({"role": turn["role"], "content": turn["content"]} for turn in history),
+            *prior,
             {"role": "user", "content": f"{question}\n\n---\n{findings}"},
         ]
         merged = await self._chat.complete(messages, [])

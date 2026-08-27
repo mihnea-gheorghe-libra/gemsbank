@@ -74,6 +74,10 @@ def beneficiaries_collection() -> AsyncIOMotorCollection:
     return get_db()["beneficiaries"]
 
 
+def payment_templates_collection() -> AsyncIOMotorCollection:
+    return get_db()["paymentTemplates"]
+
+
 def cards_collection() -> AsyncIOMotorCollection:
     return get_db()["cards"]
 
@@ -88,10 +92,6 @@ def standing_orders_collection() -> AsyncIOMotorCollection:
 
 def handoffs_collection() -> AsyncIOMotorCollection:
     return get_db()["supportHandoffs"]
-
-
-def agent_rate_limits_collection() -> AsyncIOMotorCollection:
-    return get_db()["agentRateLimits"]
 
 
 async def ensure_indexes() -> None:
@@ -155,6 +155,9 @@ async def ensure_indexes() -> None:
     await beneficiaries_collection().create_index(
         [("userId", ASCENDING), ("iban", ASCENDING)], unique=True, name="uq_user_iban"
     )
+    await payment_templates_collection().create_index(
+        [("userId", ASCENDING), ("createdAt", ASCENDING)], name="ix_user_created"
+    )
     await handoffs_collection().create_index(
         [("userId", ASCENDING), ("createdAt", DESCENDING)], name="ix_user_created"
     )
@@ -180,8 +183,3 @@ async def ensure_indexes() -> None:
         [("status", ASCENDING), ("nextRunAt", ASCENDING)], name="ix_due"
     )
 
-    await agent_rate_limits_collection().create_index(
-        [("windowStart", ASCENDING)],
-        expireAfterSeconds=settings.agent_rate_limit_window_seconds,
-        name="ttl_window",
-    )

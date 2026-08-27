@@ -56,7 +56,11 @@ class ToolCallingAgent:
         if capability.name in self._tool_names:
             return capability.side_effect is SideEffect.READ
         if capability.name in self._proposal_tool_names:
+<<<<<<< HEAD
             return capability.side_effect in (SideEffect.MONEY_MOVING, SideEffect.WRITE)
+=======
+            return capability.side_effect in (SideEffect.WRITE, SideEffect.MONEY_MOVING)
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
         return False
 
     def _granted_capability(self, name: str) -> Capability | None:
@@ -110,9 +114,12 @@ class ToolCallingAgent:
     ) -> AgentAnswer:
         run_id = run_id or new_id()
         correlation_id = get_correlation_id()
+        prior: list[dict[str, object]] = [
+            {"role": turn["role"], "content": turn["content"]} for turn in history or []
+        ]
         messages: list[dict[str, object]] = [
             {"role": "system", "content": self._system_prompt},
-            *({"role": turn["role"], "content": turn["content"]} for turn in history or []),
+            *prior,
             {"role": "user", "content": question},
         ]
         tools = self._tool_defs()
@@ -187,10 +194,14 @@ class ToolCallingAgent:
                     continue
                 output = await capability.resolve(actor, payload)
                 used.append(capability.name)
+<<<<<<< HEAD
                 is_proposal = capability.side_effect in (
                     SideEffect.MONEY_MOVING,
                     SideEffect.WRITE,
                 )
+=======
+                is_proposal = capability.name in self._proposal_tool_names
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
                 if is_proposal:
                     proposals.append(output.model_dump(by_alias=True))
                 await self._audit(

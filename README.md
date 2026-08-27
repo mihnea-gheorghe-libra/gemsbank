@@ -217,22 +217,54 @@ backend/
                      one signed-in user, deduplicates to the newest alert per vendor and caps
                      the list. A user with no notifications of their own gets an empty list —
                      it never substitutes another user's rows
+  fx/                BNR reference-rate monitoring — read-only over accounts, no money movement.
+                     Only service.py is reachable over HTTP; rates_watcher.py is a manual batch
+                     job. Separate from vendors/ on purpose: a vendor price and a currency rate
+                     are different signals with different orders of magnitude
+    adapters.py      the only file under fx/ that names an `accounts` or `journalTransactions`
+                     field. Holds the holding filter, the journal-derived balance pipeline, why
+                     each field is read the way it is, and a startup guard that warns when
+                     either schema drifts. `python -m backend.fx.adapters` prints the summary
+    validation.py    rate scaling to micro-units, percent change, minor-unit conversion, the
+                     ISO 4217 shape check the BNR feed is filtered through
+    bnr_feed.py      the BNR XML feed — stdlib xml.etree, namespace-agnostic, divides out the
+                     `multiplier` attribute so every stored rate is per one unit. Rejects a
+                     non-XML answer instead of parsing it, which is what catches the old
+                     www.bnr.ro/nbrfxrates.xml path now serving the redesigned homepage
+    signals.py       the pure rule and copy: baseline resolution, the threshold test into
+                     fxSignals, the repeat guard, and the RO/EN templates. No I/O, no Mongo
+    rates_watcher.py the job: feed -> fxRatesDaily -> fxSignals -> fxNotifications, all three
+                     idempotent on a unique key. Run by hand, never a daemon
+    service.py       the only HTTP-facing module under fx/. Reads fxNotifications for one
+                     signed-in user, newest per currency, capped — same scoping contract as
+                     vendors/service.py
   capabilities/      SEAM 6: the registry an agent layer reads its tool list from
     registry.py      Capability, SideEffect, the in-memory CapabilityRegistry
     service.py       the registered capabilities — name, in/out schema, resolver, scope
     support_docs.py  parses frontend/help.html into searchable FAQ/guide entries
     analytics.py     the four analytics.* resolvers
     payments.py      balances, beneficiaries, and the money-moving transfer *proposal*
+    cards.py         card list and the one card-action proposal
+    investments.py   market snapshot over backend/investments/, preformatted
+    products.py      deposit/credit catalogues and the two estimate calculators
   agents/            the workers — narrow callers of capabilities/, never of bus.execute
     adapters.py      AzureChatCompleter — Azure OpenAI, tool-calling
     base.py          ToolCallingAgent — the shared loop: capability-only, audits every run
     support.py       SupportAgent — read-only, FAQ/guide + own profile/sessions, tool-scoped
     analytics.py     AnalyticsAgent — read-only, forecasts and month-over-month explanations
     payments.py      PaymentsAgent — balances (read) + transfer proposals (money-moving)
+    cards.py         CardsAgent — list, freeze/block, limits, issue, reveal; proposes only
+    investments.py   InvestmentsAgent — real market prices, read-only, no advice
+    deposits.py      DepositsAgent — product terms and maturity estimates, opens nothing
+    credits.py       CreditsAgent — product terms and repayment estimates, decides nothing
     orchestrator.py  the lead agent: routes, fans out, aggregates; holds no capabilities
     transcript.py    sanitises the client-supplied conversation history
     service.py       wraps the actor as kind="agent", on_behalf_of=user_id
     analytics_service.py / payments_service.py   the same wrapping, per worker
+    transcription.py AzureSpeechTranscriber — Azure AI Speech REST, one call, no tools
+    transcription_service.py   the voice-input door: bounds, audit, never stores audio
+  products/          static deposit and credit product terms (no persistence)
+    catalogue.py     the rates and maxima the advisory agents quote
   escalations/       handing a conversation to a human
     handoff.py       the Handoff aggregate
     service.py       RequestHandoff — a normal command through bus.execute
@@ -696,17 +728,24 @@ worth knowing:
   request's `correlationId`, so one agent-initiated answer is fully reconstructable from
   `auditLog` alone, the same way a payment is. `backend/tests/test_tool_calling_agent.py` verifies
   the linkage with a fake audit recorder — no live Mongo needed for that test.
-- **Rate-limited per user, in-process.** `AgentRateLimiter` (`backend/agents/service.py`) is a
-  sliding-window counter over `settings.agent_rate_limit_max_calls` /
-  `agent_rate_limit_window_seconds` (defaults: 20 calls/hour), keyed by the signed-in user's id,
-  checked in `SupportService.ask` before the agent runs. It is in-memory on purpose — no new Mongo
-  collection for a single-process demo — so it resets on restart and does not coordinate across
-  API instances; raises the existing `RateLimitedError` (429), no new error type or route code.
+- **No usage cap of our own.** GEMS used to run a per-user sliding-window counter
+  (`AgentRateLimiter`, 20 calls/hour, backed by an `agentRateLimits` collection). It is gone —
+  the code, the settings, the collection and its tests. It was capping demos long before it was
+  protecting anything, and the provider already enforces the limit that actually matters.
+  **Azure OpenAI is now the only limiter.** Its 429 is caught in
+  `AzureChatCompleter.complete` and re-raised as the same `RateLimitedError` (HTTP 429) the app
+  already knew how to render, carrying `retryAfterSeconds` from Azure's `Retry-After` header when
+  it sends one and a 20-second default when it does not — so the customer still sees a friendly
+  "try again in a moment" instead of a 500, and the wait it quotes is the provider's real one.
+  `backend/tests/test_azure_chat_completer.py` covers the header, the missing header and an
+  unparseable header. What we lost with the counter: nothing now bounds a runaway agent loop
+  per user, so a bug that asks in a tight loop is billable until Azure's quota stops it —
+  `MAX_TOOL_ROUNDS` still bounds a single run, but not a caller.
 
 `AnalyticsAgent` (`backend/agents/analytics.py`, `POST /agents/analytics/ask`) is the second
 worker, built the same way: a thin `ToolCallingAgent` subclass supplying only a system prompt and
-its `tool_names` allow-list (the four `analytics.*` capabilities above), same `AgentRateLimiter`
-class reused with its own instance (`backend/agents/analytics_service.py::AnalyticsService`), same
+its `tool_names` allow-list (the four `analytics.*` capabilities above), same
+`AnalyticsService` wrapper (`backend/agents/analytics_service.py`), same
 audited-run-per-`run_id` guarantee, same in-code allow-list/`SideEffect.READ` enforcement — nothing
 about the second worker changed how `ToolCallingAgent` works, which is the point of it being a
 shared base. Its prompt carries one stake-appropriate addition beyond `SupportAgent`'s: every
@@ -774,7 +813,7 @@ Verified green three ways — `pytest` from the repo root, `pytest` from `backen
 order.
 
 The default run (`addopts = -m "not live_llm"`) is deterministic and free: harness-level guarantees like allow-list
-enforcement, the `MAX_TOOL_ROUNDS` giving-up path, and the rate limiter, all against a scripted
+enforcement, the `MAX_TOOL_ROUNDS` giving-up path, and the provider-429 mapping, all against a scripted
 fake chat completer, no network. `backend/tests/test_support_agent_live_eval.py` is marked
 `live_llm` and skipped by default — it calls the real Azure OpenAI deployment through
 `get_support_service()` / `get_analytics_service()` to grade prompt quality (injection resistance,
@@ -892,10 +931,9 @@ would outlive its own session — and needs no new collection. It is treated as 
 start on a dangling assistant reply. A forged transcript cannot widen access anyway — the actor
 comes from the bearer token and the per-worker allow-lists are enforced in code.
 
-Rate limiting is **per orchestrator run**, keyed `orchestrator:{userId}`: one customer question is
-one unit whether it fans out to one worker or three. The orchestrator holds the three agents
-directly rather than their services, which is what stops the per-worker limiters from
-double-counting.
+There is no per-user call cap; Azure OpenAI's own quota is the only limiter (see above). The
+orchestrator still holds the three agents directly rather than their services, so a fan-out is one
+customer question rather than three trips through a service wrapper.
 
 Escalation to a human is a first-class, always-visible option (§7's hard rule 4), and the workers
 did not have to change to get it. The orchestrator can *offer* a human — for fraud, a lost card,
@@ -924,6 +962,98 @@ card and someone is using it" → escalated with no worker forced; and "and the 
 two turns of history resolved to the right account. Zero movement in `journalTransactions` or
 `payments` across all of it.
 
+### Three advisory workers: investments, deposits, credits
+
+`InvestmentsAgent`, `DepositsAgent` and `CreditsAgent` (`backend/agents/`) are read-only workers
+the orchestrator can route to. All three are ordinary `ToolCallingAgent` subclasses with an empty
+`proposal_tool_names`, so none of them can be handed a money-moving capability even by mistake —
+`test_advisory_agents_explain_but_never_open.py` asserts exactly that against a registry that
+deliberately contains `payments.transfer.propose` and `accounts.open`.
+
+They differ sharply in how real they are, and the prompts say so out loud rather than hiding it:
+
+- **Investments is real.** `investments.market.get` wraps the existing `backend/investments/`
+  service, so prices, day change and the period low/high/change come from Yahoo and Frankfurter
+  converted to RON. When the provider is down the capability passes `live: false` plus a
+  `stalenessNote` instructing the agent to say so and give the timestamp before quoting anything.
+  It cannot trade, and it gives no advice: no buy/sell/hold, no price predictions, no ranking
+  instruments. It also cannot see the customer's *positions* — only prices — so "what are my
+  holdings worth" is answered honestly rather than guessed.
+- **Deposits and credits are catalogue-only.** `backend/deposits/` and `backend/credits/` are
+  still empty folders; nothing about a term deposit, savings goal or credit application survives a
+  refresh today. So these two agents explain products and do arithmetic, and nothing else.
+  `backend/products/catalogue.py` is now the server-side source of truth for the terms and rates
+  that `dashboard-data.js` renders in the mock UI — **the two copies are not yet linked, so a rate
+  changed in one must be changed in the other.** The credits prompt is the strictest in the
+  system: it may never say eligible, likely, pre-approved or refused, may never present a balance
+  as an affordability assessment, and must say that no application is filed.
+
+`deposits.maturity.estimate` and `credits.repayment.estimate` exist so the model never does money
+arithmetic. Both take a rate the agent must have read from the catalogue — inventing or
+interpolating one is forbidden — and both return preformatted strings plus a caveat (simple
+interest, straight-line, no compounding, fees or tax) that the agent has to pass on. Every figure
+crosses to the model already formatted, and the prompts forbid mentioning minor units or basis
+points to the customer at all.
+
+Verified live through the orchestrator: an ETF question routed to investments and quoted real
+prices; "what rate on a 12-month term deposit" to deposits (6,10%, with the "I cannot open one"
+caveat); "10.000 lei over 24 months" to credits, which **refused an invented APR** and used the
+catalogue's 8,30%; and "open a 12-month deposit with 500 lei right now" produced an estimate and an
+explicit refusal to open anything. Zero movement in `journalTransactions` or `payments` throughout.
+
+Worth tuning: "should I buy Bitcoin?" and "am I approved for the mortgage?" both escalate to a
+human rather than being declined by the specialist. That is defensible — a human does decide
+credit — but it will generate handoff noise for questions the agents are already instructed to
+decline politely. If that proves annoying, the fix is in the orchestrator prompt, not in the
+workers.
+
+### CardsAgent, and the auth hole it forced shut
+
+`CardsAgent` (`backend/agents/cards.py`) covers the whole card surface: list, freeze, unfreeze,
+block, ATM and online limits, issuing virtual or physical, and revealing the PIN or the details.
+`cards.list` is a plain read; everything else goes through one `cards.action.propose` capability
+registered `SideEffect.WRITE`. It **writes nothing** — it validates the action against the real
+card's state and returns a proposal the customer confirms on screen, and the confirmation runs the
+existing command through `bus.execute`. `ToolCallingAgent` was widened so `proposal_tool_names`
+accepts `WRITE` as well as `MONEY_MOVING`; the invariant is unchanged and now broader: **no agent
+ever writes, in any domain.**
+
+Building it required closing the oldest hole in the repo. Every `/cards/*` endpoint took a
+`username` in the body or query and ran as `Actor.public_cards()`, so anyone who knew a username
+could list another customer's cards, change their limits, block a card, or reveal their PIN and
+CVV — while `/accounts` had required a bearer token all along. An agent acting `on_behalf_of` a
+signed-in user cannot work against that, because there is nothing to propagate. The commands now
+carry no `username`, the routes take `CurrentActor`, and `CardsService` resolves the caller by
+user id. `Actor.public_cards()` is gone. `GET /cards` without a token now returns 401.
+
+**PIN and CVV never enter the conversation.** They would otherwise land in the model's context and
+in the client-held transcript. `cards.list` returns only masked numbers, and a `reveal_pin` /
+`reveal_details` proposal carries `revealsSecret: true` and no secret; confirming it navigates to
+the Cards screen so the existing PIN gate runs there. `block` carries `irreversible: true` and
+gets its own red-flag copy and confirm label. Tests assert no field of a card view or a proposal
+can contain a PIN or CVV.
+
+Verified live: routed correctly on all five card questions, refused to show a PIN in chat,
+correctly refused to act on an already-blocked card, and asked which card when the customer had
+two. With an unambiguous card named, all four proposal shapes came back correctly flagged — and
+card states were byte-identical afterwards, with no card issued.
+
+### The chat suggestions are real now
+
+The three buttons above the chat box used to insert **canned answers** from `dashboard-data.js` —
+the mock "Ionescu John" transfer card, a hardcoded table, a fake chart. They never called an
+agent. They now send a real question through the orchestrator like anything the customer types.
+
+They are also **contextual, for free**. The set shown is chosen from the agent that answered last
+(`agentsUsed` on the orchestrator response), falling back to the current screen before a
+conversation has started — so after a cards answer you get card follow-ups, after an analytics
+answer you get spending ones. This deliberately costs no extra LLM call: generating follow-ups
+with the model would add a round trip to every turn for suggestions people mostly ignore once
+they start typing. Seven sets of three, `dashboard.chat.suggest.*`, en and ro.
+
+Still canned: the **Ask GEMS dock's** per-screen prompt buttons, which remain wired to
+`answerFor()` and `dashboard-data.js`. Only the chat screen's three were in scope here.
+
 Not done: no mandates, no `settings.security.get` (see above), no
 multi-goal support — the Analytics screen's "Set a goal" dialog only ever offers to create one, and
 `backend/goals/` still enforces exactly one *active* goal per user. Replacing one no longer needs a
@@ -934,6 +1064,7 @@ settings, and `payments.transactions.list` is still not in the registry — add 
 new pathway, when a worker needs it. The proposal is stateless: `proposalId` is a display string,
 nothing persists it, and the confirmation step re-validates from scratch rather than trusting it.
 
+<<<<<<< HEAD
 ### Financial education — a RAG-backed advisor and in-chat goal setting
 
 The Financial Education screen's earlier static tip grid was replaced by a real conversation panel
@@ -980,6 +1111,68 @@ goal," not just application code, exactly as before. `GoalProgressCard`
 confirm dialog; once closed, `GET /goals/progress` naturally reports "no goal" again (it already
 reads through the same `status`-filtered `get_for_user`), so the existing "Set a goal" flow just
 works without any new frontend state.
+=======
+## Voice input — dictation, not a second way in
+
+The microphone next to Send in the AI Assistant chat records with the browser's own
+`MediaRecorder`, posts the clip to `POST /agents/transcribe`, and drops the returned text **into
+the input box**. Nothing is sent, asked or moved by speaking: the customer still reads what was
+heard, edits it, and presses Send, which then takes the ordinary `POST /agents/ask` path. Voice is
+a keyboard, not a new pathway — the seven seams are crossed by the message the user finally sends,
+exactly as if they had typed it.
+
+`AzureSpeechTranscriber` (`backend/agents/transcription.py`) talks to **Azure AI Speech**, not
+Azure OpenAI — a different service with a different key, so it shares nothing with the
+`AZURE_OPENAI_*` pair. It is one POST to the fast-transcription REST endpoint
+(`/speechtotext/transcriptions:transcribe`), no SDK, no tools, no capability registry, built lazily
+like the workers, so a clone without `AZURE_SPEECH_API_KEY` still boots. The URL comes from
+`AZURE_SPEECH_REGION` alone; `AZURE_SPEECH_ENDPOINT` overrides it for a custom resource host, and a
+404 is turned into an error that names that as the likely cause — Speech Studio shows an
+`*.stt.speech.microsoft.com` endpoint that belongs to a *different* API and will not answer here.
+
+Both locales are always sent as candidates (`ro-RO`, `en-US`), with the interface's own language
+first, so Azure runs language identification rather than being told what it will hear. A customer
+whose interface is in English can still dictate in Romanian, which in this market is the normal
+case, not the edge one.
+
+`TranscriptionService` is the door: an empty clip, a clip over `SPEECH_MAX_UPLOAD_BYTES`, or a
+format Azure does not accept is refused **before** the network call, and only then does the audio
+leave. The browser stops recording on its own after 60 seconds, so the byte cap is a second line
+rather than the first. There is no usage counter of our own, for the same reason the chat path no
+longer has one (see "No usage cap of our own" above): **Azure is the only limiter**, and its 429 is
+caught in `error_for_status` and re-raised as the same `RateLimitedError` the app already renders,
+carrying `retryAfterSeconds` from `Retry-After` when Azure sends one and the shared 20-second
+default when it does not.
+
+The audio is never stored and never reaches the journal. The audit row
+(`agents.voice.transcribed`, `entityType: "voice_input"`) records the actor, byte count, content
+type, language hint and the *number of characters* heard — never the words themselves. If the
+customer acts on what was dictated, the sentence is audited then, on the message they chose to
+send. `backend/tests/test_voice_input_is_bounded_and_never_transcribed_into_the_audit_log.py`
+defends both halves against a fake transcriber, and
+`backend/tests/test_azure_speech_transcriber.py` covers the adapter's own shaping — locale
+candidates, phrase joining, endpoint-vs-region, and which HTTP status is the caller's fault versus
+ours. No network in either.
+
+Not done: no streaming (the clip is transcribed once, on stop, not as you speak), no
+speaker verification, no server-side language detection beyond the `ro`/`en` hint the interface
+already knows, and no voice on the docked assistant — only the full chat screen.
+
+## Voice output — text-to-speech for the AI Assistant
+
+`AzureSpeechSynthesizer` (`backend/agents/synthesis.py`) powers speech synthesis for the AI Assistant
+via Azure AI Speech (`POST /agents/synthesize`). It maps `ro` to `ro-RO-AlinaNeural` and `en` to
+`en-US-JennyNeural`, building SSML with XML escaping and returning standard MP3 audio streams.
+
+`SynthesisService` (`backend/agents/synthesis_service.py`) validates text non-emptiness and caps
+length at `SPEECH_TTS_MAX_CHARS` (5,000 characters). Auditing (`agents.voice.synthesized`,
+`entityType: "voice_output"`) logs character count, language, and byte count without persisting the
+spoken words in the journal.
+
+In the frontend, every AI message bubble includes a "Read aloud" speaker button for on-demand playback,
+and toggling Read Aloud in Settings or the chat header automatically reads incoming assistant responses
+aloud with seamless in-memory audio caching and client-side `window.speechSynthesis` fallback.
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
 
 ## What the payments screen does not do yet
 
@@ -1081,6 +1274,127 @@ Money is never formatted in the backend. `decision_engine.py` writes `longText` 
 with `{baseline}` and `{observed}` placeholders plus the minor-unit values, and the frontend
 fills them through `UI.formatMoney`, so the card follows the same locale rules as the
 transactions table — `1.234,00 RON` in Romanian, not `1,234.00`.
+
+## FX insights — the BNR reference rate on the dashboard
+
+A second, separate pipeline. A vendor raising a subscription and the leu moving against the euro
+are different signals: different source, different cadence, different order of magnitude. They
+share nothing but the card they land on, so `backend/fx/` shares no collection, no schema and no
+threshold with `backend/vendors/`.
+
+**Source.** The public BNR XML feed, free, no API key:
+
+| feed | url | contents |
+| --- | --- | --- |
+| daily | `https://curs.bnr.ro/nbrfxrates.xml` | the latest banking day, 37 currencies |
+| last 10 days | `https://curs.bnr.ro/nbrfxrates10days.xml` | the last 10 banking days |
+
+Both live on `curs.bnr.ro`, **not** on `www.bnr.ro`. The historical `www.bnr.ro/nbrfxrates.xml`
+path now 302s to the redesigned homepage and answers `text/html`, so `bnr_feed.fetch_feed`
+refuses any answer whose content type is not XML rather than handing an HTML page to the parser.
+BNR publishes after 13:00 on banking days, so the newest cube in the feed is often *yesterday*.
+Every row is dated by the feed's own `Cube date`, never by the machine clock.
+
+Rates are stored as integer micro-units (rate × 10⁶), the same scale `backend/exchange/` already
+uses — a rate is not money, so the minor-unit rule does not apply, but no float reaches Mongo
+either. The feed's `multiplier="100"` attribute is divided out on the way in, so every stored
+rate is RON per **one** unit regardless of how BNR quotes it.
+
+**Which currencies.** Not all 37. The tracked set is the non-RON currencies actually held in
+`accounts`, unioned with `SUPPORTED_CURRENCIES - {RON}` so EUR and USD are always covered even
+before anyone opens such an account. `--currency EUR` overrides it.
+
+**The rule.** Per currency, the latest published rate against the last rate published on or
+before `baseline_days` (7) earlier — nearest-on-or-before, so a weekend or a holiday falls back
+to the previous banking day instead of losing the comparison. Over threshold in either direction
+becomes one row in `fxSignals` with `direction: "up" | "down"`.
+
+The threshold is `1.5%`, not the 8%/12% the vendor pipeline uses. Currency rates move roughly an
+order of magnitude less than consumer prices — EUR/RON moved 0.26% over the week of 2026-08-26 —
+so reusing a vendor-sized threshold would mean the rule never fires and a rate crisis would look
+identical to a quiet week.
+
+**Who hears about it.** Only a user with a positive balance in that currency. There is no
+read-only accounts adapter equivalent to `vendors/payments_adapter.py` — `accounts/service.py` is
+DI-wired into the app and unreachable from a standalone job — so `backend/fx/adapters.py` is that
+adapter, and every assumption it makes is printed by `python -m backend.fx.adapters`. The balance
+is **derived from journal lines**, mirroring `MongoJournalRepository.balances_for`; there is no
+balance field to read (rule 4). Several accounts in the same currency fold into one holding.
+
+**Idempotence.** All three collections upsert on a unique key: `fxRatesDaily` on
+`(source, currency, date)`, `fxSignals` on the same, `fxNotifications` on
+`(source, userId, currency, signalDate)`. Re-running the job any number of times replays the same
+documents. Beyond that, a *continuing* move is not re-announced: a signal on a later date whose
+current rate is within `repeat_rate_tolerance_percent` (0.5%) of what that user was last told is
+skipped as `same_rate_state_already_notified`, exactly as the vendor pipeline suppresses a
+persistent price. Only a genuinely new move notifies again.
+
+**Copy.** Templated off the signal, never per currency — one Romanian and one English template
+carrying the currency, the direction verb, the percent and the window, and nothing else. One
+sentence, under 90 characters:
+
+> EUR a crescut cu 0,3% în 7 zile — soldul tău de **{amount}** valorează acum **{ron}**, față de **{ronBefore}**.
+> EUR rose 0.3% in 7 days — your **{amount}** is now worth **{ron}**, vs **{ronBefore}** before.
+
+`{ronBefore}` is the *same* balance valued at the baseline rate, not what the account held a week
+ago — it isolates the rate move from any deposit or conversion the user made in between, which is
+the only comparison the rate alone can honestly support.
+
+The two raw rates stay in `baselineRate` / `currentRate` for anyone reading the API or the
+collection; they are not read out in the sentence. Money stays unformatted in the backend:
+`longText` carries `{amount}`, `{ron}` and `{ronBefore}` plus `amountMinorUnits` /
+`ronEquivalentMinorUnits` / `ronBaselineMinorUnits` / `currency` / `ronCurrency`, and the frontend
+fills them through `UI.formatMoney`, same as the vendor card. `{ronBefore}` is substituted before
+`{ron}` so the shorter key cannot eat the longer one.
+
+**Provenance.** Every notification carries `sourceName` and `sourceUrl`, and the card renders
+them as a clickable line under the text. For FX that is BNR's own page describing the feed
+(`bnr_fx_source_page_url`, overridable with `--source-page-url` — the old `.aspx` paths now
+redirect to the homepage, so this one is configuration, not a constant). Vendor insights link to
+the first URL in `newsUrls`, labelled with the publishers; an insight with no external source
+(`origin: internal_mathematical`) says so in words instead of offering a dead link.
+
+**The endpoint.** `GET /api/insights?username=...` was extended rather than duplicated, and the
+FX rows sit in their own `fx` key:
+
+```json
+{ "insights": [...], "history": [...], "total": 3,
+  "fx": { "insights": [...], "history": [...], "total": 2 } }
+```
+
+One request, one `useEffect`, and the vendor contract is byte-identical to what it was — nothing
+nullable was added to `VendorInsight` to make a currency fit a vendor shape.
+
+The card shows exactly two stories: the newest vendor one and the newest exchange-rate one
+(`INSIGHT_CARD_LIMIT`, applied per kind). Everything else — the rest of both histories — is
+behind "view all", where the dialog lists them under separate headings. The backend still decides
+which rows and in what order; the frontend only decides how many fit.
+
+**Running it.**
+
+```bash
+python -m backend.fx.rates_watcher                        # today's rates, then signals
+python -m backend.fx.rates_watcher --backfill-history     # also pull the 10-day feed first
+python -m backend.fx.rates_watcher --dry-run              # fetch and report, write nothing
+python -m backend.fx.rates_watcher --threshold-percent 0.5 --baseline-days 14
+python -m backend.fx.adapters                             # what fx/ assumes about accounts
+```
+
+A first run on an empty `fxRatesDaily` has no baseline and reports `no_baseline_in_window` for
+every currency — correct, not a failure. `--backfill-history` seeds ten banking days from the
+second feed in one go so the rule has something to compare against immediately.
+
+Checking it in mongosh:
+
+```js
+db.fxRatesDaily.find({currency:"EUR"}).sort({date:1})
+db.fxSignals.find().sort({date:-1})
+db.fxNotifications.find({userId:"<users._id>"})
+db.fxRatesDaily.getIndexes()          // fx_rate_unique on (source, currency, date)
+```
+
+`--source` labels every row the run writes, so a demo run at a lower threshold can be told apart
+from a production one and deleted on its own.
 
 ## What backend/vendors/ assumes about `payments`
 

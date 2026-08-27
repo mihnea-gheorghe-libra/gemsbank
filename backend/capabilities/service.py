@@ -4,8 +4,14 @@ from pydantic import BaseModel, Field
 
 from backend.auth.service import get_auth_service
 from backend.capabilities import analytics
+<<<<<<< HEAD
 from backend.capabilities import education as education_capabilities
+=======
+from backend.capabilities import cards as cards_capabilities
+from backend.capabilities import investments as investments_capabilities
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
 from backend.capabilities import payments as payments_capabilities
+from backend.capabilities import products as products_capabilities
 from backend.capabilities.registry import (
     Capability,
     CapabilityRegistry,
@@ -252,32 +258,99 @@ def get_capabilities_service() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+<<<<<<< HEAD
             name="education.docs.search",
             input_schema=education_capabilities.EducationSearchInput,
             output_schema=education_capabilities.EducationSearchOutput,
             side_effect=SideEffect.READ,
             required_scope="education:read",
             resolver=education_capabilities.resolve_education_search,
+=======
+            name="investments.market.get",
+            input_schema=investments_capabilities.MarketInput,
+            output_schema=investments_capabilities.MarketOutput,
+            side_effect=SideEffect.READ,
+            required_scope="investments:read",
+            resolver=investments_capabilities.resolve_market,
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
         )
     )
     registry.register(
         Capability(
+<<<<<<< HEAD
             name="goals.create.propose",
             input_schema=education_capabilities.GoalProposalInput,
             output_schema=education_capabilities.GoalProposalOutput,
             side_effect=SideEffect.WRITE,
             required_scope="goals:propose",
             resolver=education_capabilities.resolve_goal_proposal,
+=======
+            name="deposits.products.list",
+            input_schema=products_capabilities.DepositProductsInput,
+            output_schema=products_capabilities.DepositProductsOutput,
+            side_effect=SideEffect.READ,
+            required_scope="products:read",
+            resolver=products_capabilities.resolve_deposit_products,
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
         )
     )
     registry.register(
         Capability(
+<<<<<<< HEAD
             name="goals.standingOrder.propose",
             input_schema=education_capabilities.StandingOrderProposalInput,
             output_schema=education_capabilities.StandingOrderProposalOutput,
             side_effect=SideEffect.WRITE,
             required_scope="goals:propose",
             resolver=education_capabilities.resolve_standing_order_proposal,
+=======
+            name="deposits.maturity.estimate",
+            input_schema=products_capabilities.MaturityInput,
+            output_schema=products_capabilities.MaturityOutput,
+            side_effect=SideEffect.READ,
+            required_scope="products:read",
+            resolver=products_capabilities.resolve_maturity_estimate,
+        )
+    )
+    registry.register(
+        Capability(
+            name="credits.products.list",
+            input_schema=products_capabilities.CreditProductsInput,
+            output_schema=products_capabilities.CreditProductsOutput,
+            side_effect=SideEffect.READ,
+            required_scope="products:read",
+            resolver=products_capabilities.resolve_credit_products,
+        )
+    )
+    registry.register(
+        Capability(
+            name="credits.repayment.estimate",
+            input_schema=products_capabilities.RepaymentInput,
+            output_schema=products_capabilities.RepaymentOutput,
+            side_effect=SideEffect.READ,
+            required_scope="products:read",
+            resolver=products_capabilities.resolve_repayment_estimate,
+        )
+    )
+    registry.register(
+        Capability(
+            name="cards.list",
+            input_schema=cards_capabilities.CardsListInput,
+            output_schema=cards_capabilities.CardsListOutput,
+            side_effect=SideEffect.READ,
+            required_scope="cards:read",
+            resolver=cards_capabilities.resolve_cards_list,
+        )
+    )
+    registry.register(
+        Capability(
+            name="cards.action.propose",
+            input_schema=cards_capabilities.CardActionInput,
+            output_schema=cards_capabilities.CardActionOutput,
+            side_effect=SideEffect.WRITE,
+            required_scope="cards:propose",
+            resolver=cards_capabilities.resolve_card_action,
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
         )
     )
     return registry

@@ -16,6 +16,8 @@ from backend.capabilities.service import get_capabilities_service
 from backend.cards.service import get_cards_service
 from backend.config import settings
 from backend.database.mongo import close_client, ensure_indexes
+from backend.escalations.service import get_escalations_service
+from backend.exchange.service import get_exchange_service
 from backend.goals.service import get_goals_service
 from backend.helpers.context import (
     CORRELATION_HEADER,
@@ -23,8 +25,6 @@ from backend.helpers.context import (
     get_correlation_id,
     set_correlation_id,
 )
-from backend.escalations.service import get_escalations_service
-from backend.exchange.service import get_exchange_service
 from backend.helpers.errors import DomainError
 from backend.investments.service import (
     close_investments_clients,

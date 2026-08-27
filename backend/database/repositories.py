@@ -1,10 +1,9 @@
 import re
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClientSession
-from pymongo import ASCENDING, DESCENDING, ReturnDocument
+from pymongo import ASCENDING, DESCENDING
 from pymongo.errors import DuplicateKeyError
 
 from backend.accounts.account import Account, AccountKind, AccountStatus
@@ -20,13 +19,13 @@ from backend.auth.credentials import (
 from backend.cards.card import Card, CardKind, CardState
 from backend.database.mongo import (
     accounts_collection,
-    agent_rate_limits_collection,
     beneficiaries_collection,
     cards_collection,
     goals_collection,
     handoffs_collection,
     journal_collection,
     kyc_cases_collection,
+    payment_templates_collection,
     payments_collection,
     recovery_cases_collection,
     sessions_collection,
@@ -52,6 +51,7 @@ from backend.payments.payment import (
     Payment,
     PaymentRail,
     PaymentStatus,
+    PaymentTemplate,
     SignatureChallenge,
 )
 
@@ -702,33 +702,6 @@ class MongoHandoffRepository:
         return [_handoff_from_bson(raw) async for raw in cursor]
 
 
-@dataclass(slots=True, frozen=True)
-class RateLimitHit:
-    count: int
-    window_start: datetime
-
-
-class MongoRateLimitStore:
-    async def bump(self, doc_id: str, now: datetime, window_seconds: int) -> RateLimitHit:
-        window_cutoff = now - timedelta(seconds=window_seconds)
-        collection = agent_rate_limits_collection()
-
-        document = await collection.find_one_and_update(
-            {"_id": doc_id, "windowStart": {"$gt": window_cutoff}},
-            {"$inc": {"count": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-        if document is None:
-            document = await collection.find_one_and_update(
-                {"_id": doc_id},
-                {"$set": {"windowStart": now, "count": 1}},
-                upsert=True,
-                return_document=ReturnDocument.AFTER,
-            )
-
-        return RateLimitHit(count=document["count"], window_start=document["windowStart"])
-
-
 def _journal_to_bson(transaction: JournalTransaction) -> dict[str, Any]:
     return {
         "_id": transaction.id,
@@ -782,6 +755,20 @@ class MongoJournalRepository:
         ]
         found = journal_collection().aggregate(pipeline)
         return {row["_id"]: int(row["total"]) async for row in found}
+
+    async def balance_before(self, account_ids: list[str], before: datetime | None) -> int:
+        match: dict[str, Any] = {"entries.accountId": {"$in": account_ids}}
+        if before is not None:
+            match["postedAt"] = {"$lt": before}
+        pipeline: list[dict[str, Any]] = [
+            {"$match": match},
+            {"$unwind": "$entries"},
+            {"$match": {"entries.accountId": {"$in": account_ids}}},
+            {"$group": {"_id": None, "total": {"$sum": "$entries.amount"}}},
+        ]
+        async for row in journal_collection().aggregate(pipeline):
+            return int(row["total"])
+        return 0
 
     async def debited_since(self, account_ids: list[str], since: datetime) -> int:
         pipeline: list[dict[str, Any]] = [
@@ -851,6 +838,31 @@ class MongoJournalRepository:
             journal_collection()
             .find(query)
             .sort([("postedAt", DESCENDING), ("_id", DESCENDING)])
+            .limit(limit)
+        )
+        return [_journal_from_bson(raw) async for raw in found]
+
+    async def in_range_for(
+        self,
+        account_ids: list[str],
+        date_from: datetime | None,
+        date_to: datetime | None,
+        limit: int = 5000,
+    ) -> list[JournalTransaction]:
+        posted_at: dict[str, Any] = {}
+        if date_from is not None:
+            posted_at["$gte"] = date_from
+        if date_to is not None:
+            posted_at["$lte"] = date_to
+
+        query: dict[str, Any] = {"entries": {"$elemMatch": {"accountId": {"$in": account_ids}}}}
+        if posted_at:
+            query["postedAt"] = posted_at
+
+        found = (
+            journal_collection()
+            .find(query)
+            .sort([("postedAt", ASCENDING), ("_id", ASCENDING)])
             .limit(limit)
         )
         return [_journal_from_bson(raw) async for raw in found]
@@ -928,6 +940,7 @@ def _card_to_bson(card: Card) -> dict[str, Any]:
     return {
         "_id": card.id,
         "userId": card.user_id,
+        "accountId": card.account_id,
         "kind": card.kind.value,
         "last4": card.last4,
         "ownerName": card.owner_name,
@@ -947,6 +960,7 @@ def _card_from_bson(raw: dict[str, Any]) -> Card:
     return Card(
         id=raw["_id"],
         user_id=raw["userId"],
+        account_id=raw["accountId"],
         kind=CardKind(raw["kind"]),
         last4=raw["last4"],
         owner_name=raw["ownerName"],
@@ -994,6 +1008,17 @@ class MongoPaymentRepository:
             {"userId": user_id, "status": status.value}
         )
 
+    async def ibans_by_journal_transaction_ids(
+        self, journal_transaction_ids: list[str]
+    ) -> dict[str, str]:
+        if not journal_transaction_ids:
+            return {}
+        found = payments_collection().find(
+            {"journalTransactionId": {"$in": journal_transaction_ids}},
+            {"journalTransactionId": 1, "targetIban": 1},
+        )
+        return {raw["journalTransactionId"]: raw["targetIban"] async for raw in found}
+
 
 def _beneficiary_to_bson(beneficiary: Beneficiary) -> dict[str, Any]:
     return {
@@ -1035,6 +1060,65 @@ class MongoBeneficiaryRepository:
     async def find(self, user_id: str, iban: str) -> Beneficiary | None:
         raw = await beneficiaries_collection().find_one({"userId": user_id, "iban": iban})
         return _beneficiary_from_bson(raw) if raw else None
+
+
+def _template_to_bson(template: PaymentTemplate) -> dict[str, Any]:
+    return {
+        "_id": template.id,
+        "userId": template.user_id,
+        "name": template.name,
+        "beneficiary": template.beneficiary,
+        "iban": template.iban,
+        "currency": template.currency,
+        "reference": template.reference,
+        "createdAt": template.created_at,
+        "updatedAt": template.updated_at,
+    }
+
+
+def _template_from_bson(raw: dict[str, Any]) -> PaymentTemplate:
+    return PaymentTemplate(
+        id=raw["_id"],
+        user_id=raw["userId"],
+        name=raw["name"],
+        beneficiary=raw["beneficiary"],
+        iban=raw["iban"],
+        currency=raw["currency"],
+        reference=raw["reference"],
+        created_at=raw["createdAt"],
+        updated_at=raw["updatedAt"],
+    )
+
+
+class MongoPaymentTemplateRepository:
+    async def add(
+        self, template: PaymentTemplate, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await payment_templates_collection().insert_one(
+            _template_to_bson(template), session=session
+        )
+
+    async def list_for_user(self, user_id: str) -> list[PaymentTemplate]:
+        found = payment_templates_collection().find({"userId": user_id}).sort("createdAt", ASCENDING)
+        return [_template_from_bson(raw) async for raw in found]
+
+    async def get(self, template_id: str) -> PaymentTemplate | None:
+        raw = await payment_templates_collection().find_one({"_id": template_id})
+        return _template_from_bson(raw) if raw else None
+
+    async def update(
+        self, template: PaymentTemplate, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await payment_templates_collection().replace_one(
+            {"_id": template.id}, _template_to_bson(template), session=session
+        )
+
+    async def delete(
+        self, template_id: str, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await payment_templates_collection().delete_one({"_id": template_id}, session=session)
+
+
 class MongoCardRepository:
     async def add(self, card: Card, session: AsyncIOMotorClientSession | None = None) -> None:
         await cards_collection().insert_one(_card_to_bson(card), session=session)

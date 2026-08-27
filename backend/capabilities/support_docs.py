@@ -5,7 +5,20 @@ from pathlib import Path
 
 from backend.config import settings
 
-_HELP_HTML = Path(settings.web_dir) / "help.html"
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _find_help_html() -> Path | None:
+    candidates = [
+        Path(settings.web_dir) / "help.html",
+        _REPO_ROOT / "frontend" / "help.html",
+        Path("frontend/help.html"),
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
 
 _SPAN = r'<span class="lang-en">(.*?)</span>\s*<span class="lang-ro">(.*?)</span>'
 _TAG = re.compile(r"<[^>]+>")
@@ -36,7 +49,10 @@ class SupportDoc:
 
 @lru_cache(maxsize=1)
 def load_support_docs() -> list[SupportDoc]:
-    html = _HELP_HTML.read_text(encoding="utf-8")
+    help_path = _find_help_html()
+    if not help_path:
+        return []
+    html = help_path.read_text(encoding="utf-8")
     docs: list[SupportDoc] = []
 
     for index, match in enumerate(_FAQ_PATTERN.finditer(html)):

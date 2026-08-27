@@ -65,6 +65,28 @@
     return parse(response);
   }
 
+  async function downloadFile(path) {
+    const headers = {};
+    if (sessionToken) {
+      headers["Authorization"] = "Bearer " + sessionToken;
+    }
+    const response = await fetch(path, { method: "GET", headers });
+    if (!response.ok) {
+      let body = null;
+      try {
+        body = await response.json();
+      } catch (err) {
+        body = null;
+      }
+      throw new ApiError(body && body.error, response.status);
+    }
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const match = /filename="?([^"]+)"?/.exec(disposition);
+    const filename = match ? match[1] : "download";
+    const blob = await response.blob();
+    return { blob, filename };
+  }
+
   function query(params) {
     const search = new URLSearchParams();
     Object.keys(params || {}).forEach((key) => {
@@ -148,6 +170,15 @@
     listBeneficiaries: () => send("/payments/beneficiaries"),
     addBeneficiary: (name, iban) =>
       send("/payments/beneficiaries", { method: "POST", json: { name, iban } }),
+    listTemplates: () => send("/payments/templates"),
+    createTemplate: (payload) => send("/payments/templates", { method: "POST", json: payload }),
+    updateTemplate: (id, payload) =>
+      send("/payments/templates/" + id, { method: "PUT", json: payload }),
+    deleteTemplate: (id) => send("/payments/templates/" + id, { method: "DELETE" }),
+    addFunds: (accountId, amountMinorUnits) =>
+      send("/payments/add-funds", { method: "POST", json: { accountId, amountMinorUnits } }),
+    downloadStatement: (accountId, format, from, to) =>
+      downloadFile("/payments/statement" + query({ accountId, format, from, to })),
     transfer: (payload) => send("/payments/transfers", { method: "POST", json: payload }),
     signTransfer: (id, code) =>
       send("/payments/transfers/" + id + "/sign", { method: "POST", json: { code } }),
@@ -155,34 +186,24 @@
     marketSnapshot: (range, refresh) =>
       send("/investments/market" + query({ range, refresh: refresh ? "true" : "" })),
 
-    listCards: (username) => send("/cards?username=" + encodeURIComponent(username)),
-    issueVirtualCard: (username) =>
-      send("/cards/virtual", { method: "POST", json: { username } }),
-    issuePhysicalCard: (username) =>
-      send("/cards/physical", { method: "POST", json: { username } }),
-    freezeCard: (username, cardId) =>
-      send("/cards/" + cardId + "/freeze", { method: "POST", json: { username } }),
-    unfreezeCard: (username, cardId) =>
-      send("/cards/" + cardId + "/unfreeze", { method: "POST", json: { username } }),
-    blockCard: (username, cardId) =>
-      send("/cards/" + cardId + "/block", { method: "POST", json: { username } }),
-    revealCardPin: (username, cardId) =>
-      send("/cards/" + cardId + "/pin/reveal", { method: "POST", json: { username } }),
-    revealCardDetails: (username, cardId) =>
-      send("/cards/" + cardId + "/details/reveal", { method: "POST", json: { username } }),
-    setCardAtmLimit: (username, cardId, limitMinor) =>
-      send("/cards/" + cardId + "/limits/atm", {
-        method: "POST",
-        json: { username, limitMinor },
-      }),
-    setCardOnlineLimit: (username, cardId, limitMinor) =>
-      send("/cards/" + cardId + "/limits/online", {
-        method: "POST",
-        json: { username, limitMinor },
-      }),
-    listInsights: (username) =>
-      send("/insights?username=" + encodeURIComponent(username || "")),
+    listCards: () => send("/cards"),
+    issueVirtualCard: (accountId) =>
+      send("/cards/virtual", { method: "POST", json: { accountId } }),
+    issuePhysicalCard: (accountId) =>
+      send("/cards/physical", { method: "POST", json: { accountId } }),
+    freezeCard: (cardId) => send("/cards/" + cardId + "/freeze", { method: "POST", json: {} }),
+    unfreezeCard: (cardId) => send("/cards/" + cardId + "/unfreeze", { method: "POST", json: {} }),
+    blockCard: (cardId) => send("/cards/" + cardId + "/block", { method: "POST", json: {} }),
+    revealCardPin: (cardId) =>
+      send("/cards/" + cardId + "/pin/reveal", { method: "POST", json: {} }),
+    revealCardDetails: (cardId) =>
+      send("/cards/" + cardId + "/details/reveal", { method: "POST", json: {} }),
+    setCardAtmLimit: (cardId, limitMinor) =>
+      send("/cards/" + cardId + "/limits/atm", { method: "POST", json: { limitMinor } }),
+    setCardOnlineLimit: (cardId, limitMinor) =>
+      send("/cards/" + cardId + "/limits/online", { method: "POST", json: { limitMinor } }),
 
+    listInsights: () => send("/insights"),
     getGoalProgress: () => send("/goals/progress"),
     getGoalPace: () => send("/goals/pace"),
     createGoal: (parentAccountId, name, targetMinorUnits, targetDate, initialDepositMinorUnits) =>
@@ -227,7 +248,6 @@
       send("/goals/standing-order/" + encodeURIComponent(standingOrderId) + "/cancel", {
         method: "POST",
       }),
-
     askSupport: (question) =>
       send("/agents/support/ask", { method: "POST", json: { question } }),
     askAnalytics: (question) =>
@@ -238,5 +258,33 @@
       send("/agents/ask", { method: "POST", json: { question, history, screen } }),
     requestHandoff: (question, reason, history) =>
       send("/agents/handoff", { method: "POST", json: { question, reason, history } }),
+    transcribeVoice: (blob, language) => {
+      const form = new FormData();
+      form.append("audio", blob, "voice");
+      if (language) form.append("language", language);
+      return send("/agents/transcribe", { method: "POST", form });
+    },
+    synthesizeSpeech: async (text, language, voice, signal) => {
+      const headers = { "Content-Type": "application/json" };
+      if (sessionToken) {
+        headers["Authorization"] = "Bearer " + sessionToken;
+      }
+      const response = await fetch("/agents/synthesize", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ text, language, voice }),
+        signal,
+      });
+      if (!response.ok) {
+        let body = null;
+        try {
+          body = await response.json();
+        } catch (err) {
+          body = null;
+        }
+        throw new ApiError(body && body.error, response.status);
+      }
+      return response.blob();
+    },
   };
 })();

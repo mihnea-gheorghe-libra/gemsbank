@@ -2,22 +2,26 @@ from functools import lru_cache
 
 from backend.agents.adapters import AzureChatCompleter
 from backend.agents.analytics import AnalyticsAgent
+<<<<<<< HEAD
 from backend.agents.education import EducationAgent
+=======
+from backend.agents.cards import CardsAgent
+from backend.agents.credits import CreditsAgent
+from backend.agents.deposits import DepositsAgent
+from backend.agents.investments import InvestmentsAgent
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
 from backend.agents.orchestrator import OrchestratedAnswer, Orchestrator
 from backend.agents.payments import PaymentsAgent
-from backend.agents.service import AgentRateLimiter
 from backend.agents.support import SupportAgent
 from backend.capabilities.service import get_capabilities_service
 from backend.config import settings
 from backend.database.records import write_audit
-from backend.database.repositories import MongoRateLimitStore
 from backend.helpers.context import Actor
 
 
 class OrchestratorService:
-    def __init__(self, orchestrator: Orchestrator, limiter: AgentRateLimiter) -> None:
+    def __init__(self, orchestrator: Orchestrator) -> None:
         self._orchestrator = orchestrator
-        self._limiter = limiter
 
     async def ask(
         self,
@@ -26,7 +30,6 @@ class OrchestratorService:
         history: list[dict[str, str]] | None = None,
         screen: str | None = None,
     ) -> OrchestratedAnswer:
-        await self._limiter.check(user_id)
         actor = Actor(kind="agent", id="orchestrator", on_behalf_of=user_id)
         return await self._orchestrator.ask(actor, question, history=history, screen=screen)
 
@@ -39,13 +42,14 @@ def get_orchestrator_service() -> OrchestratorService:
         "support": SupportAgent(chat=chat, capabilities=capabilities, audit=write_audit),
         "analytics": AnalyticsAgent(chat=chat, capabilities=capabilities, audit=write_audit),
         "payments": PaymentsAgent(chat=chat, capabilities=capabilities, audit=write_audit),
+<<<<<<< HEAD
         "education": EducationAgent(chat=chat, capabilities=capabilities, audit=write_audit),
+=======
+        "investments": InvestmentsAgent(chat=chat, capabilities=capabilities, audit=write_audit),
+        "deposits": DepositsAgent(chat=chat, capabilities=capabilities, audit=write_audit),
+        "credits": CreditsAgent(chat=chat, capabilities=capabilities, audit=write_audit),
+        "cards": CardsAgent(chat=chat, capabilities=capabilities, audit=write_audit),
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
     }
     orchestrator = Orchestrator(chat=chat, workers=workers, audit=write_audit)
-    limiter = AgentRateLimiter(
-        agent_name="orchestrator",
-        max_calls=settings.agent_rate_limit_max_calls,
-        window_seconds=settings.agent_rate_limit_window_seconds,
-        store=MongoRateLimitStore(),
-    )
-    return OrchestratorService(orchestrator, limiter)
+    return OrchestratorService(orchestrator)

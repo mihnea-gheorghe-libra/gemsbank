@@ -1,28 +1,44 @@
-from datetime import date
+from datetime import date, datetime, time, timezone
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from pydantic import BaseModel, Field
 
-from backend.accounts.service import AccountsService, get_accounts_service
-from backend.agents.analytics_service import AnalyticsService, get_analytics_service
-from backend.agents.payments_service import (
-    PaymentsAgentService,
-    get_payments_agent_service,
+from backend.accounts.service import (
+    AccountKind,
+    AccountsService,
+    OpenAccount,
+    get_accounts_service,
 )
+from backend.agents.analytics_service import AnalyticsService, get_analytics_service
 from backend.agents.orchestrator_service import (
     OrchestratorService,
     get_orchestrator_service,
 )
-from backend.agents.service import SupportService, get_support_service
-from backend.agents.transcript import sanitise_history
-from backend.escalations.service import (
-    EscalationsService,
-    RequestHandoff,
-    get_escalations_service,
+from backend.agents.payments_service import (
+    PaymentsAgentService,
+    get_payments_agent_service,
 )
-from backend.accounts.service import AccountKind, AccountsService, OpenAccount, get_accounts_service
-from backend.exchange.service import ConvertCurrency, ExchangeService, get_exchange_service
+from backend.agents.service import SupportService, get_support_service
+from backend.agents.synthesis_service import (
+    SynthesisService,
+    get_synthesis_service,
+)
+from backend.agents.transcript import sanitise_history
+from backend.agents.transcription_service import (
+    TranscriptionService,
+    get_transcription_service,
+)
 from backend.auth.service import (
     AuthService,
     RequestAccountClosure,
@@ -59,6 +75,7 @@ from backend.cards.service import (
 )
 from backend.command_bus import bus
 from backend.database.mongo import get_db
+<<<<<<< HEAD
 from backend.goals.service import (
     CancelStandingOrder,
     CloseGoal,
@@ -70,6 +87,20 @@ from backend.goals.service import (
     WithdrawFromGoal,
     get_goals_service,
 )
+=======
+from backend.escalations.service import (
+    EscalationsService,
+    RequestHandoff,
+    get_escalations_service,
+)
+from backend.exchange.service import (
+    ConvertCurrency,
+    ExchangeService,
+    get_exchange_service,
+)
+from backend.fx.service import FxInsightsService, get_fx_insights_service
+from backend.goals.service import CreateGoal
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
 from backend.helpers.context import Actor
 from backend.helpers.errors import AuthenticationError
 from backend.investments.service import InvestmentsService, get_investments_service
@@ -85,11 +116,16 @@ from backend.onboarding.service import (
 )
 from backend.payments.service import (
     AddBeneficiary,
+    AddFunds,
+    AddTemplate,
+    DeleteTemplate,
     MakeTransfer,
     PaymentsService,
     SignPayment,
+    UpdateTemplate,
     get_payments_service,
 )
+from backend.payments.statement import render_csv, render_pdf
 from backend.vendors.service import (
     VendorInsightsService,
     get_vendor_insights_service,
@@ -206,15 +242,32 @@ class BeneficiaryRequest(BaseModel):
     iban: str = Field(min_length=15, max_length=42)
 
 
-class UsernameRequest(BaseModel):
-    username: str = Field(min_length=3, max_length=32)
+class AddFundsRequest(BaseModel):
+    account_id: str = Field(alias="accountId", min_length=1, max_length=64)
+    amount_minor: int = Field(alias="amountMinorUnits", gt=0)
+
+    model_config = {"populate_by_name": True}
+
+
+class TemplateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    beneficiary: str = Field(min_length=2, max_length=70)
+    iban: str = Field(min_length=15, max_length=42)
+    currency: str = Field(min_length=3, max_length=3)
+    reference: str = Field(min_length=1, max_length=140)
+
+
+class IssueCardRequest(BaseModel):
+    account_id: str = Field(alias="accountId")
+
+    model_config = {"populate_by_name": True}
+
 
 class PreferencesRequest(BaseModel):
     prefs: dict[str, Any]
 
 
 class LimitRequest(BaseModel):
-    username: str = Field(min_length=3, max_length=32)
     limit_minor: int = Field(ge=0, le=5_000_000, alias="limitMinor")
     model_config = {"populate_by_name": True}
 
@@ -261,6 +314,12 @@ class StandingOrderRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class SynthesizeRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=5000)
+    language: str | None = None
+    voice: str | None = None
+
+
 ServiceDep = Annotated[OnboardingService, Depends(get_onboarding_service)]
 AuthDep = Annotated[AuthService, Depends(get_auth_service)]
 AccountsDep = Annotated[AccountsService, Depends(get_accounts_service)]
@@ -270,10 +329,15 @@ InvestmentsDep = Annotated[InvestmentsService, Depends(get_investments_service)]
 VendorInsightsDep = Annotated[
     VendorInsightsService, Depends(get_vendor_insights_service)
 ]
+FxInsightsDep = Annotated[FxInsightsService, Depends(get_fx_insights_service)]
 SupportDep = Annotated[SupportService, Depends(get_support_service)]
 AnalyticsDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
 PaymentsAgentDep = Annotated[PaymentsAgentService, Depends(get_payments_agent_service)]
 OrchestratorDep = Annotated[OrchestratorService, Depends(get_orchestrator_service)]
+TranscriptionDep = Annotated[
+    TranscriptionService, Depends(get_transcription_service)
+]
+SynthesisDep = Annotated[SynthesisService, Depends(get_synthesis_service)]
 EscalationsDep = Annotated[EscalationsService, Depends(get_escalations_service)]
 ExchangeDep = Annotated[ExchangeService, Depends(get_exchange_service)]
 
@@ -329,10 +393,6 @@ CurrentActor = Annotated[Actor, Depends(current_actor)]
 SessionToken = Annotated[str, Depends(bearer_token)]
 ClientIp = Annotated[str | None, Depends(client_ip)]
 ClientUserAgent = Annotated[str | None, Depends(client_user_agent)]
-def _cards_actor() -> Actor:
-    return Actor.public_cards()
-
-
 @api_router.get("/health", tags=["platform"])
 async def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -654,6 +714,34 @@ async def list_transactions(
     )
 
 
+@payments_router.get("/statement")
+async def get_statement(
+    actor: CurrentActor,
+    payments: PaymentsDep,
+    account_id: Annotated[str, Query(alias="accountId", min_length=1, max_length=64)],
+    format: Annotated[str, Query(pattern="^(pdf|csv)$")] = "csv",
+    date_from: Annotated[date | None, Query(alias="from")] = None,
+    date_to: Annotated[date | None, Query(alias="to")] = None,
+) -> Response:
+    from_dt = datetime.combine(date_from, time.min, tzinfo=timezone.utc) if date_from else None
+    to_dt = datetime.combine(date_to, time.max, tzinfo=timezone.utc) if date_to else None
+    data = await payments.statement_data(actor.id, account_id, from_dt, to_dt)
+
+    if format == "pdf":
+        content = render_pdf(data)
+        media_type = "application/pdf"
+    else:
+        content = render_csv(data)
+        media_type = "text/csv"
+
+    filename = f"gems-statement-{account_id}.{format}"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @payments_router.get("/pending")
 async def list_pending(actor: CurrentActor, payments: PaymentsDep) -> dict[str, Any]:
     return await payments.list_pending(actor.id)
@@ -671,6 +759,65 @@ async def add_beneficiary(
     idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
     command = AddBeneficiary(name=payload.name, iban=payload.iban)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@payments_router.get("/templates")
+async def list_templates(actor: CurrentActor, payments: PaymentsDep) -> dict[str, Any]:
+    return await payments.list_templates(actor.id)
+
+
+@payments_router.post("/templates", status_code=201)
+async def add_template(
+    actor: CurrentActor,
+    payload: TemplateRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = AddTemplate(
+        name=payload.name,
+        beneficiary=payload.beneficiary,
+        iban=payload.iban,
+        currency=payload.currency,
+        reference=payload.reference,
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@payments_router.put("/templates/{template_id}")
+async def update_template(
+    actor: CurrentActor,
+    template_id: str,
+    payload: TemplateRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = UpdateTemplate(
+        template_id=template_id,
+        name=payload.name,
+        beneficiary=payload.beneficiary,
+        iban=payload.iban,
+        currency=payload.currency,
+        reference=payload.reference,
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@payments_router.delete("/templates/{template_id}")
+async def delete_template(
+    actor: CurrentActor,
+    template_id: str,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = DeleteTemplate(template_id=template_id)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@payments_router.post("/add-funds", status_code=201)
+async def add_funds(
+    actor: CurrentActor,
+    payload: AddFundsRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = AddFunds(account_id=payload.account_id, amount_minor=payload.amount_minor)
     return await bus.execute(command, actor, idempotency_key)
 
 
@@ -703,82 +850,81 @@ async def sign_transfer(
     command = SignPayment(payment_id=payment_id, code=payload.code.strip())
     return await bus.execute(command, actor, idempotency_key)
 @cards_router.get("")
-async def list_cards(username: str, service: CardsServiceDep) -> dict[str, Any]:
-    return await service.list_cards(username)
+async def list_cards(actor: CurrentActor, service: CardsServiceDep) -> dict[str, Any]:
+    return await service.list_cards(actor.id)
 
 
 @cards_router.post("/virtual", status_code=201)
 async def issue_virtual_card(
-    payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+    actor: CurrentActor, payload: IssueCardRequest, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
-    command = IssueVirtualCard(username=payload.username)
-    return await bus.execute(command, _cards_actor(), idempotency_key)
+    command = IssueVirtualCard(account_id=payload.account_id)
+    return await bus.execute(command, actor, idempotency_key)
 
 
 @cards_router.post("/physical", status_code=201)
 async def issue_physical_card(
-    payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+    actor: CurrentActor, payload: IssueCardRequest, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
-    command = IssuePhysicalCard(username=payload.username)
-    return await bus.execute(command, _cards_actor(), idempotency_key)
+    command = IssuePhysicalCard(account_id=payload.account_id)
+    return await bus.execute(command, actor, idempotency_key)
 
 
 @cards_router.post("/{card_id}/freeze")
 async def freeze_card(
-    card_id: str, payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+    actor: CurrentActor, card_id: str, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
-    command = FreezeCard(username=payload.username, card_id=card_id)
-    return await bus.execute(command, _cards_actor(), idempotency_key)
+    return await bus.execute(FreezeCard(card_id=card_id), actor, idempotency_key)
 
 
 @cards_router.post("/{card_id}/unfreeze")
 async def unfreeze_card(
-    card_id: str, payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+    actor: CurrentActor, card_id: str, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
-    command = UnfreezeCard(username=payload.username, card_id=card_id)
-    return await bus.execute(command, _cards_actor(), idempotency_key)
+    return await bus.execute(UnfreezeCard(card_id=card_id), actor, idempotency_key)
 
 
 @cards_router.post("/{card_id}/block")
 async def block_card(
-    card_id: str, payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+    actor: CurrentActor, card_id: str, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
-    command = BlockCardPermanently(username=payload.username, card_id=card_id)
-    return await bus.execute(command, _cards_actor(), idempotency_key)
+    return await bus.execute(BlockCardPermanently(card_id=card_id), actor, idempotency_key)
 
 
 @cards_router.post("/{card_id}/pin/reveal")
 async def reveal_card_pin(
-    card_id: str, payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+    actor: CurrentActor, card_id: str, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
-    command = RevealCardPin(username=payload.username, card_id=card_id)
-    return await bus.execute(command, _cards_actor(), idempotency_key)
+    return await bus.execute(RevealCardPin(card_id=card_id), actor, idempotency_key)
 
 
 @cards_router.post("/{card_id}/details/reveal")
 async def reveal_card_details(
-    card_id: str, payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+    actor: CurrentActor, card_id: str, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
-    command = RevealCardDetails(username=payload.username, card_id=card_id)
-    return await bus.execute(command, _cards_actor(), idempotency_key)
+    return await bus.execute(RevealCardDetails(card_id=card_id), actor, idempotency_key)
 
 
 @cards_router.post("/{card_id}/limits/atm")
 async def set_atm_limit(
-    card_id: str, payload: LimitRequest, idempotency_key: IdempotencyKey = None
+    actor: CurrentActor,
+    card_id: str,
+    payload: LimitRequest,
+    idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
-    command = SetAtmLimit(username=payload.username, card_id=card_id, limit_minor=payload.limit_minor)
-    return await bus.execute(command, _cards_actor(), idempotency_key)
+    command = SetAtmLimit(card_id=card_id, limit_minor=payload.limit_minor)
+    return await bus.execute(command, actor, idempotency_key)
 
 
 @cards_router.post("/{card_id}/limits/online")
 async def set_online_limit(
-    card_id: str, payload: LimitRequest, idempotency_key: IdempotencyKey = None
+    actor: CurrentActor,
+    card_id: str,
+    payload: LimitRequest,
+    idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
-    command = SetOnlineLimit(
-        username=payload.username, card_id=card_id, limit_minor=payload.limit_minor
-    )
-    return await bus.execute(command, _cards_actor(), idempotency_key)
+    command = SetOnlineLimit(card_id=card_id, limit_minor=payload.limit_minor)
+    return await bus.execute(command, actor, idempotency_key)
 
 
 @investments_router.get("/instruments")
@@ -796,11 +942,13 @@ async def market_snapshot(
 @insights_router.get("")
 async def list_insights(
     service: VendorInsightsDep,
+    fx: FxInsightsDep,
     username: str | None = None,
     limit: int | None = None,
 ) -> dict[str, Any]:
     board = await service.board_for_username(username, limit)
-    return board.model_dump()
+    fx_board = await fx.board_for_username(username, limit)
+    return {**board.model_dump(), "fx": fx_board.model_dump()}
 @agents_router.post("/support/ask")
 async def ask_support(
     actor: CurrentActor, support: SupportDep, payload: AskAgentRequest
@@ -848,6 +996,32 @@ async def ask_orchestrator(
         },
         "runId": answer.run_id,
     }
+
+
+@agents_router.post("/transcribe")
+async def transcribe_voice_input(
+    actor: CurrentActor,
+    service: TranscriptionDep,
+    audio: Annotated[UploadFile, File()],
+    language: Annotated[str | None, Form()] = None,
+) -> dict[str, Any]:
+    content = await audio.read()
+    transcript = await service.transcribe(
+        actor.id, content, audio.content_type or "", language
+    )
+    return {"text": transcript.text}
+
+
+@agents_router.post("/synthesize")
+async def synthesize_speech_output(
+    actor: CurrentActor,
+    service: SynthesisDep,
+    payload: SynthesizeRequest,
+) -> Response:
+    audio_bytes = await service.synthesize(
+        actor.id, payload.text, payload.language, payload.voice
+    )
+    return Response(content=audio_bytes, media_type="audio/mpeg")
 
 
 @agents_router.post("/handoff", status_code=201)

@@ -6,7 +6,7 @@
   const t = GEMS.i18n.t;
   const api = GEMS.api;
   const DATA = GEMS.dashboardData;
-  const { useState, useCallback, useEffect } = React;
+  const { useState, useCallback, useEffect, useRef } = React;
 
   const SCREENS = ["home", "payments", "chat", "accounts", "portfolio", "cards", "analytics", "education", "settings"];
   const REAL_ACCOUNT_KINDS = ["current", "savings", "invest"];
@@ -22,7 +22,82 @@
     settings2fa: "answerSettings2fa",
   };
 
+  const PROMPT_SETS = {
+    payments: ["balanceTotal", "moveToSavings", "recentSpending"],
+    analytics: ["whyHigher", "monthRecap", "cashflow"],
+    cards: ["freezeCard", "cardLimits", "newVirtualCard"],
+    investments: ["marketMonth", "investAccount", "btcPrice"],
+    deposits: ["depositRates", "depositMaturity", "savingsGoal"],
+    credits: ["loanCost", "creditOptions", "creditMax"],
+    support: ["changePin", "activeSessions", "changeLanguage"],
+  };
+
+  const SCREEN_PROMPTS = {
+    home: "payments",
+    payments: "payments",
+    analytics: "analytics",
+    cards: "cards",
+    portfolio: "investments",
+    settings: "support",
+  };
+
+  function promptKeysFor(screen, lastAgents) {
+    const fromAgent = (lastAgents || []).find((name) => PROMPT_SETS[name]);
+    if (fromAgent) return PROMPT_SETS[fromAgent];
+    return PROMPT_SETS[SCREEN_PROMPTS[screen] || "payments"];
+  }
+
+  function totalsByCurrency(accounts) {
+    const grouped = {};
+    accounts.forEach((account) => {
+      grouped[account.cur] = (grouped[account.cur] || 0) + account.minor;
+    });
+    return Object.keys(grouped)
+      .sort()
+      .map((currency) => DASH.formatMinor(grouped[currency]) + " " + currency)
+      .join(" · ");
+  }
+
+  function seedMessage(name, accounts, pending, ready) {
+    if (!ready || !accounts.length) {
+      return t("dashboard.chat.seedPlain");
+    }
+    const opening = t(
+      accounts.length === 1 ? "dashboard.chat.seedAccountOne" : "dashboard.chat.seedAccounts",
+      {
+        name,
+        count: GEMS.i18n.countFor(accounts.length),
+        totals: totalsByCurrency(accounts),
+      }
+    );
+    const waiting = (pending || []).length;
+    const tail = !waiting
+      ? t("dashboard.chat.seedPendingNone")
+      : t(
+          waiting === 1 ? "dashboard.chat.seedPendingOne" : "dashboard.chat.seedPendingSome",
+          { count: GEMS.i18n.countFor(waiting) }
+        );
+    return opening + " " + tail;
+  }
+
   const MAX_HISTORY_TURNS = 10;
+  const MAX_RECORDING_MS = 60000;
+  const RECORDER_MIME_TYPES = ["audio/webm", "audio/mp4", "audio/ogg"];
+
+  function recorderMimeType() {
+    if (typeof window.MediaRecorder === "undefined") return null;
+    const supported = window.MediaRecorder.isTypeSupported;
+    if (!supported) return "";
+    return RECORDER_MIME_TYPES.filter((type) => supported(type))[0] || "";
+  }
+
+  function canRecord() {
+    return Boolean(
+      navigator.mediaDevices &&
+        navigator.mediaDevices.getUserMedia &&
+        typeof window.MediaRecorder !== "undefined"
+    );
+  }
 
   function transcriptOf(messages) {
     return messages
@@ -76,7 +151,7 @@
       date: formatApiDate(row.postedAt),
       who: row.counterparty,
       ref: row.reference,
-      iban: "",
+      iban: row.iban || "",
       categoryKey: row.category,
       statusKey: row.status,
       minor: Math.abs(row.amount.minorUnits),
@@ -84,6 +159,17 @@
       direction: row.direction === "credit" ? "in" : "out",
       channel: "transfer",
       accountId: row.accountId,
+    };
+  }
+
+  function mapTemplateRow(template) {
+    return {
+      id: template.templateId,
+      name: template.name,
+      beneficiary: template.beneficiary,
+      iban: template.iban,
+      cur: template.currency,
+      reference: template.reference,
     };
   }
 
@@ -118,6 +204,9 @@
     const [transactions, setTransactions] = useState(DATA.transactions);
     const [pending, setPending] = useState(DATA.pending);
     const [templates, setTemplates] = useState(DATA.templates);
+    const [templatesError, setTemplatesError] = useState(null);
+    const [templatesBusy, setTemplatesBusy] = useState(false);
+    const [templatesDialogError, setTemplatesDialogError] = useState(null);
     const [splitBills, setSplitBills] = useState([]);
     const [deposits, setDeposits] = useState(DATA.deposits);
     const [credits] = useState(DATA.credits);
@@ -154,17 +243,29 @@
     const [pinPromptError, setPinPromptError] = useState(null);
     const [pinPromptTarget, setPinPromptTarget] = useState(null);
     const [micOn, setMicOn] = useState(false);
+    const [micBusy, setMicBusy] = useState(false);
+    const [micError, setMicError] = useState(null);
+    const recorderRef = useRef(null);
     const [draft, setDraft] = useState("");
     const [chatBusy, setChatBusy] = useState(false);
     const [lastQuestion, setLastQuestion] = useState("");
     const [handoffBusy, setHandoffBusy] = useState(false);
     const [handoffSent, setHandoffSent] = useState(false);
+    const [lastAgents, setLastAgents] = useState([]);
+    const [dataLoaded, setDataLoaded] = useState(false);
     const [messages, setMessages] = useState([
-      { role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) },
+      { role: "ai", kind: "text", text: t("dashboard.chat.seedPlain") },
     ]);
+    const [playingMessageIndex, setPlayingMessageIndex] = useState(null);
+    const [ttsBusyIndex, setTtsBusyIndex] = useState(null);
+    const audioPlayerRef = useRef(null);
+    const audioCacheRef = useRef(new Map());
+    const abortControllerRef = useRef(null);
     const [me, setMe] = useState(null);
     const [insights, setInsights] = useState([]);
     const [insightHistory, setInsightHistory] = useState([]);
+    const [fxInsights, setFxInsights] = useState([]);
+    const [fxInsightHistory, setFxInsightHistory] = useState([]);
     const [payBusy, setPayBusy] = useState(false);
     const [payFormError, setPayFormError] = useState(null);
     const [signingPayment, setSigningPayment] = useState(null);
@@ -173,7 +274,11 @@
     const [openAccountBusy, setOpenAccountBusy] = useState(false);
     const [openAccountError, setOpenAccountError] = useState(null);
     const [addFundsShown, setAddFundsShown] = useState(false);
+    const [addFundsBusy, setAddFundsBusy] = useState(false);
     const [addFundsError, setAddFundsError] = useState(null);
+    const [statementAccount, setStatementAccount] = useState(null);
+    const [statementBusy, setStatementBusy] = useState(false);
+    const [statementError, setStatementError] = useState(null);
     const [exchangeShown, setExchangeShown] = useState(false);
     const [exchangeBusy, setExchangeBusy] = useState(false);
     const [exchangeError, setExchangeError] = useState(null);
@@ -219,6 +324,8 @@
           if (!cancelled && response) {
             setInsights(response.insights || []);
             setInsightHistory(response.history || []);
+            setFxInsights((response.fx && response.fx.insights) || []);
+            setFxInsightHistory((response.fx && response.fx.history) || []);
           }
         })
         .catch(() => {});
@@ -226,19 +333,23 @@
         cancelled = true;
       };
     }, [username]);
+
     const loadPaymentsData = useCallback(async () => {
-      const [accountList, txList, pendingList] = await Promise.all([
+      const [accountList, txList, pendingList, templateList] = await Promise.all([
         api.listAccounts(),
         api.listTransactions({}),
         api.listPending(),
+        api.listTemplates(),
       ]);
       const mappedAccounts = accountList.accounts.map(mapAccountRow);
       setAccounts(mappedAccounts);
       setTransactions(pendingList.pending.map(mapPendingSignatureRow).concat(txList.transactions.map(mapMovementRow)));
       setPending(pendingList.pending);
+      setTemplates(templateList.templates.map(mapTemplateRow));
 
       const investAccount = mappedAccounts.find((account) => account.typeKey === "invest");
       setInvestCashMinor(investAccount ? investAccount.minor : null);
+      setDataLoaded(true);
     }, []);
 
     useEffect(() => {
@@ -251,36 +362,202 @@
     const navigate = useCallback((key) => {
       if (SCREENS.indexOf(key) >= 0) {
         if (key === "chat" && screen !== "chat") {
-          setMessages([{ role: "ai", kind: "text", text: t("dashboard.chat.seed", { balance: DATA.totalBalance }) }]);
+          setMessages([
+            {
+              role: "ai",
+              kind: "text",
+              text: seedMessage(firstName, accounts, pending, dataLoaded),
+            },
+          ]);
         }
         setScreen(key);
         setBalanceHidden(true);
       }
-    }, [screen]);
+    }, [screen, firstName, accounts, pending, dataLoaded]);
 
     const toggleBalance = useCallback(() => {
       setBalanceHidden((hidden) => !hidden);
     }, []);
 
+    const stopSpeaking = useCallback(() => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.currentTime = 0;
+        audioPlayerRef.current = null;
+      }
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      setPlayingMessageIndex(null);
+      setTtsBusyIndex(null);
+    }, []);
+
+    const speakMessage = useCallback(async (text, index) => {
+      const clean = (text || "").trim();
+      if (!clean) return;
+      if (playingMessageIndex === index || ttsBusyIndex === index) {
+        stopSpeaking();
+        return;
+      }
+      stopSpeaking();
+      setTtsBusyIndex(index);
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      try {
+        let blobUrl = audioCacheRef.current.get(clean);
+        if (!blobUrl) {
+          const blob = await api.synthesizeSpeech(clean, GEMS.i18n.locale, null, controller.signal);
+          blobUrl = URL.createObjectURL(blob);
+          audioCacheRef.current.set(clean, blobUrl);
+        }
+        if (controller.signal.aborted) return;
+        const audio = new Audio(blobUrl);
+        audioPlayerRef.current = audio;
+        setPlayingMessageIndex(index);
+        setTtsBusyIndex(null);
+        audio.onended = () => {
+          setPlayingMessageIndex(null);
+          audioPlayerRef.current = null;
+        };
+        audio.onerror = () => {
+          setPlayingMessageIndex(null);
+          audioPlayerRef.current = null;
+          if (window.speechSynthesis && !controller.signal.aborted) {
+            const utterance = new SpeechSynthesisUtterance(clean);
+            utterance.lang = GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB";
+            window.speechSynthesis.speak(utterance);
+          }
+        };
+        await audio.play();
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setTtsBusyIndex(null);
+        setPlayingMessageIndex(null);
+        if (window.speechSynthesis) {
+          const utterance = new SpeechSynthesisUtterance(clean);
+          utterance.lang = GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB";
+          window.speechSynthesis.speak(utterance);
+        }
+      }
+    }, [playingMessageIndex, ttsBusyIndex, stopSpeaking]);
+
     const pushExchange = useCallback((userText, reply) => {
       setMessages((list) => {
         const base = screen === "chat" ? list : [];
+        const nextIndex = base.length + 1;
+        if (ttsOn && reply && reply.text) {
+          setTimeout(() => speakMessage(reply.text, nextIndex), 50);
+        }
         return base.concat([{ role: "user", kind: "text", text: userText }, reply]);
       });
       setScreen("chat");
       setBalanceHidden(true);
-    }, [screen]);
+    }, [screen, ttsOn, speakMessage]);
 
-    const sendDraft = useCallback(() => {
-      const text = draft.trim();
+    const stopRecording = useCallback(() => {
+      const recorder = recorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        recorder.stop();
+        return;
+      }
+      recorderRef.current = null;
+      setMicOn(false);
+    }, []);
+
+    const startRecording = useCallback(async () => {
+      setMicError(null);
+      if (!canRecord()) {
+        setMicError(t("dashboard.chat.micUnsupported"));
+        return;
+      }
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (error) {
+        setMicError(t("dashboard.chat.micDenied"));
+        return;
+      }
+      const mimeType = recorderMimeType();
+      const recorder = new window.MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks = [];
+      const stopTimer = setTimeout(() => {
+        if (recorder.state !== "inactive") recorder.stop();
+      }, MAX_RECORDING_MS);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size) chunks.push(event.data);
+      };
+      recorder.onstop = () => {
+        clearTimeout(stopTimer);
+        stream.getTracks().forEach((track) => track.stop());
+        recorderRef.current = null;
+        setMicOn(false);
+        const type = recorder.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(chunks, { type });
+        if (!blob.size) return;
+        setMicBusy(true);
+        api
+          .transcribeVoice(blob, GEMS.i18n.locale)
+          .then((result) => {
+            const text = ((result && result.text) || "").trim();
+            if (!text) {
+              setMicError(t("dashboard.chat.micEmpty"));
+              return;
+            }
+            setDraft((current) => (current.trim() ? current.trim() + " " + text : text));
+          })
+          .catch((error) => {
+            setMicError(
+              error && error.code === "rate_limited"
+                ? t("dashboard.chat.micRateLimited")
+                : t("dashboard.chat.micFailed")
+            );
+          })
+          .finally(() => setMicBusy(false));
+      };
+
+      recorderRef.current = recorder;
+      recorder.start();
+      setMicOn(true);
+    }, []);
+
+    const toggleMic = useCallback(() => {
+      if (micBusy) return;
+      if (micOn) stopRecording();
+      else {
+        stopSpeaking();
+        startRecording();
+      }
+    }, [micOn, micBusy, startRecording, stopRecording, stopSpeaking]);
+
+    useEffect(() => {
+      if (screen !== "chat") {
+        stopRecording();
+        stopSpeaking();
+      }
+    }, [screen, stopRecording, stopSpeaking]);
+
+    useEffect(() => {
+      return () => {
+        stopRecording();
+        stopSpeaking();
+      };
+    }, [stopRecording, stopSpeaking]);
+
+    const sendQuestion = useCallback((raw) => {
+      const text = String(raw || "").trim();
       if (!text || chatBusy) return;
       const history = transcriptOf(messages);
       const origin = screen;
+      stopSpeaking();
       setMessages((list) => list.concat([{ role: "user", kind: "text", text }]));
       setLastQuestion(text);
       setScreen("chat");
       setBalanceHidden(true);
-      setDraft("");
       setChatBusy(true);
       api
         .askGems(text, history, origin)
@@ -291,13 +568,18 @@
           const escalation = result.escalation || {};
           const escalated = Boolean(escalation.offered);
           const answer = (result.answer || "").trim() || (escalated ? t("dashboard.chat.handoffOffered") : t("dashboard.chat.errorNote"));
-          setMessages((list) =>
-            list.concat([
+          setLastAgents(result.agentsUsed || []);
+          setMessages((list) => {
+            const nextIndex = list.length;
+            if (ttsOn && answer) {
+              setTimeout(() => speakMessage(answer, nextIndex), 50);
+            }
+            return list.concat([
               proposal
                 ? { role: "ai", kind: "proposal", text: answer, proposal, aiGenerated: true }
                 : { role: "ai", kind: "text", text: answer, aiGenerated: true, escalated },
-            ])
-          );
+            ]);
+          });
         })
         .catch((error) => {
           const retryAfter = error && error.details && error.details.retryAfterSeconds;
@@ -307,10 +589,23 @@
                   minutes: Math.max(1, Math.ceil((retryAfter || 60) / 60)),
                 })
               : t("dashboard.chat.errorNote");
-          setMessages((list) => list.concat([{ role: "ai", kind: "text", text: note }]));
+          setMessages((list) => {
+            const nextIndex = list.length;
+            if (ttsOn && note) {
+              setTimeout(() => speakMessage(note, nextIndex), 50);
+            }
+            return list.concat([{ role: "ai", kind: "text", text: note }]);
+          });
         })
         .finally(() => setChatBusy(false));
-    }, [draft, chatBusy, messages, screen]);
+    }, [chatBusy, messages, screen, stopSpeaking, ttsOn, speakMessage]);
+
+    const sendDraft = useCallback(() => {
+      const text = draft.trim();
+      if (!text || chatBusy || micOn) return;
+      setDraft("");
+      sendQuestion(text);
+    }, [draft, chatBusy, micOn, sendQuestion]);
 
     const requestHuman = useCallback(() => {
       if (handoffBusy || handoffSent) return;
@@ -337,6 +632,17 @@
       pushExchange(label, answerFor(key));
     }, [pushExchange]);
 
+    const chatPrompts = React.useMemo(
+      () =>
+        promptKeysFor(screen, lastAgents).map((key) => ({
+          key,
+          label: t("dashboard.chat.suggest." + key),
+        })),
+      [screen, lastAgents]
+    );
+
+    const askSuggestion = useCallback((label) => sendQuestion(label), [sendQuestion]);
+
     const confirmTx = useCallback(() => {
       setMessages((list) => list.concat([{ role: "ai", kind: "text", text: t("dashboard.chat.txConfirmedNote") }]));
     }, []);
@@ -350,7 +656,7 @@
       setCardsLoading(true);
       setCardsError(null);
       try {
-        const response = await api.listCards(username);
+        const response = await api.listCards();
         setCards(response.cards);
         setCardsLoaded(true);
         setSelectedCardId((current) =>
@@ -417,13 +723,13 @@
       setIssueOpen(true);
     }, []);
 
-    const createCard = useCallback(async () => {
+    const createCard = useCallback(async (accountId) => {
       setCardIssuing(true);
       setCardsError(null);
       try {
         const card = issueKind === "physical"
-          ? await api.issuePhysicalCard(username)
-          : await api.issueVirtualCard(username);
+          ? await api.issuePhysicalCard(accountId)
+          : await api.issueVirtualCard(accountId);
         setCards((list) => list.concat([card]));
         selectCard(card.cardId);
         setIssueOpen(false);
@@ -432,14 +738,14 @@
       } finally {
         setCardIssuing(false);
       }
-    }, [username, issueKind, selectCard]);
+    }, [issueKind, selectCard]);
 
     const freezeCard = useCallback(async () => {
       if (!selectedCardId) return;
       setCardBusy(true);
       setCardsError(null);
       try {
-        applyCard(await api.freezeCard(username, selectedCardId));
+        applyCard(await api.freezeCard(selectedCardId));
       } catch (err) {
         setCardsError(err);
       } finally {
@@ -452,7 +758,7 @@
       setCardBusy(true);
       setCardsError(null);
       try {
-        applyCard(await api.unfreezeCard(username, selectedCardId));
+        applyCard(await api.unfreezeCard(selectedCardId));
       } catch (err) {
         setCardsError(err);
       } finally {
@@ -465,7 +771,7 @@
       setCardBusy(true);
       setCardsError(null);
       try {
-        const updated = await api.blockCard(username, selectedCardId);
+        const updated = await api.blockCard(selectedCardId);
         applyCard(updated);
         const next = cards.find((row) => row.cardId !== updated.cardId && row.state !== "blocked");
         selectCard(next ? next.cardId : null);
@@ -481,7 +787,7 @@
       setCardBusy(true);
       setCardsError(null);
       try {
-        const result = await api.revealCardPin(username, selectedCardId);
+        const result = await api.revealCardPin(selectedCardId);
         setCardPin(result.pin);
         setPinShown(true);
         return true;
@@ -504,12 +810,33 @@
       setPinPromptOpen(true);
     }, [selectedCardId, pinShown]);
 
+    const promptFreezeCard = useCallback(() => {
+      if (!selectedCardId) return;
+      setPinPromptError(null);
+      setPinPromptTarget("freezeCard");
+      setPinPromptOpen(true);
+    }, [selectedCardId]);
+
+    const promptUnfreezeCard = useCallback(() => {
+      if (!selectedCardId) return;
+      setPinPromptError(null);
+      setPinPromptTarget("unfreezeCard");
+      setPinPromptOpen(true);
+    }, [selectedCardId]);
+
+    const promptDeleteCard = useCallback(() => {
+      if (!selectedCardId) return;
+      setPinPromptError(null);
+      setPinPromptTarget("blockCard");
+      setPinPromptOpen(true);
+    }, [selectedCardId]);
+
     const revealCardDetails = useCallback(async () => {
       if (!selectedCardId) return;
       setCardBusy(true);
       setCardsError(null);
       try {
-        const result = await api.revealCardDetails(username, selectedCardId);
+        const result = await api.revealCardDetails(selectedCardId);
         setCardCvv(result.cvv);
         setDetailsShown(true);
       } catch (err) {
@@ -538,6 +865,15 @@
         if (pinPromptTarget === "cardPin") {
           const revealed = await revealCardPin();
           if (!revealed) setPinPromptOpen(false);
+        } else if (pinPromptTarget === "freezeCard") {
+          setPinPromptOpen(false);
+          await freezeCard();
+        } else if (pinPromptTarget === "unfreezeCard") {
+          setPinPromptOpen(false);
+          await unfreezeCard();
+        } else if (pinPromptTarget === "blockCard") {
+          setPinPromptOpen(false);
+          await deleteCard();
         } else {
           setPinPromptOpen(false);
           if (pinPromptTarget === "details") await revealCardDetails();
@@ -547,7 +883,7 @@
       } finally {
         setPinPromptBusy(false);
       }
-    }, [username, pinPromptTarget, revealCardPin, revealCardDetails]);
+    }, [username, pinPromptTarget, revealCardPin, revealCardDetails, freezeCard, unfreezeCard, deleteCard]);
 
     const cancelLoginPin = useCallback(() => {
       setPinPromptOpen(false);
@@ -560,7 +896,7 @@
       setCardBusy(true);
       setCardsError(null);
       try {
-        applyCard(await api.setCardAtmLimit(username, selectedCardId, minor));
+        applyCard(await api.setCardAtmLimit(selectedCardId, minor));
       } catch (err) {
         setCardsError(err);
       } finally {
@@ -573,7 +909,7 @@
       setCardBusy(true);
       setCardsError(null);
       try {
-        applyCard(await api.setCardOnlineLimit(username, selectedCardId, minor));
+        applyCard(await api.setCardOnlineLimit(selectedCardId, minor));
       } catch (err) {
         setCardsError(err);
       } finally {
@@ -598,8 +934,57 @@
       setPayOpen(true);
     }, []);
 
+    const confirmCardProposal = useCallback(async (proposal) => {
+      const cardId = proposal.cardId;
+      if (proposal.action === "reveal_pin" || proposal.action === "reveal_details") {
+        setSelectedCardId(cardId);
+        navigate("cards");
+        return;
+      }
+      setCardBusy(true);
+      setCardsError(null);
+      try {
+        if (proposal.action === "issue_virtual") {
+          const card = await api.issueVirtualCard();
+          setCards((list) => list.concat([card]));
+        } else if (proposal.action === "issue_physical") {
+          const card = await api.issuePhysicalCard();
+          setCards((list) => list.concat([card]));
+        } else if (proposal.action === "freeze") {
+          applyCard(await api.freezeCard(cardId));
+        } else if (proposal.action === "unfreeze") {
+          applyCard(await api.unfreezeCard(cardId));
+        } else if (proposal.action === "block") {
+          applyCard(await api.blockCard(cardId));
+        } else if (proposal.action === "set_atm_limit") {
+          applyCard(await api.setCardAtmLimit(cardId, proposal.limitMinorUnits));
+        } else if (proposal.action === "set_online_limit") {
+          applyCard(await api.setCardOnlineLimit(cardId, proposal.limitMinorUnits));
+        }
+        setMessages((list) =>
+          list.concat([{ role: "ai", kind: "text", text: t("dashboard.chat.cardActionDone") }])
+        );
+      } catch (error) {
+        setMessages((list) =>
+          list.concat([
+            {
+              role: "ai",
+              kind: "text",
+              text: GEMS.i18n.tError((error && error.message) || "") || t("dashboard.chat.cardActionFailed"),
+            },
+          ])
+        );
+      } finally {
+        setCardBusy(false);
+      }
+    }, [applyCard, navigate]);
+
     const confirmProposal = useCallback((proposal) => {
       if (!proposal) return;
+      if (proposal.action) {
+        confirmCardProposal(proposal);
+        return;
+      }
       const internal = Boolean(proposal.targetAccountId);
       openPayment({
         payType: internal ? "internal" : "iban",
@@ -610,7 +995,7 @@
         reference: proposal.reference || "",
         amount: DASH.formatMinor(proposal.amountMinorUnits),
       });
-    }, [openPayment]);
+    }, [openPayment, confirmCardProposal]);
 
     const closePayment = useCallback(() => {
       setPayOpen(false);
@@ -633,7 +1018,18 @@
           acknowledgePayeeMismatch: payment.acknowledgeMismatch === true,
         });
 
-        if (payment.template) setTemplates((list) => list.concat([payment.template]));
+        if (payment.template) {
+          api
+            .createTemplate({
+              name: payment.template.name,
+              beneficiary: payment.template.beneficiary,
+              iban: payment.template.iban,
+              currency: payment.template.cur,
+              reference: payment.template.reference,
+            })
+            .then((created) => setTemplates((list) => list.concat([mapTemplateRow(created)])))
+            .catch(() => {});
+        }
         closePayment();
 
         if (response.status === "awaiting_signature") {
@@ -679,17 +1075,42 @@
       });
     }, [accounts, openPayment]);
 
-    const saveTemplate = useCallback((template) => {
-      setTemplates((list) => {
-        const known = list.some((item) => item.id === template.id);
-        return known ? list.map((item) => (item.id === template.id ? template : item)) : list.concat([template]);
-      });
-      setTemplateOpen(false);
-      setTemplateDraft(null);
-    }, []);
+    const saveTemplate = useCallback(async (template) => {
+      const known = templates.some((item) => item.id === template.id);
+      const payload = {
+        name: template.name,
+        beneficiary: template.beneficiary,
+        iban: template.iban,
+        currency: template.cur,
+        reference: template.reference,
+      };
+      setTemplatesBusy(true);
+      setTemplatesDialogError(null);
+      try {
+        const saved = known
+          ? await api.updateTemplate(template.id, payload)
+          : await api.createTemplate(payload);
+        const mapped = mapTemplateRow(saved);
+        setTemplates((list) =>
+          known ? list.map((item) => (item.id === template.id ? mapped : item)) : list.concat([mapped])
+        );
+        setTemplateOpen(false);
+        setTemplateDraft(null);
+      } catch (err) {
+        setTemplatesDialogError(err);
+      } finally {
+        setTemplatesBusy(false);
+      }
+    }, [templates]);
 
-    const deleteTemplate = useCallback((templateId) => {
-      setTemplates((list) => list.filter((item) => item.id !== templateId));
+    const deleteTemplate = useCallback(async (templateId) => {
+      setTemplatesError(null);
+      try {
+        await api.deleteTemplate(templateId);
+        setTemplates((list) => list.filter((item) => item.id !== templateId));
+      } catch (err) {
+        setTemplatesError(err);
+      }
     }, []);
 
     const createSplitBill = useCallback((bill) => {
@@ -762,24 +1183,50 @@
       setAddFundsError(null);
     }, []);
 
-    const submitAddFunds = useCallback((amountMinor) => {
+    const submitAddFunds = useCallback(async (amountMinor) => {
       const target = accounts.find((account) => account.typeKey === "current" && account.cur === "RON") || accounts[0];
       if (!target) {
         setAddFundsError({ message: t("dashboard.addFunds.noAccount") });
         return;
       }
-      creditAccount(target.id, amountMinor);
-      bookMovement({
-        who: t("dashboard.addFunds.title"),
-        ref: t("dashboard.addFunds.title"),
-        categoryKey: "income",
-        minor: amountMinor,
-        currency: target.cur,
-        direction: "in",
-        accountId: target.id,
-      });
-      closeAddFunds();
-    }, [accounts, creditAccount, bookMovement, closeAddFunds]);
+      setAddFundsBusy(true);
+      setAddFundsError(null);
+      try {
+        await api.addFunds(target.id, amountMinor);
+        closeAddFunds();
+        await loadPaymentsData();
+      } catch (err) {
+        setAddFundsError(err);
+      } finally {
+        setAddFundsBusy(false);
+      }
+    }, [accounts, closeAddFunds, loadPaymentsData]);
+
+    const openStatement = useCallback((account) => {
+      setStatementError(null);
+      setStatementAccount(account);
+    }, []);
+
+    const closeStatement = useCallback(() => {
+      setStatementAccount(null);
+      setStatementError(null);
+    }, []);
+
+    const submitStatement = useCallback(async (payload) => {
+      setStatementBusy(true);
+      setStatementError(null);
+      try {
+        const { blob, filename } = await api.downloadStatement(
+          payload.accountId, payload.format, payload.from, payload.to
+        );
+        DASH.saveBlob(blob, filename);
+        closeStatement();
+      } catch (err) {
+        setStatementError(err);
+      } finally {
+        setStatementBusy(false);
+      }
+    }, [closeStatement]);
 
     const openExchange = useCallback(() => {
       setExchangeError(null);
@@ -1007,6 +1454,8 @@
                 }}
                 insights={insights}
                 insightHistory={insightHistory}
+                fxInsights={fxInsights}
+                fxInsightHistory={fxInsightHistory}
                 lang={lang}
               />
             ) : null}
@@ -1016,6 +1465,7 @@
                 transactions={transactions}
                 pending={pending}
                 templates={templates}
+                templatesError={templatesError}
                 splitBills={splitBills}
                 filter={filter}
                 onFilter={setFilter}
@@ -1023,8 +1473,8 @@
                 onQuery={setQuery}
                 onOpenPay={() => openPayment(null)}
                 onOpenSplit={() => setSplitOpen(true)}
-                onNewTemplate={() => { setTemplateDraft(null); setTemplateOpen(true); }}
-                onEditTemplate={(template) => { setTemplateDraft(template); setTemplateOpen(true); }}
+                onNewTemplate={() => { setTemplateDraft(null); setTemplatesDialogError(null); setTemplateOpen(true); }}
+                onEditTemplate={(template) => { setTemplateDraft(template); setTemplatesDialogError(null); setTemplateOpen(true); }}
                 onDeleteTemplate={deleteTemplate}
                 onUseTemplate={useTemplate}
                 onSettleShare={settleShare}
@@ -1041,14 +1491,23 @@
                 onSend={sendDraft}
                 onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) sendDraft(); }}
                 micOn={micOn}
-                onToggleMic={() => setMicOn((value) => !value)}
-                onPromptClick={onDockPrompt}
+                micBusy={micBusy}
+                micError={micError}
+                onToggleMic={toggleMic}
+                prompts={chatPrompts}
+                onPromptClick={askSuggestion}
                 onConfirmTx={confirmTx}
                 onConfirmProposal={confirmProposal}
                 onRequestHuman={requestHuman}
                 handoffBusy={handoffBusy}
                 handoffSent={handoffSent}
                 username={firstName}
+                ttsOn={ttsOn}
+                onToggleTts={() => setTtsOn((value) => !value)}
+                playingMessageIndex={playingMessageIndex}
+                ttsBusyIndex={ttsBusyIndex}
+                onSpeakMessage={speakMessage}
+                onStopSpeaking={stopSpeaking}
               />
             ) : null}
             {screen === "accounts" ? (
@@ -1066,6 +1525,7 @@
                 onCloseDeposit={closeDeposit}
                 onApplyCredit={() => setCreditShown(true)}
                 onWithdrawApplication={withdrawApplication}
+                onOpenStatement={openStatement}
               />
             ) : null}
             {screen === "portfolio" ? (
@@ -1088,6 +1548,7 @@
             {screen === "cards" ? (
               <SCR.CardsScreen
                 cards={visibleCards}
+                accounts={accounts}
                 transactions={transactions}
                 loading={cardsLoading && !cardsLoaded}
                 error={cardsError}
@@ -1098,7 +1559,7 @@
                 busy={cardBusy}
                 onFreeze={freezeCard}
                 onUnfreeze={unfreezeCard}
-                onDelete={deleteCard}
+                onDelete={promptDeleteCard}
                 pin={cardPin}
                 pinShown={pinShown}
                 onTogglePin={toggleCardPin}
@@ -1116,7 +1577,7 @@
                 secureTimer={secureTimer}
               />
             ) : null}
-            {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} /> : null}
+            {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} accounts={accounts} /> : null}
             {screen === "education" ? <SCR.EducationScreen accounts={accounts} /> : null}
             {screen === "settings" ? (
               <SCR.SettingsScreen
@@ -1184,9 +1645,20 @@
         {addFundsShown ? (
           <DASH.AddFundsDialog
             account={accounts.find((account) => account.typeKey === "current" && account.cur === "RON") || accounts[0] || null}
+            busy={addFundsBusy}
             error={addFundsError}
             onClose={closeAddFunds}
             onSubmit={submitAddFunds}
+          />
+        ) : null}
+
+        {statementAccount ? (
+          <DASH.StatementDialog
+            account={statementAccount}
+            busy={statementBusy}
+            error={statementError}
+            onClose={closeStatement}
+            onSubmit={submitStatement}
           />
         ) : null}
 
@@ -1248,6 +1720,8 @@
             key={templateDraft ? templateDraft.id : "new"}
             accounts={accounts}
             template={templateDraft}
+            busy={templatesBusy}
+            error={templatesDialogError}
             onClose={() => { setTemplateOpen(false); setTemplateDraft(null); }}
             onSubmit={saveTemplate}
           />
@@ -1257,6 +1731,7 @@
           <DASH.IssueCardDialog
             kind={issueKind}
             onKind={setIssueKind}
+            accounts={accounts}
             onClose={() => setIssueOpen(false)}
             onCreate={createCard}
             creating={cardIssuing}

@@ -47,10 +47,6 @@ class Actor(BaseModel):
         return cls(kind="system", id="public-auth")
 
     @classmethod
-    def public_cards(cls) -> "Actor":
-        return cls(kind="system", id="public-cards")
-
-    @classmethod
     def user(cls, user_id: str) -> "Actor":
         return cls(kind="user", id=user_id)
 

@@ -9,7 +9,10 @@ from backend.accounts.adapters import STARTER_ACCOUNTS, SystemClock
 from backend.accounts.validation import generate_iban, normalise_iban
 from backend.command_bus import Command, CommandBus, CommandResult, bus
 from backend.database.records import AuditRecord, DomainEvent
-from backend.database.repositories import MongoAccountRepository, MongoAuthUserRepository
+from backend.database.repositories import (
+    MongoAccountRepository,
+    MongoAuthUserRepository,
+)
 from backend.helpers.context import ActorContext
 from backend.helpers.errors import NotFoundError
 from backend.ledger.service import LedgerService, get_ledger_service

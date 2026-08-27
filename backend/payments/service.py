@@ -19,6 +19,7 @@ from backend.database.records import AuditRecord, DomainEvent
 from backend.database.repositories import (
     MongoBeneficiaryRepository,
     MongoPaymentRepository,
+    MongoPaymentTemplateRepository,
 )
 from backend.helpers.context import ActorContext, log_event
 from backend.helpers.crypto import Argon2idHasher
@@ -30,7 +31,7 @@ from backend.ledger.journal import (
     house_account_id,
 )
 from backend.ledger.service import LedgerService, get_ledger_service
-from backend.ledger.validation import validate_minor_units
+from backend.ledger.validation import normalise_currency, validate_minor_units
 from backend.payments.adapters import (
     DevCodeStepUp,
     InternalPayeeVerifier,
@@ -44,6 +45,7 @@ from backend.payments.payment import (
     PayeeVerification,
     Payment,
     PaymentStatus,
+    PaymentTemplate,
     SignatureChallenge,
 )
 from backend.payments.validation import (
@@ -54,6 +56,7 @@ from backend.payments.validation import (
     normalise_direction,
     normalise_reference,
     normalise_search,
+    normalise_template_name,
     validate_signature_code,
 )
 
@@ -94,6 +97,40 @@ class AddBeneficiary(Command):
     iban: str
 
 
+class AddFunds(Command):
+    command_name: ClassVar[str] = "payments.add_funds"
+
+    account_id: str
+    amount_minor: int
+
+
+class AddTemplate(Command):
+    command_name: ClassVar[str] = "payments.template.add"
+
+    name: str
+    beneficiary: str
+    iban: str
+    currency: str
+    reference: str
+
+
+class UpdateTemplate(Command):
+    command_name: ClassVar[str] = "payments.template.update"
+
+    template_id: str
+    name: str
+    beneficiary: str
+    iban: str
+    currency: str
+    reference: str
+
+
+class DeleteTemplate(Command):
+    command_name: ClassVar[str] = "payments.template.delete"
+
+    template_id: str
+
+
 class PaymentRepository(Protocol):
     async def add(
         self, payment: Payment, session: AsyncIOMotorClientSession | None = None
@@ -109,6 +146,10 @@ class PaymentRepository(Protocol):
 
     async def count_by_status(self, user_id: str, status: PaymentStatus) -> int: ...
 
+    async def ibans_by_journal_transaction_ids(
+        self, journal_transaction_ids: list[str]
+    ) -> dict[str, str]: ...
+
 
 class BeneficiaryRepository(Protocol):
     async def add(
@@ -118,6 +159,24 @@ class BeneficiaryRepository(Protocol):
     async def list_for_user(self, user_id: str) -> list[Beneficiary]: ...
 
     async def find(self, user_id: str, iban: str) -> Beneficiary | None: ...
+
+
+class PaymentTemplateRepository(Protocol):
+    async def add(
+        self, template: PaymentTemplate, session: AsyncIOMotorClientSession | None = None
+    ) -> None: ...
+
+    async def list_for_user(self, user_id: str) -> list[PaymentTemplate]: ...
+
+    async def get(self, template_id: str) -> PaymentTemplate | None: ...
+
+    async def update(
+        self, template: PaymentTemplate, session: AsyncIOMotorClientSession | None = None
+    ) -> None: ...
+
+    async def delete(
+        self, template_id: str, session: AsyncIOMotorClientSession | None = None
+    ) -> None: ...
 
 
 class Policy(Protocol):
@@ -149,6 +208,7 @@ class PaymentsService:
         self,
         payments: PaymentRepository,
         beneficiaries: BeneficiaryRepository,
+        templates: PaymentTemplateRepository,
         accounts: AccountsService,
         ledger: LedgerService,
         policy: Policy,
@@ -161,6 +221,7 @@ class PaymentsService:
     ) -> None:
         self._payments = payments
         self._beneficiaries = beneficiaries
+        self._templates = templates
         self._accounts = accounts
         self._ledger = ledger
         self._policy = policy
@@ -175,6 +236,10 @@ class PaymentsService:
         command_bus.register(MakeTransfer, self._handle_transfer)
         command_bus.register(SignPayment, self._handle_sign)
         command_bus.register(AddBeneficiary, self._handle_add_beneficiary)
+        command_bus.register(AddFunds, self._handle_add_funds)
+        command_bus.register(AddTemplate, self._handle_add_template)
+        command_bus.register(UpdateTemplate, self._handle_update_template)
+        command_bus.register(DeleteTemplate, self._handle_delete_template)
 
     async def provision_starter_accounts(
         self,
@@ -482,6 +547,157 @@ class PaymentsService:
         found = await self._beneficiaries.list_for_user(user_id)
         return {"beneficiaries": [item.public_view() for item in found]}
 
+    async def _handle_add_funds(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, AddFunds)
+        user_id = context.actor.id
+        amount = validate_minor_units(command.amount_minor)
+
+        account = await self._accounts.get_owned(command.account_id, user_id)
+        account.guard_can_receive()
+
+        balance_before = await self._ledger.balance_of(account.id)
+        transaction = await self._ledger.post_transaction(
+            currency=account.currency,
+            kind=TransactionKind.DEMO_TOPUP,
+            legs=[
+                (account.id, amount),
+                (house_account_id(HouseAccount.SETTLEMENT, account.currency), -amount),
+            ],
+            reference="Demo top-up",
+            counterparty="GEMS demo treasury",
+            category="income",
+            correlation_id=context.correlation_id,
+            actor=context.actor.label(),
+            session=session,
+        )
+
+        after = {
+            "accountId": account.id,
+            "amountMinorUnits": amount,
+            "currency": account.currency,
+            "journalTransactionId": transaction.id,
+        }
+        return CommandResult(
+            data=account.public_view(balance_before + amount),
+            audit=AuditRecord(
+                action="payments.funds_added",
+                entity_type="account",
+                entity_id=account.id,
+                after=after,
+            ),
+            events=[
+                DomainEvent(
+                    name="payments.funds_added",
+                    aggregate_type="account",
+                    aggregate_id=account.id,
+                    payload=after,
+                )
+            ],
+        )
+
+    async def _load_owned_template(self, template_id: str, user_id: str) -> PaymentTemplate:
+        template = await self._templates.get(template_id)
+        if template is None or template.user_id != user_id:
+            raise NotFoundError("That template is not one of yours.")
+        return template
+
+    async def _handle_add_template(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, AddTemplate)
+        user_id = context.actor.id
+        template = PaymentTemplate(
+            user_id=user_id,
+            name=normalise_template_name(command.name),
+            beneficiary=normalise_counterparty(command.beneficiary),
+            iban=normalise_iban(command.iban),
+            currency=normalise_currency(command.currency),
+            reference=normalise_reference(command.reference),
+            created_at=self._clock.now(),
+            updated_at=self._clock.now(),
+        )
+        await self._templates.add(template, session=session)
+        return CommandResult(
+            data=template.public_view(),
+            audit=AuditRecord(
+                action="payments.template_added",
+                entity_type="payment_template",
+                entity_id=template.id,
+                after=template.public_view(),
+            ),
+            events=[
+                DomainEvent(
+                    name="payments.template_added",
+                    aggregate_type="payment_template",
+                    aggregate_id=template.id,
+                    payload=template.public_view(),
+                )
+            ],
+        )
+
+    async def _handle_update_template(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, UpdateTemplate)
+        template = await self._load_owned_template(command.template_id, context.actor.id)
+        before = template.public_view()
+        template.update(
+            name=normalise_template_name(command.name),
+            beneficiary=normalise_counterparty(command.beneficiary),
+            iban=normalise_iban(command.iban),
+            currency=normalise_currency(command.currency),
+            reference=normalise_reference(command.reference),
+            now=self._clock.now(),
+        )
+        await self._templates.update(template, session=session)
+        return CommandResult(
+            data=template.public_view(),
+            audit=AuditRecord(
+                action="payments.template_updated",
+                entity_type="payment_template",
+                entity_id=template.id,
+                before=before,
+                after=template.public_view(),
+            ),
+            events=[
+                DomainEvent(
+                    name="payments.template_updated",
+                    aggregate_type="payment_template",
+                    aggregate_id=template.id,
+                    payload=template.public_view(),
+                )
+            ],
+        )
+
+    async def _handle_delete_template(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, DeleteTemplate)
+        template = await self._load_owned_template(command.template_id, context.actor.id)
+        await self._templates.delete(template.id, session=session)
+        return CommandResult(
+            data={"templateId": template.id, "deleted": True},
+            audit=AuditRecord(
+                action="payments.template_deleted",
+                entity_type="payment_template",
+                entity_id=template.id,
+                before=template.public_view(),
+            ),
+            events=[
+                DomainEvent(
+                    name="payments.template_deleted",
+                    aggregate_type="payment_template",
+                    aggregate_id=template.id,
+                )
+            ],
+        )
+
+    async def list_templates(self, user_id: str) -> dict[str, Any]:
+        found = await self._templates.list_for_user(user_id)
+        return {"templates": [item.public_view() for item in found]}
+
     async def list_pending(self, user_id: str) -> dict[str, Any]:
         found = await self._payments.list_by_status(user_id, PaymentStatus.AWAITING_SIGNATURE)
         return {"pending": [item.public_view() for item in found]}
@@ -513,9 +729,36 @@ class PaymentsService:
             cursor=decode_cursor(cursor),
             limit=page_size,
         )
+        ibans = await self._payments.ibans_by_journal_transaction_ids(
+            [row["transactionId"] for row in rows]
+        )
+        for row in rows:
+            row["iban"] = ibans.get(row["transactionId"], "")
         return {
             "transactions": rows,
             "nextCursor": encode_cursor(*next_cursor) if next_cursor else None,
+        }
+
+    async def statement_data(
+        self,
+        user_id: str,
+        account_id: str,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ) -> dict[str, Any]:
+        account = await self._accounts.get_owned(account_id, user_id)
+        movements = await self._ledger.statement_movements(account.id, date_from, date_to)
+        opening_balance = (
+            0 if date_from is None else await self._ledger.opening_balance(account.id, date_from)
+        )
+        period_total = sum(row["amount"]["minorUnits"] for row in movements)
+        return {
+            "account": account.public_view(opening_balance + period_total),
+            "dateFrom": date_from.isoformat() if date_from else None,
+            "dateTo": date_to.isoformat() if date_to else None,
+            "openingBalanceMinor": opening_balance,
+            "closingBalanceMinor": opening_balance + period_total,
+            "movements": movements,
         }
 
 
@@ -524,6 +767,7 @@ def get_payments_service() -> PaymentsService:
     service = PaymentsService(
         payments=MongoPaymentRepository(),
         beneficiaries=MongoBeneficiaryRepository(),
+        templates=MongoPaymentTemplateRepository(),
         accounts=get_accounts_service(),
         ledger=get_ledger_service(),
         policy=StaticLimitPolicy(settings),
