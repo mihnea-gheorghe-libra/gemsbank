@@ -194,6 +194,14 @@ class BeneficiaryRequest(BaseModel):
 class UsernameRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32)
 
+
+class IssueCardRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    account_id: str = Field(alias="accountId")
+
+    model_config = {"populate_by_name": True}
+
+
 class PreferencesRequest(BaseModel):
     prefs: dict[str, Any]
 
@@ -677,17 +685,17 @@ async def list_cards(username: str, service: CardsServiceDep) -> dict[str, Any]:
 
 @cards_router.post("/virtual", status_code=201)
 async def issue_virtual_card(
-    payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+    payload: IssueCardRequest, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
-    command = IssueVirtualCard(username=payload.username)
+    command = IssueVirtualCard(username=payload.username, account_id=payload.account_id)
     return await bus.execute(command, _cards_actor(), idempotency_key)
 
 
 @cards_router.post("/physical", status_code=201)
 async def issue_physical_card(
-    payload: UsernameRequest, idempotency_key: IdempotencyKey = None
+    payload: IssueCardRequest, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
-    command = IssuePhysicalCard(username=payload.username)
+    command = IssuePhysicalCard(username=payload.username, account_id=payload.account_id)
     return await bus.execute(command, _cards_actor(), idempotency_key)
 
 

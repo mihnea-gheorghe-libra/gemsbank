@@ -109,6 +109,10 @@ class PaymentRepository(Protocol):
 
     async def count_by_status(self, user_id: str, status: PaymentStatus) -> int: ...
 
+    async def ibans_by_journal_transaction_ids(
+        self, journal_transaction_ids: list[str]
+    ) -> dict[str, str]: ...
+
 
 class BeneficiaryRepository(Protocol):
     async def add(
@@ -513,6 +517,11 @@ class PaymentsService:
             cursor=decode_cursor(cursor),
             limit=page_size,
         )
+        ibans = await self._payments.ibans_by_journal_transaction_ids(
+            [row["transactionId"] for row in rows]
+        )
+        for row in rows:
+            row["iban"] = ibans.get(row["transactionId"], "")
         return {
             "transactions": rows,
             "nextCursor": encode_cursor(*next_cursor) if next_cursor else None,

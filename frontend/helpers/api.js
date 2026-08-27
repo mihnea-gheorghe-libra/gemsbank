@@ -156,10 +156,10 @@
       send("/investments/market" + query({ range, refresh: refresh ? "true" : "" })),
 
     listCards: (username) => send("/cards?username=" + encodeURIComponent(username)),
-    issueVirtualCard: (username) =>
-      send("/cards/virtual", { method: "POST", json: { username } }),
-    issuePhysicalCard: (username) =>
-      send("/cards/physical", { method: "POST", json: { username } }),
+    issueVirtualCard: (username, accountId) =>
+      send("/cards/virtual", { method: "POST", json: { username, accountId } }),
+    issuePhysicalCard: (username, accountId) =>
+      send("/cards/physical", { method: "POST", json: { username, accountId } }),
     freezeCard: (username, cardId) =>
       send("/cards/" + cardId + "/freeze", { method: "POST", json: { username } }),
     unfreezeCard: (username, cardId) =>

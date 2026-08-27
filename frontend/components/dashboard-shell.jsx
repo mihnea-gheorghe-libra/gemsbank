@@ -745,11 +745,14 @@
     );
   };
 
-  DASH.IssueCardDialog = function IssueCardDialog({ kind, onKind, onClose, onCreate, creating }) {
+  DASH.IssueCardDialog = function IssueCardDialog({ kind, onKind, accounts, onClose, onCreate, creating }) {
     const options = [
       { value: "virtual", label: t("dashboard.cards.issueDialog.virtual") },
       { value: "physical", label: t("dashboard.cards.issueDialog.physical") },
     ];
+    const [accountId, setAccountId] = useState(accounts.length ? accounts[0].id : "");
+    const ready = Boolean(accountId) && !creating;
+
     return (
       <div className="dash-dialog-backdrop" onClick={onClose}>
         <UI.Plate
@@ -766,9 +769,21 @@
             {kind === "physical" ? t("dashboard.cards.issueDialog.physicalNote") : t("dashboard.cards.issueDialog.virtualNote")}
           </p>
 
+          {accounts.length ? (
+            <UI.Field id="issue-card-account" label={t("dashboard.cards.issueDialog.linkedAccount")}>
+              <UI.Select id="issue-card-account" value={accountId} onChange={(event) => setAccountId(event.target.value)}>
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>{accountLabel(account)}</option>
+                ))}
+              </UI.Select>
+            </UI.Field>
+          ) : (
+            <div className="dash-balance-line is-short" role="alert">{t("dashboard.cards.issueDialog.noAccount")}</div>
+          )}
+
           <div className="dash-dialog-actions">
             <UI.Button type="button" variant="secondary" onClick={onClose}>{t("dashboard.cards.cancel")}</UI.Button>
-            <UI.Button type="button" variant="primary" disabled={creating} onClick={onCreate}>
+            <UI.Button type="button" variant="primary" disabled={!ready} onClick={() => onCreate(accountId)}>
               {creating ? t("dashboard.cards.issuing") : t("dashboard.cards.issueDialog.create")}
             </UI.Button>
           </div>

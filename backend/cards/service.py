@@ -4,6 +4,7 @@ from typing import Any, ClassVar, Protocol
 
 from motor.motor_asyncio import AsyncIOMotorClientSession
 
+from backend.accounts.service import AccountsService, get_accounts_service
 from backend.cards import validation
 from backend.cards.adapters import (
     RandomCardPinGenerator,
@@ -30,12 +31,14 @@ class IssueVirtualCard(Command):
     command_name: ClassVar[str] = "cards.issue_virtual"
 
     username: str
+    account_id: str
 
 
 class IssuePhysicalCard(Command):
     command_name: ClassVar[str] = "cards.issue_physical"
 
     username: str
+    account_id: str
 
 
 class FreezeCard(Command):
@@ -146,6 +149,7 @@ class CardsService:
         self,
         cards: CardRepository,
         users: UserDirectory,
+        accounts: AccountsService,
         numbers: CardNumberGenerator,
         pins: CardPinGenerator,
         cvvs: CardCvvGenerator,
@@ -155,6 +159,7 @@ class CardsService:
     ) -> None:
         self._cards = cards
         self._users = users
+        self._accounts = accounts
         self._numbers = numbers
         self._pins = pins
         self._cvvs = cvvs
@@ -198,11 +203,13 @@ class CardsService:
     async def _issue(
         self,
         username: str,
+        account_id: str,
         kind: CardKind,
         validity_years: int,
         session: AsyncIOMotorClientSession,
     ) -> CommandResult:
         user = await self._require_user(username)
+        account = await self._accounts.get_owned(account_id, user.id)
 
         card_id = new_id()
         pin = self._pins.generate()
@@ -210,9 +217,11 @@ class CardsService:
         card = Card(
             id=card_id,
             user_id=user.id,
+            account_id=account.id,
             kind=kind,
             last4=self._numbers.last4(),
             owner_name=user.username.upper(),
+            currency=account.currency,
             expires_on=_years_from_now(self._clock.now(), validity_years),
             pin_encrypted=self._cipher.encrypt(pin, associated_data=card_id),
             cvv_encrypted=self._cipher.encrypt(cvv, associated_data=card_id + ":cvv"),
@@ -244,7 +253,11 @@ class CardsService:
     ) -> CommandResult:
         assert isinstance(command, IssueVirtualCard)
         return await self._issue(
-            command.username, CardKind.VIRTUAL_MASTERCARD, VIRTUAL_CARD_VALIDITY_YEARS, session
+            command.username,
+            command.account_id,
+            CardKind.VIRTUAL_MASTERCARD,
+            VIRTUAL_CARD_VALIDITY_YEARS,
+            session,
         )
 
     async def _handle_issue_physical(
@@ -252,7 +265,11 @@ class CardsService:
     ) -> CommandResult:
         assert isinstance(command, IssuePhysicalCard)
         return await self._issue(
-            command.username, CardKind.PHYSICAL_DEBIT, PHYSICAL_CARD_VALIDITY_YEARS, session
+            command.username,
+            command.account_id,
+            CardKind.PHYSICAL_DEBIT,
+            PHYSICAL_CARD_VALIDITY_YEARS,
+            session,
         )
 
     async def _handle_freeze(
@@ -457,6 +474,7 @@ def get_cards_service() -> CardsService:
     service = CardsService(
         cards=MongoCardRepository(),
         users=MongoAuthUserRepository(),
+        accounts=get_accounts_service(),
         numbers=SyntheticCardNumberGenerator(),
         pins=RandomCardPinGenerator(),
         cvvs=RandomCvvGenerator(),

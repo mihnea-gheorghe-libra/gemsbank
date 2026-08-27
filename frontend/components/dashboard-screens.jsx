@@ -25,6 +25,8 @@
     cards: (row) => row.channel === "card",
   };
 
+  const PAGE_SIZES = [10, 25, 50, 100];
+
   function matchesQuery(row, query) {
     if (!query) return true;
     const needle = query.trim().toLowerCase();
@@ -79,6 +81,10 @@
     );
   }
 
+  function formatIban(iban) {
+    return iban || "—";
+  }
+
   function TxTable({ rows, compact }) {
     return (
       <div style={{ overflowX: "auto" }}>
@@ -88,6 +94,7 @@
               <th>{t("dashboard.table.date")}</th>
               <th>{t("dashboard.table.counterparty")}</th>
               {compact ? null : <th>{t("dashboard.table.reference")}</th>}
+              {compact ? null : <th>{t("dashboard.table.iban")}</th>}
               <th>{t("dashboard.table.category")}</th>
               <th>{t("dashboard.table.status")}</th>
               <th className="amount-col">{t("dashboard.table.amount")}</th>
@@ -99,6 +106,11 @@
                 <td style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{row.date}</td>
                 <td>{row.who}</td>
                 {compact ? null : <td className="text-muted" style={{ fontSize: 12 }}>{row.ref}</td>}
+                {compact ? null : (
+                  <td className="text-muted" style={{ fontFamily: "var(--font-mono)", fontSize: 12, whiteSpace: "nowrap" }}>
+                    {formatIban(row.iban)}
+                  </td>
+                )}
                 <td className="text-muted">{t("dashboard.category." + row.categoryKey)}</td>
                 <td><UI.Tag variant="accent">{t("dashboard.status." + row.statusKey)}</UI.Tag></td>
                 <td className="amount-col">
@@ -220,6 +232,18 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
   }) {
     const filters = Object.keys(TX_FILTERS);
     const visible = transactions.filter((row) => TX_FILTERS[filter](row) && matchesQuery(row, query));
+
+    const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
+    const [page, setPage] = useState(1);
+    const pageSizeOptions = PAGE_SIZES.map((n) => ({ value: n, label: t("dashboard.payments.perPage", { n }) }));
+
+    useEffect(() => {
+      setPage(1);
+    }, [filter, query, pageSize]);
+
+    const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
+    const currentPage = Math.min(page, pageCount);
+    const pageRows = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
     return (
       <div>
@@ -373,7 +397,41 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
             />
           </div>
           {visible.length ? (
-            <TxTable rows={visible} />
+            <React.Fragment>
+              <div className="dash-pagination-row">
+                <DASH.PeriodPicker
+                  options={pageSizeOptions}
+                  value={pageSize}
+                  onChange={setPageSize}
+                  label={t("dashboard.payments.perPage", { n: pageSize })}
+                  icon="List"
+                />
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <UI.Button
+                    type="button"
+                    variant="secondary"
+                    aria-label={t("dashboard.payments.prevPage")}
+                    disabled={currentPage <= 1}
+                    onClick={() => setPage(currentPage - 1)}
+                  >
+                    <UI.Icon name="ChevronLeft" size={15} />
+                  </UI.Button>
+                  <span className="text-muted" style={{ fontSize: 13 }}>
+                    {t("dashboard.payments.pageOf", { page: currentPage, total: pageCount })}
+                  </span>
+                  <UI.Button
+                    type="button"
+                    variant="secondary"
+                    aria-label={t("dashboard.payments.nextPage")}
+                    disabled={currentPage >= pageCount}
+                    onClick={() => setPage(currentPage + 1)}
+                  >
+                    <UI.Icon name="ChevronRight" size={15} />
+                  </UI.Button>
+                </div>
+              </div>
+              <TxTable rows={pageRows} />
+            </React.Fragment>
           ) : (
             <div className="text-muted" style={{ fontSize: 13, padding: "18px 8px" }}>
               {t("dashboard.payments.noMatches")}
@@ -893,11 +951,12 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     );
   }
 
-  function monthlyCardSpendMinor(transactions) {
+  function monthlyCardSpendMinor(transactions, accountId) {
     const now = new Date();
     return transactions
       .filter((row) => {
         if (row.channel !== "card" || row.direction !== "out" || row.statusKey !== "booked") return false;
+        if (row.accountId !== accountId) return false;
         const [day, month, year] = row.date.split(".").map(Number);
         return month === now.getMonth() + 1 && year === now.getFullYear();
       })
@@ -906,6 +965,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
 
   SCR.CardsScreen = function CardsScreen({
     cards,
+    accounts,
     transactions,
     loading,
     error,
@@ -937,7 +997,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const card = cards.find((row) => row.cardId === selectedCardId) || null;
     const disabled = busy || !card || card.state === "blocked";
-    const monthlySpendMinor = monthlyCardSpendMinor(transactions);
+    const monthlySpendMinor = card ? monthlyCardSpendMinor(transactions, card.accountId) : 0;
     const onlineLimitMinor = card ? card.onlineLimitMinor : 0;
     const monthlySpendPct = onlineLimitMinor > 0
       ? Math.min(100, Math.round((monthlySpendMinor / onlineLimitMinor) * 100))
@@ -1068,8 +1128,16 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
             {card ? (
               <UI.Plate className="elev-sm dash-quick-settings-panel" style={{ padding: 16, alignSelf: "start" }}>
                 <UI.Kicker style={{ marginBottom: 6 }}>{t("dashboard.cards.quickSettings")}</UI.Kicker>
-                <div style={{ fontFamily: "var(--font-heading)", fontSize: 20, marginBottom: 12 }}>
+                <div style={{ fontFamily: "var(--font-heading)", fontSize: 20, marginBottom: 4 }}>
                   {t("dashboard.cards.kind." + kindToI18nKey(card.kind)) + " " + card.numberMasked.slice(-4)}
+                </div>
+                <div className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+                  {t("dashboard.cards.linkedAccount", {
+                    account: (() => {
+                      const linked = accounts.find((row) => row.id === card.accountId);
+                      return linked ? DASH.accountLabel(linked) : t("dashboard.cards.accountUnknown");
+                    })(),
+                  })}
                 </div>
                 <div className="dash-settings-list">
                   <UI.Button
