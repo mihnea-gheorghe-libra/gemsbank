@@ -593,6 +593,27 @@
       setPinPromptOpen(true);
     }, [selectedCardId, pinShown]);
 
+    const promptFreezeCard = useCallback(() => {
+      if (!selectedCardId) return;
+      setPinPromptError(null);
+      setPinPromptTarget("freezeCard");
+      setPinPromptOpen(true);
+    }, [selectedCardId]);
+
+    const promptUnfreezeCard = useCallback(() => {
+      if (!selectedCardId) return;
+      setPinPromptError(null);
+      setPinPromptTarget("unfreezeCard");
+      setPinPromptOpen(true);
+    }, [selectedCardId]);
+
+    const promptDeleteCard = useCallback(() => {
+      if (!selectedCardId) return;
+      setPinPromptError(null);
+      setPinPromptTarget("blockCard");
+      setPinPromptOpen(true);
+    }, [selectedCardId]);
+
     const revealCardDetails = useCallback(async () => {
       if (!selectedCardId) return;
       setCardBusy(true);
@@ -627,6 +648,15 @@
         if (pinPromptTarget === "cardPin") {
           const revealed = await revealCardPin();
           if (!revealed) setPinPromptOpen(false);
+        } else if (pinPromptTarget === "freezeCard") {
+          setPinPromptOpen(false);
+          await freezeCard();
+        } else if (pinPromptTarget === "unfreezeCard") {
+          setPinPromptOpen(false);
+          await unfreezeCard();
+        } else if (pinPromptTarget === "blockCard") {
+          setPinPromptOpen(false);
+          await deleteCard();
         } else {
           setPinPromptOpen(false);
           if (pinPromptTarget === "details") await revealCardDetails();
@@ -636,7 +666,7 @@
       } finally {
         setPinPromptBusy(false);
       }
-    }, [username, pinPromptTarget, revealCardPin, revealCardDetails]);
+    }, [username, pinPromptTarget, revealCardPin, revealCardDetails, freezeCard, unfreezeCard, deleteCard]);
 
     const cancelLoginPin = useCallback(() => {
       setPinPromptOpen(false);
@@ -1238,9 +1268,9 @@
                 onOpenIssue={openIssueDialog}
                 onOpenHistory={() => setHistoryOpen(true)}
                 busy={cardBusy}
-                onFreeze={freezeCard}
-                onUnfreeze={unfreezeCard}
-                onDelete={deleteCard}
+                onFreeze={promptFreezeCard}
+                onUnfreeze={promptUnfreezeCard}
+                onDelete={promptDeleteCard}
                 pin={cardPin}
                 pinShown={pinShown}
                 onTogglePin={toggleCardPin}

@@ -1219,7 +1219,7 @@
         <div className="dash-screen-head">
           <h3 style={{ margin: 0 }}>{t("dashboard.cards.title")}</h3>
           <div style={{ display: "flex", gap: 8 }}>
-            <UI.Button type="button" variant="secondary" onClick={onOpenIssue}>
+            <UI.Button type="button" variant="primary" onClick={onOpenIssue}>
               {t("dashboard.cards.issue")}
             </UI.Button>
             <UI.Button type="button" variant="secondary" onClick={onOpenHistory}>
@@ -1436,7 +1436,7 @@
               <UI.Button
                 type="button"
                 variant="primary"
-                style={{ flex: 1, background: "var(--color-negative)", color: "white" }}
+                style={{ flex: 1 }}
                 onClick={() => {
                   setDeleteConfirmOpen(false);
                   onDelete();
@@ -2720,27 +2720,6 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
               </button>
             </div>
           </div>
-        </div>
-
-        <div className="dash-chat-side">
-          <div>
-            <UI.Kicker style={{ marginBottom: 8 }}>{t("dashboard.chat.contextTitle")}</UI.Kicker>
-            <div className="text-muted" style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-line" }}>
-              {t("dashboard.chat.contextBody")}
-            </div>
-          </div>
-          <div className="hr" />
-          <div>
-            <UI.Kicker style={{ marginBottom: 8 }}>{t("dashboard.chat.logTitle")}</UI.Kicker>
-            <div className="dash-chat-log">
-              <div>· {t("dashboard.chat.logResolved")}</div>
-              <div>· {t("dashboard.chat.logLimit")}</div>
-              <div>· {t("dashboard.chat.logFx")}</div>
-              <div>· {t("dashboard.chat.logDraft")}</div>
-            </div>
-          </div>
-          <div className="hr" />
-          <div className="text-muted" style={{ fontSize: 12 }}>{t("dashboard.chat.a11yNote")}</div>
         </div>
       </div>
     );
