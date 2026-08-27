@@ -1,7 +1,17 @@
-from datetime import date
+from datetime import date, datetime, time, timezone
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from pydantic import BaseModel, Field
 
 from backend.accounts.service import (
@@ -61,7 +71,6 @@ from backend.cards.service import (
 )
 from backend.command_bus import bus
 from backend.database.mongo import get_db
-from backend.fx.service import FxInsightsService, get_fx_insights_service
 from backend.escalations.service import (
     EscalationsService,
     RequestHandoff,
@@ -72,6 +81,7 @@ from backend.exchange.service import (
     ExchangeService,
     get_exchange_service,
 )
+from backend.fx.service import FxInsightsService, get_fx_insights_service
 from backend.goals.service import CreateGoal
 from backend.helpers.context import Actor
 from backend.helpers.errors import AuthenticationError
@@ -88,11 +98,16 @@ from backend.onboarding.service import (
 )
 from backend.payments.service import (
     AddBeneficiary,
+    AddFunds,
+    AddTemplate,
+    DeleteTemplate,
     MakeTransfer,
     PaymentsService,
     SignPayment,
+    UpdateTemplate,
     get_payments_service,
 )
+from backend.payments.statement import render_csv, render_pdf
 from backend.vendors.service import (
     VendorInsightsService,
     get_vendor_insights_service,
@@ -207,6 +222,21 @@ class SignPaymentRequest(BaseModel):
 class BeneficiaryRequest(BaseModel):
     name: str = Field(min_length=2, max_length=70)
     iban: str = Field(min_length=15, max_length=42)
+
+
+class AddFundsRequest(BaseModel):
+    account_id: str = Field(alias="accountId", min_length=1, max_length=64)
+    amount_minor: int = Field(alias="amountMinorUnits", gt=0)
+
+    model_config = {"populate_by_name": True}
+
+
+class TemplateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    beneficiary: str = Field(min_length=2, max_length=70)
+    iban: str = Field(min_length=15, max_length=42)
+    currency: str = Field(min_length=3, max_length=3)
+    reference: str = Field(min_length=1, max_length=140)
 
 
 class IssueCardRequest(BaseModel):
@@ -646,6 +676,34 @@ async def list_transactions(
     )
 
 
+@payments_router.get("/statement")
+async def get_statement(
+    actor: CurrentActor,
+    payments: PaymentsDep,
+    account_id: Annotated[str, Query(alias="accountId", min_length=1, max_length=64)],
+    format: Annotated[str, Query(pattern="^(pdf|csv)$")] = "csv",
+    date_from: Annotated[date | None, Query(alias="from")] = None,
+    date_to: Annotated[date | None, Query(alias="to")] = None,
+) -> Response:
+    from_dt = datetime.combine(date_from, time.min, tzinfo=timezone.utc) if date_from else None
+    to_dt = datetime.combine(date_to, time.max, tzinfo=timezone.utc) if date_to else None
+    data = await payments.statement_data(actor.id, account_id, from_dt, to_dt)
+
+    if format == "pdf":
+        content = render_pdf(data)
+        media_type = "application/pdf"
+    else:
+        content = render_csv(data)
+        media_type = "text/csv"
+
+    filename = f"gems-statement-{account_id}.{format}"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @payments_router.get("/pending")
 async def list_pending(actor: CurrentActor, payments: PaymentsDep) -> dict[str, Any]:
     return await payments.list_pending(actor.id)
@@ -663,6 +721,65 @@ async def add_beneficiary(
     idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
     command = AddBeneficiary(name=payload.name, iban=payload.iban)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@payments_router.get("/templates")
+async def list_templates(actor: CurrentActor, payments: PaymentsDep) -> dict[str, Any]:
+    return await payments.list_templates(actor.id)
+
+
+@payments_router.post("/templates", status_code=201)
+async def add_template(
+    actor: CurrentActor,
+    payload: TemplateRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = AddTemplate(
+        name=payload.name,
+        beneficiary=payload.beneficiary,
+        iban=payload.iban,
+        currency=payload.currency,
+        reference=payload.reference,
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@payments_router.put("/templates/{template_id}")
+async def update_template(
+    actor: CurrentActor,
+    template_id: str,
+    payload: TemplateRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = UpdateTemplate(
+        template_id=template_id,
+        name=payload.name,
+        beneficiary=payload.beneficiary,
+        iban=payload.iban,
+        currency=payload.currency,
+        reference=payload.reference,
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@payments_router.delete("/templates/{template_id}")
+async def delete_template(
+    actor: CurrentActor,
+    template_id: str,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = DeleteTemplate(template_id=template_id)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@payments_router.post("/add-funds", status_code=201)
+async def add_funds(
+    actor: CurrentActor,
+    payload: AddFundsRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = AddFunds(account_id=payload.account_id, amount_minor=payload.amount_minor)
     return await bus.execute(command, actor, idempotency_key)
 
 

@@ -55,6 +55,47 @@ class Beneficiary(BaseModel):
         }
 
 
+class PaymentTemplate(BaseModel):
+    id: str = Field(default_factory=new_id)
+    user_id: str
+    name: str
+    beneficiary: str
+    iban: str
+    currency: str
+    reference: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def update(
+        self,
+        *,
+        name: str,
+        beneficiary: str,
+        iban: str,
+        currency: str,
+        reference: str,
+        now: datetime,
+    ) -> None:
+        self.name = name
+        self.beneficiary = beneficiary
+        self.iban = iban
+        self.currency = currency
+        self.reference = reference
+        self.updated_at = now
+
+    def public_view(self) -> dict[str, Any]:
+        return {
+            "templateId": self.id,
+            "name": self.name,
+            "beneficiary": self.beneficiary,
+            "iban": self.iban,
+            "currency": self.currency,
+            "reference": self.reference,
+            "createdAt": self.created_at.isoformat(),
+            "updatedAt": self.updated_at.isoformat(),
+        }
+
+
 class Payment(BaseModel):
     id: str = Field(default_factory=new_id)
     user_id: str

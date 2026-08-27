@@ -65,6 +65,28 @@
     return parse(response);
   }
 
+  async function downloadFile(path) {
+    const headers = {};
+    if (sessionToken) {
+      headers["Authorization"] = "Bearer " + sessionToken;
+    }
+    const response = await fetch(path, { method: "GET", headers });
+    if (!response.ok) {
+      let body = null;
+      try {
+        body = await response.json();
+      } catch (err) {
+        body = null;
+      }
+      throw new ApiError(body && body.error, response.status);
+    }
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const match = /filename="?([^"]+)"?/.exec(disposition);
+    const filename = match ? match[1] : "download";
+    const blob = await response.blob();
+    return { blob, filename };
+  }
+
   function query(params) {
     const search = new URLSearchParams();
     Object.keys(params || {}).forEach((key) => {
@@ -148,6 +170,15 @@
     listBeneficiaries: () => send("/payments/beneficiaries"),
     addBeneficiary: (name, iban) =>
       send("/payments/beneficiaries", { method: "POST", json: { name, iban } }),
+    listTemplates: () => send("/payments/templates"),
+    createTemplate: (payload) => send("/payments/templates", { method: "POST", json: payload }),
+    updateTemplate: (id, payload) =>
+      send("/payments/templates/" + id, { method: "PUT", json: payload }),
+    deleteTemplate: (id) => send("/payments/templates/" + id, { method: "DELETE" }),
+    addFunds: (accountId, amountMinorUnits) =>
+      send("/payments/add-funds", { method: "POST", json: { accountId, amountMinorUnits } }),
+    downloadStatement: (accountId, format, from, to) =>
+      downloadFile("/payments/statement" + query({ accountId, format, from, to })),
     transfer: (payload) => send("/payments/transfers", { method: "POST", json: payload }),
     signTransfer: (id, code) =>
       send("/payments/transfers/" + id + "/sign", { method: "POST", json: { code } }),

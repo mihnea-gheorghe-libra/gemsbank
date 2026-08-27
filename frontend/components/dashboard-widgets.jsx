@@ -89,6 +89,17 @@
     return Number(major) * MINOR_PER_MAJOR + Number((fraction + "00").slice(0, 2));
   };
 
+  DASH.saveBlob = function saveBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   DASH.splitEvenly = function splitEvenly(totalMinor, parts) {
     if (parts <= 0) return [];
     const base = Math.floor(totalMinor / parts);

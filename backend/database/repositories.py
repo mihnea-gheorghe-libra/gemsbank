@@ -25,6 +25,7 @@ from backend.database.mongo import (
     handoffs_collection,
     journal_collection,
     kyc_cases_collection,
+    payment_templates_collection,
     payments_collection,
     recovery_cases_collection,
     sessions_collection,
@@ -48,6 +49,7 @@ from backend.payments.payment import (
     Payment,
     PaymentRail,
     PaymentStatus,
+    PaymentTemplate,
     SignatureChallenge,
 )
 
@@ -599,6 +601,20 @@ class MongoJournalRepository:
         found = journal_collection().aggregate(pipeline)
         return {row["_id"]: int(row["total"]) async for row in found}
 
+    async def balance_before(self, account_ids: list[str], before: datetime | None) -> int:
+        match: dict[str, Any] = {"entries.accountId": {"$in": account_ids}}
+        if before is not None:
+            match["postedAt"] = {"$lt": before}
+        pipeline: list[dict[str, Any]] = [
+            {"$match": match},
+            {"$unwind": "$entries"},
+            {"$match": {"entries.accountId": {"$in": account_ids}}},
+            {"$group": {"_id": None, "total": {"$sum": "$entries.amount"}}},
+        ]
+        async for row in journal_collection().aggregate(pipeline):
+            return int(row["total"])
+        return 0
+
     async def debited_since(self, account_ids: list[str], since: datetime) -> int:
         pipeline: list[dict[str, Any]] = [
             {
@@ -667,6 +683,31 @@ class MongoJournalRepository:
             journal_collection()
             .find(query)
             .sort([("postedAt", DESCENDING), ("_id", DESCENDING)])
+            .limit(limit)
+        )
+        return [_journal_from_bson(raw) async for raw in found]
+
+    async def in_range_for(
+        self,
+        account_ids: list[str],
+        date_from: datetime | None,
+        date_to: datetime | None,
+        limit: int = 5000,
+    ) -> list[JournalTransaction]:
+        posted_at: dict[str, Any] = {}
+        if date_from is not None:
+            posted_at["$gte"] = date_from
+        if date_to is not None:
+            posted_at["$lte"] = date_to
+
+        query: dict[str, Any] = {"entries": {"$elemMatch": {"accountId": {"$in": account_ids}}}}
+        if posted_at:
+            query["postedAt"] = posted_at
+
+        found = (
+            journal_collection()
+            .find(query)
+            .sort([("postedAt", ASCENDING), ("_id", ASCENDING)])
             .limit(limit)
         )
         return [_journal_from_bson(raw) async for raw in found]
@@ -864,6 +905,65 @@ class MongoBeneficiaryRepository:
     async def find(self, user_id: str, iban: str) -> Beneficiary | None:
         raw = await beneficiaries_collection().find_one({"userId": user_id, "iban": iban})
         return _beneficiary_from_bson(raw) if raw else None
+
+
+def _template_to_bson(template: PaymentTemplate) -> dict[str, Any]:
+    return {
+        "_id": template.id,
+        "userId": template.user_id,
+        "name": template.name,
+        "beneficiary": template.beneficiary,
+        "iban": template.iban,
+        "currency": template.currency,
+        "reference": template.reference,
+        "createdAt": template.created_at,
+        "updatedAt": template.updated_at,
+    }
+
+
+def _template_from_bson(raw: dict[str, Any]) -> PaymentTemplate:
+    return PaymentTemplate(
+        id=raw["_id"],
+        user_id=raw["userId"],
+        name=raw["name"],
+        beneficiary=raw["beneficiary"],
+        iban=raw["iban"],
+        currency=raw["currency"],
+        reference=raw["reference"],
+        created_at=raw["createdAt"],
+        updated_at=raw["updatedAt"],
+    )
+
+
+class MongoPaymentTemplateRepository:
+    async def add(
+        self, template: PaymentTemplate, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await payment_templates_collection().insert_one(
+            _template_to_bson(template), session=session
+        )
+
+    async def list_for_user(self, user_id: str) -> list[PaymentTemplate]:
+        found = payment_templates_collection().find({"userId": user_id}).sort("createdAt", ASCENDING)
+        return [_template_from_bson(raw) async for raw in found]
+
+    async def get(self, template_id: str) -> PaymentTemplate | None:
+        raw = await payment_templates_collection().find_one({"_id": template_id})
+        return _template_from_bson(raw) if raw else None
+
+    async def update(
+        self, template: PaymentTemplate, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await payment_templates_collection().replace_one(
+            {"_id": template.id}, _template_to_bson(template), session=session
+        )
+
+    async def delete(
+        self, template_id: str, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await payment_templates_collection().delete_one({"_id": template_id}, session=session)
+
+
 class MongoCardRepository:
     async def add(self, card: Card, session: AsyncIOMotorClientSession | None = None) -> None:
         await cards_collection().insert_one(_card_to_bson(card), session=session)

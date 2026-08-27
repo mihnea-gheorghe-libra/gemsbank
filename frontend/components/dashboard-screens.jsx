@@ -413,6 +413,7 @@
     transactions,
     pending,
     templates,
+    templatesError,
     splitBills,
     filter,
     onFilter,
@@ -488,6 +489,9 @@
             <UI.Kicker>{t("dashboard.templates.title")}</UI.Kicker>
             <UI.Button type="button" variant="ghost" onClick={onNewTemplate}>{t("dashboard.templates.new")}</UI.Button>
           </div>
+          {templatesError ? (
+            <div className="dash-balance-line is-short" role="alert">{templatesError.message}</div>
+          ) : null}
           {templates.length ? (
             <div className="dash-template-grid">
               {templates.map((template) => (
@@ -639,6 +643,55 @@
       </div>
     );
   };
+  function AccountTileMenu({ onStatement }) {
+    const [open, setOpen] = useState(false);
+    const containerRef = useRef(null);
+
+    useEffect(() => {
+      if (!open) return undefined;
+      function onPointerDown(event) {
+        if (containerRef.current && !containerRef.current.contains(event.target)) setOpen(false);
+      }
+      function onKeyDown(event) {
+        if (event.key === "Escape") setOpen(false);
+      }
+      document.addEventListener("mousedown", onPointerDown);
+      document.addEventListener("keydown", onKeyDown);
+      return () => {
+        document.removeEventListener("mousedown", onPointerDown);
+        document.removeEventListener("keydown", onKeyDown);
+      };
+    }, [open]);
+
+    return (
+      <div className="dash-tile-menu" ref={containerRef}>
+        <button
+          type="button"
+          className="dash-tile-menu-trigger"
+          aria-haspopup="true"
+          aria-expanded={open}
+          aria-label={t("dashboard.accounts.moreActions")}
+          onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }}
+        >
+          <UI.Icon name="MoreVertical" size={16} />
+        </button>
+        {open ? (
+          <div className="dash-tile-menu-list elev-md plate" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              className="dash-tile-menu-item"
+              onClick={() => { setOpen(false); onStatement(); }}
+            >
+              <UI.Icon name="FileText" size={14} />
+              {t("dashboard.accounts.statementMenuItem")}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   SCR.AccountsScreen = function AccountsScreen({
     accounts,
     deposits,
@@ -649,6 +702,7 @@
     onCloseDeposit,
     onApplyCredit,
     onWithdrawApplication,
+    onOpenStatement,
   }) {
     return (
       <div>
@@ -659,9 +713,12 @@
 
         <div className="dash-portfolio-tiles">
           {accounts.map((account) => (
-            <UI.Plate key={account.id} className="elev-sm" style={{ padding: 14 }}>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
-                {account.cur} &middot; {t("dashboard.accountType." + account.typeKey)}
+            <UI.Plate key={account.id} className="elev-sm" style={{ padding: 14, position: "relative" }}>
+              <div className="dash-account-tile-head">
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
+                  {account.cur} &middot; {t("dashboard.accountType." + account.typeKey)}
+                </div>
+                <AccountTileMenu onStatement={() => onOpenStatement(account)} />
               </div>
               <div className="dash-account-amount">{formatMinor(account.minor)}</div>
               <div className="text-muted" style={{ fontSize: 11 }}>{account.iban}</div>
@@ -2445,7 +2502,15 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                 <UI.Icon name="CircleHelp" size={15} />
                 {t("dashboard.settings.faq")}
               </UI.Button>
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }}><UI.Icon name="Bot" size={15} />{t("dashboard.settings.agentInstructions")}</UI.Button>
+              <UI.Button
+                type="button"
+                variant="secondary"
+                style={{ justifyContent: "flex-start", gap: 8 }}
+                onClick={() => window.open("./agent-instructions.html", "_blank", "noopener,noreferrer")}
+              >
+                <UI.Icon name="Bot" size={15} />
+                {t("dashboard.settings.agentInstructions")}
+              </UI.Button>
               <div className="hr" style={{ margin: "4px 0" }} />
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={onSignOut}><UI.Icon name="LogOut" size={15} />{t("dashboard.signOut")}</UI.Button>
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8, color: "var(--color-negative)" }} onClick={() => setCloseAccountOpen(true)}><UI.Icon name="TriangleAlert" size={15} />{t("dashboard.settings.closeAccount")}</UI.Button>

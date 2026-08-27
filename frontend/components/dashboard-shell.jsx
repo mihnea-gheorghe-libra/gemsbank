@@ -473,6 +473,100 @@
     );
   };
 
+  function statementRange(period, customFrom, customTo) {
+    const today = new Date();
+    const toIso = (d) => d.toISOString().slice(0, 10);
+    if (period === "month") {
+      const from = new Date(today);
+      from.setMonth(from.getMonth() - 1);
+      return { from: toIso(from), to: toIso(today) };
+    }
+    if (period === "fiscal") {
+      return { from: toIso(new Date(today.getFullYear(), 0, 1)), to: toIso(today) };
+    }
+    if (period === "all") {
+      return { from: null, to: null };
+    }
+    if (!customFrom || !customTo || customFrom > customTo) return null;
+    return { from: customFrom, to: customTo };
+  }
+
+  DASH.StatementDialog = function StatementDialog({ account, busy, error, onClose, onSubmit }) {
+    const [format, setFormat] = useState("pdf");
+    const [period, setPeriod] = useState("month");
+    const [customFrom, setCustomFrom] = useState("");
+    const [customTo, setCustomTo] = useState("");
+
+    const formatOptions = [
+      { value: "pdf", label: t("dashboard.statement.formatPdf") },
+      { value: "csv", label: t("dashboard.statement.formatCsv") },
+    ];
+    const periodOptions = [
+      { value: "month", label: t("dashboard.statement.periodMonth") },
+      { value: "fiscal", label: t("dashboard.statement.periodFiscal") },
+      { value: "all", label: t("dashboard.statement.periodAll") },
+      { value: "custom", label: t("dashboard.statement.periodCustom") },
+    ];
+
+    const range = statementRange(period, customFrom, customTo);
+    const ready = Boolean(range) && !busy;
+
+    const submit = () => {
+      if (!range) return;
+      onSubmit({ accountId: account.id, format, from: range.from, to: range.to });
+    };
+
+    return (
+      <div className="dash-dialog-backdrop" onClick={onClose}>
+        <UI.Plate className="dash-dialog elev-lg" role="dialog" aria-modal="true" aria-labelledby="statement-dialog-title" onClick={(event) => event.stopPropagation()}>
+          <h2 id="statement-dialog-title" style={{ margin: 0 }}>{t("dashboard.statement.title")}</h2>
+
+          <DASH.SegmentedControl
+            className="dash-seg-full"
+            options={formatOptions}
+            value={format}
+            onChange={setFormat}
+            label={t("dashboard.statement.format")}
+          />
+
+          <UI.Field id="statement-period" label={t("dashboard.statement.period")}>
+            <UI.Select id="statement-period" value={period} onChange={(event) => setPeriod(event.target.value)}>
+              {periodOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </UI.Select>
+          </UI.Field>
+
+          {period === "custom" ? (
+            <div className="dash-field-grid">
+              <UI.Field id="statement-from" label={t("dashboard.statement.from")}>
+                <UI.TextInput id="statement-from" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} />
+              </UI.Field>
+              <UI.Field id="statement-to" label={t("dashboard.statement.to")}>
+                <UI.TextInput id="statement-to" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} />
+              </UI.Field>
+            </div>
+          ) : null}
+
+          {period === "custom" && !range ? (
+            <div className="dash-balance-line is-short" role="alert">{t("dashboard.statement.invalidRange")}</div>
+          ) : null}
+
+          {error ? (
+            <div className="dash-balance-line is-short" role="alert">{error.message}</div>
+          ) : null}
+
+          <div className="dash-dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onClose}>{t("dashboard.statement.cancel")}</UI.Button>
+            <UI.Button type="button" variant="primary" disabled={!ready} onClick={submit}>
+              {busy ? t("dashboard.statement.downloading") : t("dashboard.statement.download")}
+            </UI.Button>
+          </div>
+        </UI.Plate>
+      </div>
+    );
+  };
+
   const EXCHANGE_TARGETS = ["EUR", "USD"];
   const RATE_SCALE = 1000000;
 
@@ -825,7 +919,7 @@
     );
   };
 
-  DASH.TemplateDialog = function TemplateDialog({ accounts, template, onClose, onSubmit }) {
+  DASH.TemplateDialog = function TemplateDialog({ accounts, template, busy, error, onClose, onSubmit }) {
     const [name, setName] = useState((template && template.name) || "");
     const [beneficiary, setBeneficiary] = useState((template && template.beneficiary) || "");
     const [iban, setIban] = useState((template && template.iban) || "");
@@ -836,7 +930,7 @@
       .map((account) => account.cur)
       .filter((value, index, list) => list.indexOf(value) === index);
 
-    const ready = name.trim() !== "" && beneficiary.trim() !== "" && iban.trim() !== "";
+    const ready = name.trim() !== "" && beneficiary.trim() !== "" && iban.trim() !== "" && !busy;
 
     const submit = () => {
       onSubmit({
@@ -879,6 +973,10 @@
           <UI.Field id="tpl-reference" label={t("dashboard.payDialog.reference")}>
             <UI.TextInput id="tpl-reference" value={reference} placeholder={t("dashboard.payDialog.referencePh")} onChange={(event) => setReference(event.target.value)} />
           </UI.Field>
+
+          {error ? (
+            <div className="dash-balance-line is-short" role="alert">{error.message}</div>
+          ) : null}
 
           <div className="dash-dialog-actions">
             <UI.Button type="button" variant="secondary" onClick={onClose}>{t("dashboard.payDialog.cancel")}</UI.Button>
