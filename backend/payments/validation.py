@@ -45,6 +45,15 @@ def normalise_counterparty(raw: str) -> str:
     return candidate
 
 
+def normalise_template_name(raw: str) -> str:
+    candidate = re.sub(r"\s+", " ", raw.strip())
+    if not candidate or len(candidate) > 40:
+        raise ValidationError(
+            "A template name is 1-40 characters.", details={"field": "name"}
+        )
+    return candidate
+
+
 def normalise_category(raw: str | None) -> str:
     if raw is None:
         return "transfer"

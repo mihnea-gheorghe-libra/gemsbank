@@ -4,7 +4,7 @@
   const UI = GEMS.ui;
   const { useState, useRef, useEffect } = React;
 
-  DASH.PeriodPicker = function PeriodPicker({ options, value, onChange, label }) {
+  DASH.PeriodPicker = function PeriodPicker({ options, value, onChange, label, icon }) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef(null);
     const current = options.find((option) => option.value === value) || options[0];
@@ -38,7 +38,7 @@
           aria-label={label}
           onClick={() => setOpen((value_) => !value_)}
         >
-          <UI.Icon name="Calendar" size={15} />
+          <UI.Icon name={icon || "Calendar"} size={15} />
           {current ? current.label : ""}
           <UI.Icon name="ChevronDown" size={14} />
         </UI.Button>
@@ -87,6 +87,17 @@
     if (!/^\d+(\.\d{1,2})?$/.test(normalised)) return null;
     const [major, fraction = ""] = normalised.split(".");
     return Number(major) * MINOR_PER_MAJOR + Number((fraction + "00").slice(0, 2));
+  };
+
+  DASH.saveBlob = function saveBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   DASH.splitEvenly = function splitEvenly(totalMinor, parts) {

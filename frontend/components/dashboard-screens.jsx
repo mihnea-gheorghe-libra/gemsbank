@@ -25,6 +25,8 @@
     cards: (row) => row.channel === "card",
   };
 
+  const PAGE_SIZES = [10, 25, 50, 100];
+
   function matchesQuery(row, query) {
     if (!query) return true;
     const needle = query.trim().toLowerCase();
@@ -79,6 +81,10 @@
     );
   }
 
+  function formatIban(iban) {
+    return iban || "—";
+  }
+
   function TxTable({ rows, compact }) {
     return (
       <div style={{ overflowX: "auto" }}>
@@ -88,6 +94,7 @@
               <th>{t("dashboard.table.date")}</th>
               <th>{t("dashboard.table.counterparty")}</th>
               {compact ? null : <th>{t("dashboard.table.reference")}</th>}
+              {compact ? null : <th>{t("dashboard.table.iban")}</th>}
               <th>{t("dashboard.table.category")}</th>
               <th>{t("dashboard.table.status")}</th>
               <th className="amount-col">{t("dashboard.table.amount")}</th>
@@ -99,6 +106,11 @@
                 <td style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{row.date}</td>
                 <td>{row.who}</td>
                 {compact ? null : <td className="text-muted" style={{ fontSize: 12 }}>{row.ref}</td>}
+                {compact ? null : (
+                  <td className="text-muted" style={{ fontFamily: "var(--font-mono)", fontSize: 12, whiteSpace: "nowrap" }}>
+                    {formatIban(row.iban)}
+                  </td>
+                )}
                 <td className="text-muted">{t("dashboard.category." + row.categoryKey)}</td>
                 <td><UI.Tag variant="accent">{t("dashboard.status." + row.statusKey)}</UI.Tag></td>
                 <td className="amount-col">
@@ -401,6 +413,7 @@
     transactions,
     pending,
     templates,
+    templatesError,
     splitBills,
     filter,
     onFilter,
@@ -418,6 +431,18 @@
   }) {
     const filters = Object.keys(TX_FILTERS);
     const visible = transactions.filter((row) => TX_FILTERS[filter](row) && matchesQuery(row, query));
+
+    const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
+    const [page, setPage] = useState(1);
+    const pageSizeOptions = PAGE_SIZES.map((n) => ({ value: n, label: t("dashboard.payments.perPage", { n }) }));
+
+    useEffect(() => {
+      setPage(1);
+    }, [filter, query, pageSize]);
+
+    const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
+    const currentPage = Math.min(page, pageCount);
+    const pageRows = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
     return (
       <div>
@@ -464,6 +489,9 @@
             <UI.Kicker>{t("dashboard.templates.title")}</UI.Kicker>
             <UI.Button type="button" variant="ghost" onClick={onNewTemplate}>{t("dashboard.templates.new")}</UI.Button>
           </div>
+          {templatesError ? (
+            <div className="dash-balance-line is-short" role="alert">{templatesError.message}</div>
+          ) : null}
           {templates.length ? (
             <div className="dash-template-grid">
               {templates.map((template) => (
@@ -571,7 +599,41 @@
             />
           </div>
           {visible.length ? (
-            <TxTable rows={visible} />
+            <React.Fragment>
+              <div className="dash-pagination-row">
+                <DASH.PeriodPicker
+                  options={pageSizeOptions}
+                  value={pageSize}
+                  onChange={setPageSize}
+                  label={t("dashboard.payments.perPage", { n: pageSize })}
+                  icon="List"
+                />
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <UI.Button
+                    type="button"
+                    variant="secondary"
+                    aria-label={t("dashboard.payments.prevPage")}
+                    disabled={currentPage <= 1}
+                    onClick={() => setPage(currentPage - 1)}
+                  >
+                    <UI.Icon name="ChevronLeft" size={15} />
+                  </UI.Button>
+                  <span className="text-muted" style={{ fontSize: 13 }}>
+                    {t("dashboard.payments.pageOf", { page: currentPage, total: pageCount })}
+                  </span>
+                  <UI.Button
+                    type="button"
+                    variant="secondary"
+                    aria-label={t("dashboard.payments.nextPage")}
+                    disabled={currentPage >= pageCount}
+                    onClick={() => setPage(currentPage + 1)}
+                  >
+                    <UI.Icon name="ChevronRight" size={15} />
+                  </UI.Button>
+                </div>
+              </div>
+              <TxTable rows={pageRows} />
+            </React.Fragment>
           ) : (
             <div className="text-muted" style={{ fontSize: 13, padding: "18px 8px" }}>
               {t("dashboard.payments.noMatches")}
@@ -581,6 +643,55 @@
       </div>
     );
   };
+  function AccountTileMenu({ onStatement }) {
+    const [open, setOpen] = useState(false);
+    const containerRef = useRef(null);
+
+    useEffect(() => {
+      if (!open) return undefined;
+      function onPointerDown(event) {
+        if (containerRef.current && !containerRef.current.contains(event.target)) setOpen(false);
+      }
+      function onKeyDown(event) {
+        if (event.key === "Escape") setOpen(false);
+      }
+      document.addEventListener("mousedown", onPointerDown);
+      document.addEventListener("keydown", onKeyDown);
+      return () => {
+        document.removeEventListener("mousedown", onPointerDown);
+        document.removeEventListener("keydown", onKeyDown);
+      };
+    }, [open]);
+
+    return (
+      <div className="dash-tile-menu" ref={containerRef}>
+        <button
+          type="button"
+          className="dash-tile-menu-trigger"
+          aria-haspopup="true"
+          aria-expanded={open}
+          aria-label={t("dashboard.accounts.moreActions")}
+          onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }}
+        >
+          <UI.Icon name="MoreVertical" size={16} />
+        </button>
+        {open ? (
+          <div className="dash-tile-menu-list elev-md plate" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              className="dash-tile-menu-item"
+              onClick={() => { setOpen(false); onStatement(); }}
+            >
+              <UI.Icon name="FileText" size={14} />
+              {t("dashboard.accounts.statementMenuItem")}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   SCR.AccountsScreen = function AccountsScreen({
     accounts,
     deposits,
@@ -591,6 +702,7 @@
     onCloseDeposit,
     onApplyCredit,
     onWithdrawApplication,
+    onOpenStatement,
   }) {
     return (
       <div>
@@ -601,9 +713,12 @@
 
         <div className="dash-portfolio-tiles">
           {accounts.map((account) => (
-            <UI.Plate key={account.id} className="elev-sm" style={{ padding: 14 }}>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
-                {account.cur} &middot; {t("dashboard.accountType." + account.typeKey)}
+            <UI.Plate key={account.id} className="elev-sm" style={{ padding: 14, position: "relative" }}>
+              <div className="dash-account-tile-head">
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
+                  {account.cur} &middot; {t("dashboard.accountType." + account.typeKey)}
+                </div>
+                <AccountTileMenu onStatement={() => onOpenStatement(account)} />
               </div>
               <div className="dash-account-amount">{formatMinor(account.minor)}</div>
               <div className="text-muted" style={{ fontSize: 11 }}>{account.iban}</div>
@@ -1091,11 +1206,12 @@
     );
   }
 
-  function monthlyCardSpendMinor(transactions) {
+  function monthlyCardSpendMinor(transactions, accountId) {
     const now = new Date();
     return transactions
       .filter((row) => {
         if (row.channel !== "card" || row.direction !== "out" || row.statusKey !== "booked") return false;
+        if (row.accountId !== accountId) return false;
         const [day, month, year] = row.date.split(".").map(Number);
         return month === now.getMonth() + 1 && year === now.getFullYear();
       })
@@ -1104,6 +1220,7 @@
 
   SCR.CardsScreen = function CardsScreen({
     cards,
+    accounts,
     transactions,
     loading,
     error,
@@ -1135,7 +1252,7 @@
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const card = cards.find((row) => row.cardId === selectedCardId) || null;
     const disabled = busy || !card || card.state === "blocked";
-    const monthlySpendMinor = monthlyCardSpendMinor(transactions);
+    const monthlySpendMinor = card ? monthlyCardSpendMinor(transactions, card.accountId) : 0;
     const onlineLimitMinor = card ? card.onlineLimitMinor : 0;
     const monthlySpendPct = onlineLimitMinor > 0
       ? Math.min(100, Math.round((monthlySpendMinor / onlineLimitMinor) * 100))
@@ -1159,7 +1276,7 @@
         <div className="dash-screen-head">
           <h3 style={{ margin: 0 }}>{t("dashboard.cards.title")}</h3>
           <div style={{ display: "flex", gap: 8 }}>
-            <UI.Button type="button" variant="secondary" onClick={onOpenIssue}>
+            <UI.Button type="button" variant="primary" onClick={onOpenIssue}>
               {t("dashboard.cards.issue")}
             </UI.Button>
             <UI.Button type="button" variant="secondary" onClick={onOpenHistory}>
@@ -1266,8 +1383,16 @@
             {card ? (
               <UI.Plate className="elev-sm dash-quick-settings-panel" style={{ padding: 16, alignSelf: "start" }}>
                 <UI.Kicker style={{ marginBottom: 6 }}>{t("dashboard.cards.quickSettings")}</UI.Kicker>
-                <div style={{ fontFamily: "var(--font-heading)", fontSize: 20, marginBottom: 12 }}>
+                <div style={{ fontFamily: "var(--font-heading)", fontSize: 20, marginBottom: 4 }}>
                   {t("dashboard.cards.kind." + kindToI18nKey(card.kind)) + " " + card.numberMasked.slice(-4)}
+                </div>
+                <div className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+                  {t("dashboard.cards.linkedAccount", {
+                    account: (() => {
+                      const linked = accounts.find((row) => row.id === card.accountId);
+                      return linked ? DASH.accountLabel(linked) : t("dashboard.cards.accountUnknown");
+                    })(),
+                  })}
                 </div>
                 <div className="dash-settings-list">
                   <UI.Button
@@ -1368,7 +1493,7 @@
               <UI.Button
                 type="button"
                 variant="primary"
-                style={{ flex: 1, background: "var(--color-negative)", color: "white" }}
+                style={{ flex: 1 }}
                 onClick={() => {
                   setDeleteConfirmOpen(false);
                   onDelete();
@@ -2387,7 +2512,15 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                 <UI.Icon name="CircleHelp" size={15} />
                 {t("dashboard.settings.faq")}
               </UI.Button>
-              <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }}><UI.Icon name="Bot" size={15} />{t("dashboard.settings.agentInstructions")}</UI.Button>
+              <UI.Button
+                type="button"
+                variant="secondary"
+                style={{ justifyContent: "flex-start", gap: 8 }}
+                onClick={() => window.open("./agent-instructions.html", "_blank", "noopener,noreferrer")}
+              >
+                <UI.Icon name="Bot" size={15} />
+                {t("dashboard.settings.agentInstructions")}
+              </UI.Button>
               <div className="hr" style={{ margin: "4px 0" }} />
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8 }} onClick={onSignOut}><UI.Icon name="LogOut" size={15} />{t("dashboard.signOut")}</UI.Button>
               <UI.Button type="button" variant="secondary" style={{ justifyContent: "flex-start", gap: 8, color: "var(--color-negative)" }} onClick={() => setCloseAccountOpen(true)}><UI.Icon name="TriangleAlert" size={15} />{t("dashboard.settings.closeAccount")}</UI.Button>
@@ -2757,27 +2890,6 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
               </button>
             </div>
           </div>
-        </div>
-
-        <div className="dash-chat-side">
-          <div>
-            <UI.Kicker style={{ marginBottom: 8 }}>{t("dashboard.chat.contextTitle")}</UI.Kicker>
-            <div className="text-muted" style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-line" }}>
-              {t("dashboard.chat.contextBody")}
-            </div>
-          </div>
-          <div className="hr" />
-          <div>
-            <UI.Kicker style={{ marginBottom: 8 }}>{t("dashboard.chat.logTitle")}</UI.Kicker>
-            <div className="dash-chat-log">
-              <div>· {t("dashboard.chat.logResolved")}</div>
-              <div>· {t("dashboard.chat.logLimit")}</div>
-              <div>· {t("dashboard.chat.logFx")}</div>
-              <div>· {t("dashboard.chat.logDraft")}</div>
-            </div>
-          </div>
-          <div className="hr" />
-          <div className="text-muted" style={{ fontSize: 12 }}>{t("dashboard.chat.a11yNote")}</div>
         </div>
       </div>
     );

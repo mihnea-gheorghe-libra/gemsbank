@@ -30,6 +30,16 @@ class JournalRepository(Protocol):
 
     async def count_for(self, account_ids: list[str]) -> int: ...
 
+    async def in_range_for(
+        self,
+        account_ids: list[str],
+        date_from: datetime | None,
+        date_to: datetime | None,
+        limit: int = 5000,
+    ) -> list[JournalTransaction]: ...
+
+    async def balance_before(self, account_ids: list[str], before: datetime | None) -> int: ...
+
 
 class Clock(Protocol):
     def now(self) -> datetime: ...
@@ -145,6 +155,18 @@ class LedgerService:
 
         next_cursor = (page[-1].posted_at, page[-1].id) if has_more and page else None
         return rows, next_cursor
+
+    async def statement_movements(
+        self,
+        account_id: str,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ) -> list[dict[str, Any]]:
+        transactions = await self._journal.in_range_for([account_id], date_from, date_to)
+        return [transaction.movement_view(account_id) for transaction in transactions]
+
+    async def opening_balance(self, account_id: str, date_from: datetime | None) -> int:
+        return await self._journal.balance_before([account_id], date_from)
 
 
 @lru_cache(maxsize=1)
