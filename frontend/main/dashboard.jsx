@@ -982,6 +982,12 @@
                 onNavigate={navigate}
                 onAddFunds={openAddFunds}
                 onExchange={openExchange}
+                onOpenAccount={() => {
+                  setScreen("accounts");
+                  setOpenAccountError(null);
+                  setOpenAccountInitialType(null);
+                  setOpenAccountShown(true);
+                }}
               />
             ) : null}
             {screen === "payments" ? (
