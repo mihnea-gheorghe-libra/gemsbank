@@ -112,6 +112,7 @@
     );
   }
 
+SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, onToggleBalance, onNavigate, onAddFunds, onExchange, onOpenAccount }) {
   const INSIGHT_CARD_LIMIT = 2;
 
   function renderInsightText(insight, currentLang) {
@@ -210,7 +211,7 @@
         <UI.Plate className="dash-accounts-card elev-sm">
           <div className="dash-kicker-row">
             <UI.Kicker>{t("dashboard.home.accounts")}</UI.Kicker>
-            <a href="#" onClick={(event) => { event.preventDefault(); onNavigate("portfolio"); }}>{t("dashboard.home.openAccount")}</a>
+            <a href="#" onClick={(event) => { event.preventDefault(); onOpenAccount(); }}>{t("dashboard.home.openAccount")}</a>
           </div>
           <div className="dash-accounts-tiles">
             {accounts.map((account, index) => (
@@ -1275,7 +1276,7 @@
     utilities: "var(--color-lime-600)",
     transport: "var(--color-plum-400)",
     entertainment: "var(--color-lime-400)",
-    transfer: "var(--color-plum-700)",
+    transfer: "var(--color-plum-400)",
     income: "var(--color-lime-700)",
     other: "var(--color-neutral-600)",
   };
@@ -1743,7 +1744,7 @@
                     wrapperStyle={{ fontSize: 12, color: "var(--color-muted)" }}
                   />
                   <RC.Bar dataKey="income" name="income" fill="var(--color-lime-500)" radius={[6, 6, 0, 0]} />
-                  <RC.Bar dataKey="spend" name="spend" fill="var(--color-plum-900)" radius={[6, 6, 0, 0]} />
+                  <RC.Bar dataKey="spend" name="spend" fill="var(--color-plum-400)" radius={[6, 6, 0, 0]} />
                 </RC.BarChart>
               </RC.ResponsiveContainer>
             )}
