@@ -505,7 +505,7 @@
 
 /* ── chat ────────────────────────────────────────────────── */
 .dash-chat-layout { display: flex; justify-content: center; height: 100%; min-height: 0; }
-.dash-chat-col { display: flex; flex-direction: column; min-height: 0; width: 100%; max-width: 860px; }
+.dash-chat-col { display: flex; flex-direction: column; min-height: 0; width: 100%; max-width: 1200px; }
 .dash-chat-scroll { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 6px; }
 .dash-msg { animation: dashIn 0.2s ease; }
 .dash-msg-user {

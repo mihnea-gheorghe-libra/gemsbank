@@ -1369,8 +1369,8 @@
                 onOpenIssue={openIssueDialog}
                 onOpenHistory={() => setHistoryOpen(true)}
                 busy={cardBusy}
-                onFreeze={promptFreezeCard}
-                onUnfreeze={promptUnfreezeCard}
+                onFreeze={freezeCard}
+                onUnfreeze={unfreezeCard}
                 onDelete={promptDeleteCard}
                 pin={cardPin}
                 pinShown={pinShown}
