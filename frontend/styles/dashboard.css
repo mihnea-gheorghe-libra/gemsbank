@@ -523,8 +523,8 @@
 .dash-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
 /* ── chat ────────────────────────────────────────────────── */
-.dash-chat-layout { display: grid; grid-template-columns: 1fr 268px; gap: 20px; height: 100%; min-height: 0; }
-.dash-chat-col { display: flex; flex-direction: column; min-height: 0; }
+.dash-chat-layout { display: flex; justify-content: center; height: 100%; min-height: 0; }
+.dash-chat-col { display: flex; flex-direction: column; min-height: 0; width: 100%; max-width: 1200px; }
 .dash-chat-scroll { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 6px; }
 .dash-msg { animation: dashIn 0.2s ease; }
 .dash-msg-user {
@@ -584,7 +584,7 @@
   .dash-sidebar { width: 100%; flex-direction: row; align-items: center; padding: 12px; overflow-x: auto; }
   .dash-sidebar-brand { padding: 0 12px 0 4px; }
   .dash-sidebar-foot { display: none; }
-  .dash-grid-home, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-layout, .dash-settings-grid, .dash-chat-layout, .dash-invest-row {
+  .dash-grid-home, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-layout, .dash-settings-grid, .dash-invest-row {
     grid-template-columns: 1fr;
   }
   .dash-balance-card { grid-row: auto; }
