@@ -256,6 +256,11 @@
     const [messages, setMessages] = useState([
       { role: "ai", kind: "text", text: t("dashboard.chat.seedPlain") },
     ]);
+    const [playingMessageIndex, setPlayingMessageIndex] = useState(null);
+    const [ttsBusyIndex, setTtsBusyIndex] = useState(null);
+    const audioPlayerRef = useRef(null);
+    const audioCacheRef = useRef(new Map());
+    const abortControllerRef = useRef(null);
     const [me, setMe] = useState(null);
     const [insights, setInsights] = useState([]);
     const [insightHistory, setInsightHistory] = useState([]);
@@ -271,12 +276,12 @@
     const [addFundsShown, setAddFundsShown] = useState(false);
     const [addFundsBusy, setAddFundsBusy] = useState(false);
     const [addFundsError, setAddFundsError] = useState(null);
-    const [exchangeShown, setExchangeShown] = useState(false);
-    const [exchangeBusy, setExchangeBusy] = useState(false);
-    const [exchangeError, setExchangeError] = useState(null);
     const [statementAccount, setStatementAccount] = useState(null);
     const [statementBusy, setStatementBusy] = useState(false);
     const [statementError, setStatementError] = useState(null);
+    const [exchangeShown, setExchangeShown] = useState(false);
+    const [exchangeBusy, setExchangeBusy] = useState(false);
+    const [exchangeError, setExchangeError] = useState(null);
     const [secureTimer, setSecureTimer] = useState(0);
 
     useEffect(() => {
@@ -328,6 +333,7 @@
         cancelled = true;
       };
     }, [username]);
+
     const loadPaymentsData = useCallback(async () => {
       const [accountList, txList, pendingList, templateList] = await Promise.all([
         api.listAccounts(),
@@ -373,14 +379,84 @@
       setBalanceHidden((hidden) => !hidden);
     }, []);
 
+    const stopSpeaking = useCallback(() => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.currentTime = 0;
+        audioPlayerRef.current = null;
+      }
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      setPlayingMessageIndex(null);
+      setTtsBusyIndex(null);
+    }, []);
+
+    const speakMessage = useCallback(async (text, index) => {
+      const clean = (text || "").trim();
+      if (!clean) return;
+      if (playingMessageIndex === index || ttsBusyIndex === index) {
+        stopSpeaking();
+        return;
+      }
+      stopSpeaking();
+      setTtsBusyIndex(index);
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      try {
+        let blobUrl = audioCacheRef.current.get(clean);
+        if (!blobUrl) {
+          const blob = await api.synthesizeSpeech(clean, GEMS.i18n.locale, null, controller.signal);
+          blobUrl = URL.createObjectURL(blob);
+          audioCacheRef.current.set(clean, blobUrl);
+        }
+        if (controller.signal.aborted) return;
+        const audio = new Audio(blobUrl);
+        audioPlayerRef.current = audio;
+        setPlayingMessageIndex(index);
+        setTtsBusyIndex(null);
+        audio.onended = () => {
+          setPlayingMessageIndex(null);
+          audioPlayerRef.current = null;
+        };
+        audio.onerror = () => {
+          setPlayingMessageIndex(null);
+          audioPlayerRef.current = null;
+          if (window.speechSynthesis && !controller.signal.aborted) {
+            const utterance = new SpeechSynthesisUtterance(clean);
+            utterance.lang = GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB";
+            window.speechSynthesis.speak(utterance);
+          }
+        };
+        await audio.play();
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setTtsBusyIndex(null);
+        setPlayingMessageIndex(null);
+        if (window.speechSynthesis) {
+          const utterance = new SpeechSynthesisUtterance(clean);
+          utterance.lang = GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB";
+          window.speechSynthesis.speak(utterance);
+        }
+      }
+    }, [playingMessageIndex, ttsBusyIndex, stopSpeaking]);
+
     const pushExchange = useCallback((userText, reply) => {
       setMessages((list) => {
         const base = screen === "chat" ? list : [];
+        const nextIndex = base.length + 1;
+        if (ttsOn && reply && reply.text) {
+          setTimeout(() => speakMessage(reply.text, nextIndex), 50);
+        }
         return base.concat([{ role: "user", kind: "text", text: userText }, reply]);
       });
       setScreen("chat");
       setBalanceHidden(true);
-    }, [screen]);
+    }, [screen, ttsOn, speakMessage]);
 
     const stopRecording = useCallback(() => {
       const recorder = recorderRef.current;
@@ -452,20 +528,32 @@
     const toggleMic = useCallback(() => {
       if (micBusy) return;
       if (micOn) stopRecording();
-      else startRecording();
-    }, [micOn, micBusy, startRecording, stopRecording]);
+      else {
+        stopSpeaking();
+        startRecording();
+      }
+    }, [micOn, micBusy, startRecording, stopRecording, stopSpeaking]);
 
     useEffect(() => {
-      if (screen !== "chat") stopRecording();
-    }, [screen, stopRecording]);
+      if (screen !== "chat") {
+        stopRecording();
+        stopSpeaking();
+      }
+    }, [screen, stopRecording, stopSpeaking]);
 
-    useEffect(() => stopRecording, [stopRecording]);
+    useEffect(() => {
+      return () => {
+        stopRecording();
+        stopSpeaking();
+      };
+    }, [stopRecording, stopSpeaking]);
 
     const sendQuestion = useCallback((raw) => {
       const text = String(raw || "").trim();
       if (!text || chatBusy) return;
       const history = transcriptOf(messages);
       const origin = screen;
+      stopSpeaking();
       setMessages((list) => list.concat([{ role: "user", kind: "text", text }]));
       setLastQuestion(text);
       setScreen("chat");
@@ -481,13 +569,17 @@
           const escalated = Boolean(escalation.offered);
           const answer = (result.answer || "").trim() || (escalated ? t("dashboard.chat.handoffOffered") : t("dashboard.chat.errorNote"));
           setLastAgents(result.agentsUsed || []);
-          setMessages((list) =>
-            list.concat([
+          setMessages((list) => {
+            const nextIndex = list.length;
+            if (ttsOn && answer) {
+              setTimeout(() => speakMessage(answer, nextIndex), 50);
+            }
+            return list.concat([
               proposal
                 ? { role: "ai", kind: "proposal", text: answer, proposal, aiGenerated: true }
                 : { role: "ai", kind: "text", text: answer, aiGenerated: true, escalated },
-            ])
-          );
+            ]);
+          });
         })
         .catch((error) => {
           const retryAfter = error && error.details && error.details.retryAfterSeconds;
@@ -497,10 +589,16 @@
                   minutes: Math.max(1, Math.ceil((retryAfter || 60) / 60)),
                 })
               : t("dashboard.chat.errorNote");
-          setMessages((list) => list.concat([{ role: "ai", kind: "text", text: note }]));
+          setMessages((list) => {
+            const nextIndex = list.length;
+            if (ttsOn && note) {
+              setTimeout(() => speakMessage(note, nextIndex), 50);
+            }
+            return list.concat([{ role: "ai", kind: "text", text: note }]);
+          });
         })
         .finally(() => setChatBusy(false));
-    }, [chatBusy, messages, screen]);
+    }, [chatBusy, messages, screen, stopSpeaking, ttsOn, speakMessage]);
 
     const sendDraft = useCallback(() => {
       const text = draft.trim();
@@ -1404,6 +1502,12 @@
                 handoffBusy={handoffBusy}
                 handoffSent={handoffSent}
                 username={firstName}
+                ttsOn={ttsOn}
+                onToggleTts={() => setTtsOn((value) => !value)}
+                playingMessageIndex={playingMessageIndex}
+                ttsBusyIndex={ttsBusyIndex}
+                onSpeakMessage={speakMessage}
+                onStopSpeaking={stopSpeaking}
               />
             ) : null}
             {screen === "accounts" ? (

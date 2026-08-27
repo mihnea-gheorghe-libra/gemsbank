@@ -30,6 +30,10 @@ from backend.agents.payments_service import (
     get_payments_agent_service,
 )
 from backend.agents.service import SupportService, get_support_service
+from backend.agents.synthesis_service import (
+    SynthesisService,
+    get_synthesis_service,
+)
 from backend.agents.transcript import sanitise_history
 from backend.agents.transcription_service import (
     TranscriptionService,
@@ -283,6 +287,12 @@ class GoalRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class SynthesizeRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=5000)
+    language: str | None = None
+    voice: str | None = None
+
+
 ServiceDep = Annotated[OnboardingService, Depends(get_onboarding_service)]
 AuthDep = Annotated[AuthService, Depends(get_auth_service)]
 AccountsDep = Annotated[AccountsService, Depends(get_accounts_service)]
@@ -300,6 +310,7 @@ OrchestratorDep = Annotated[OrchestratorService, Depends(get_orchestrator_servic
 TranscriptionDep = Annotated[
     TranscriptionService, Depends(get_transcription_service)
 ]
+SynthesisDep = Annotated[SynthesisService, Depends(get_synthesis_service)]
 EscalationsDep = Annotated[EscalationsService, Depends(get_escalations_service)]
 ExchangeDep = Annotated[ExchangeService, Depends(get_exchange_service)]
 
@@ -972,6 +983,18 @@ async def transcribe_voice_input(
         actor.id, content, audio.content_type or "", language
     )
     return {"text": transcript.text}
+
+
+@agents_router.post("/synthesize")
+async def synthesize_speech_output(
+    actor: CurrentActor,
+    service: SynthesisDep,
+    payload: SynthesizeRequest,
+) -> Response:
+    audio_bytes = await service.synthesize(
+        actor.id, payload.text, payload.language, payload.voice
+    )
+    return Response(content=audio_bytes, media_type="audio/mpeg")
 
 
 @agents_router.post("/handoff", status_code=201)

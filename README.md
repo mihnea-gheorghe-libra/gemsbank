@@ -1104,6 +1104,21 @@ Not done: no streaming (the clip is transcribed once, on stop, not as you speak)
 speaker verification, no server-side language detection beyond the `ro`/`en` hint the interface
 already knows, and no voice on the docked assistant — only the full chat screen.
 
+## Voice output — text-to-speech for the AI Assistant
+
+`AzureSpeechSynthesizer` (`backend/agents/synthesis.py`) powers speech synthesis for the AI Assistant
+via Azure AI Speech (`POST /agents/synthesize`). It maps `ro` to `ro-RO-AlinaNeural` and `en` to
+`en-US-JennyNeural`, building SSML with XML escaping and returning standard MP3 audio streams.
+
+`SynthesisService` (`backend/agents/synthesis_service.py`) validates text non-emptiness and caps
+length at `SPEECH_TTS_MAX_CHARS` (5,000 characters). Auditing (`agents.voice.synthesized`,
+`entityType: "voice_output"`) logs character count, language, and byte count without persisting the
+spoken words in the journal.
+
+In the frontend, every AI message bubble includes a "Read aloud" speaker button for on-demand playback,
+and toggling Read Aloud in Settings or the chat header automatically reads incoming assistant responses
+aloud with seamless in-memory audio caching and client-side `window.speechSynthesis` fallback.
+
 ## What the payments screen does not do yet
 
 Present in the interface, deliberately inert, each marked "coming soon" rather than removed

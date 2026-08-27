@@ -551,6 +551,35 @@
 .dash-handoff-link { background: none; border: none; padding: 6px 4px; min-height: 24px; font: inherit; font-size: 12px; color: var(--color-primary); text-decoration: underline; cursor: pointer; }
 .dash-handoff-link:disabled { color: var(--color-muted); cursor: default; text-decoration: none; }
 .dash-proposal-note { font-size: 12px; line-height: 1.45; color: var(--color-muted); margin: 0 0 12px; }
+.dash-msg-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.dash-msg-speak-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: transparent; border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 4px); padding: 2px 8px; font-size: 11px;
+  color: var(--color-muted); cursor: pointer; transition: all 0.15s ease;
+  font-family: inherit;
+}
+.dash-msg-speak-btn:hover {
+  color: var(--color-text); border-color: var(--color-primary);
+  background: var(--color-surface-muted);
+}
+.dash-msg-speak-btn.is-speaking {
+  color: var(--color-negative, #e11d48);
+  border-color: color-mix(in srgb, var(--color-negative, #e11d48) 50%, var(--color-border));
+  background: color-mix(in srgb, var(--color-negative, #e11d48) 10%, transparent);
+  font-weight: 500;
+}
+.dash-msg-speak-btn.is-speaking:hover {
+  color: #fff;
+  border-color: var(--color-negative, #e11d48);
+  background: var(--color-negative, #e11d48);
+}
+.dash-msg-speak-btn.is-speaking svg {
+  animation: dashPulse 1.2s infinite;
+}
+.dash-chat-header-actions {
+  display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 8px;
+}
 .dash-table-card { margin-top: 12px; padding: 14px; max-width: 560px; }
 .dash-chart-card { margin-top: 12px; padding: 16px; max-width: 460px; }
 
