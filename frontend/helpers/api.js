@@ -193,5 +193,27 @@
       if (language) form.append("language", language);
       return send("/agents/transcribe", { method: "POST", form });
     },
+    synthesizeSpeech: async (text, language, voice, signal) => {
+      const headers = { "Content-Type": "application/json" };
+      if (sessionToken) {
+        headers["Authorization"] = "Bearer " + sessionToken;
+      }
+      const response = await fetch("/agents/synthesize", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ text, language, voice }),
+        signal,
+      });
+      if (!response.ok) {
+        let body = null;
+        try {
+          body = await response.json();
+        } catch (err) {
+          body = null;
+        }
+        throw new ApiError(body && body.error, response.status);
+      }
+      return response.blob();
+    },
   };
 })();

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -16,11 +17,6 @@ class Settings(BaseSettings):
 
     azure_docintel_endpoint: str | None = None
     azure_docintel_key: str | None = None
-
-    azure_openai_endpoint: str | None = None
-    azure_openai_api_key: str | None = None
-    azure_openai_deployment_name: str | None = None
-    azure_openai_api_version: str = "2024-12-01-preview"
 
     gnews_api_key: str | None = None
     gnews_base_url: str = "https://gnews.io/api/v4"
@@ -76,7 +72,22 @@ class Settings(BaseSettings):
     azure_openai_endpoint: str | None = None
     azure_openai_api_key: str | None = None
     azure_openai_api_version: str = "2024-10-21"
-    azure_openai_deployment: str | None = None
+    azure_openai_deployment: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("azure_openai_deployment", "azure_openai_deployment_name"),
+    )
+    azure_openai_deployment_name: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("azure_openai_deployment_name", "azure_openai_deployment"),
+    )
+
+    @model_validator(mode="after")
+    def _sync_azure_openai_fields(self) -> "Settings":
+        if not self.azure_openai_deployment and self.azure_openai_deployment_name:
+            object.__setattr__(self, "azure_openai_deployment", self.azure_openai_deployment_name)
+        elif not self.azure_openai_deployment_name and self.azure_openai_deployment:
+            object.__setattr__(self, "azure_openai_deployment_name", self.azure_openai_deployment)
+        return self
 
     azure_speech_endpoint: str | None = None
     azure_speech_api_key: str | None = None
@@ -84,6 +95,9 @@ class Settings(BaseSettings):
     azure_speech_api_version: str = "2024-11-15"
     speech_max_upload_bytes: int = 12_000_000
     speech_timeout_seconds: float = 30.0
+    speech_tts_max_chars: int = 5000
+    azure_speech_tts_voice_ro: str = "ro-RO-AlinaNeural"
+    azure_speech_tts_voice_en: str = "en-US-JennyNeural"
 
     cashflow_low_balance_threshold_minor: int = 0
 

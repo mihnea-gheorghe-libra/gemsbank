@@ -2361,6 +2361,16 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                   <UI.Button type="button" variant={theme === "dark" ? "primary" : "secondary"} style={{ gap: 6 }} onClick={() => onTheme("dark")}><UI.Icon name="Moon" size={15} />{t("dashboard.settings.dark")}</UI.Button>
                 </div>
               </div>
+              <div>
+                <div style={{ fontSize: 13, marginBottom: 6 }}>{t("dashboard.settings.readAloud")}</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <UI.Button type="button" variant={ttsOn ? "primary" : "secondary"} style={{ gap: 6 }} onClick={onToggleTts}>
+                    <UI.Icon name={ttsOn ? "Volume2" : "VolumeX"} size={15} />
+                    {ttsOn ? t("dashboard.settings.readAloudOn") : t("dashboard.settings.readAloudOff")}
+                  </UI.Button>
+                  <span className="text-muted" style={{ fontSize: 12 }}>{t("dashboard.settings.readAloudNote")}</span>
+                </div>
+              </div>
             </div>
           </UI.Plate>
 
@@ -2443,7 +2453,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   };
 
-  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, micBusy, micError, onToggleMic, onPromptClick, prompts, onConfirmTx, onConfirmProposal, onRequestHuman, handoffBusy, handoffSent, username }) {
+  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, micBusy, micError, onToggleMic, onPromptClick, prompts, onConfirmTx, onConfirmProposal, onRequestHuman, handoffBusy, handoffSent, username, ttsOn, onToggleTts, playingMessageIndex, ttsBusyIndex, onSpeakMessage, onStopSpeaking }) {
     const inputRef = useRef(null);
 
     useEffect(() => {
@@ -2457,6 +2467,39 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     return (
       <div className="dash-chat-layout">
         <div className="dash-chat-col">
+          <div className="dash-chat-header-actions">
+            {(playingMessageIndex !== null || ttsBusyIndex !== null) ? (
+              <UI.Button
+                type="button"
+                variant="secondary"
+                onClick={onStopSpeaking}
+                style={{ fontSize: 12, padding: "4px 10px", gap: 6, borderColor: "var(--color-negative)", color: "var(--color-negative)" }}
+                title={t("dashboard.chat.stopSpeak")}
+              >
+                <UI.Icon name="Square" size={12} />
+                <span>{t("dashboard.chat.stopSpeak")}</span>
+              </UI.Button>
+            ) : null}
+
+            <UI.Button
+              type="button"
+              variant="secondary"
+              className={ttsOn ? "dash-mic-live" : null}
+              aria-pressed={ttsOn}
+              onClick={() => {
+                if (playingMessageIndex !== null || ttsBusyIndex !== null) {
+                  onStopSpeaking && onStopSpeaking();
+                }
+                onToggleTts && onToggleTts();
+              }}
+              style={{ fontSize: 12, padding: "4px 8px", gap: 6 }}
+              title={ttsOn ? t("dashboard.chat.ttsOn") : t("dashboard.chat.ttsOff")}
+            >
+              <UI.Icon name={ttsOn ? "Volume2" : "VolumeX"} size={14} />
+              <span>{ttsOn ? t("dashboard.chat.ttsOn") : t("dashboard.chat.ttsOff")}</span>
+            </UI.Button>
+          </div>
+
           <div className="dash-chat-scroll">
             {messages.map((message, index) => (
               <div className="dash-msg" key={index}>
@@ -2467,6 +2510,49 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                     <span className="dash-msg-ai-dot" aria-hidden="true" />
                     <div className="dash-msg-ai-body">
                       {message.text ? <div>{message.text}</div> : null}
+
+                      {message.text ? (
+                        <div className="dash-msg-actions">
+                          <button
+                            type="button"
+                            className={UI.classNames(
+                              "dash-msg-speak-btn",
+                              (playingMessageIndex === index || ttsBusyIndex === index) && "is-speaking"
+                            )}
+                            onClick={() => {
+                              if (playingMessageIndex === index || ttsBusyIndex === index) {
+                                onStopSpeaking && onStopSpeaking();
+                              } else {
+                                onSpeakMessage && onSpeakMessage(message.text, index);
+                              }
+                            }}
+                            title={
+                              (playingMessageIndex === index || ttsBusyIndex === index)
+                                ? t("dashboard.chat.stopSpeak")
+                                : t("dashboard.chat.speak")
+                            }
+                            aria-label={
+                              (playingMessageIndex === index || ttsBusyIndex === index)
+                                ? t("dashboard.chat.stopSpeak")
+                                : t("dashboard.chat.speak")
+                            }
+                          >
+                            <UI.Icon
+                              name={
+                                (playingMessageIndex === index || ttsBusyIndex === index)
+                                  ? "Square"
+                                  : "Volume2"
+                              }
+                              size={12}
+                            />
+                            <span>
+                              {(playingMessageIndex === index || ttsBusyIndex === index)
+                                ? t("dashboard.chat.stopSpeak")
+                                : t("dashboard.chat.speak")}
+                            </span>
+                          </button>
+                        </div>
+                      ) : null}
 
                       {message.kind === "tx" ? (
                         <UI.Plate className="dash-tx-card">
