@@ -167,6 +167,7 @@
         portfolio: "Portfolio",
         cards: "Cards",
         analytics: "Analytics",
+        education: "Financial education",
         settings: "Settings",
       },
       tag: {
@@ -177,6 +178,7 @@
         portfolio: "PORTFOLIO",
         cards: "CARD MANAGEMENT",
         analytics: "ANALYTICS",
+        education: "FINANCIAL EDUCATION",
         settings: "SETTINGS",
       },
       greeting: "Good afternoon, {username}",
@@ -557,38 +559,6 @@
         loading: "Loading your activity…",
         empty: "No transactions yet for this period.",
         aiDisclaimer: "AI-generated insight — always double-check before acting on it.",
-        education: {
-          title: "Financial basics",
-          readMore: "Read more",
-          showLess: "Show less",
-          tips: [
-            {
-              title: "What's an emergency fund?",
-              summary: "A cushion of 3–6 months of expenses, kept somewhere you can reach quickly without selling anything.",
-              body: "An emergency fund sits in an easy-access account, not invested, so a lost job, a medical bill or a broken appliance doesn't force you into debt. Most guidance suggests 3–6 months of essential expenses as a starting target — build it gradually, a fixed amount each month, before chasing higher-return goals.",
-            },
-            {
-              title: "How compound interest works",
-              summary: "Interest earns interest over time — the earlier you start saving, the more that effect does the work for you.",
-              body: "Simple interest is paid only on your original deposit. Compound interest is paid on your deposit plus everything it has already earned, so the balance grows faster the longer it's left alone. Two savers depositing the same amount reach very different totals if one starts a few years earlier — time in the account matters as much as the rate.",
-            },
-            {
-              title: "Fixed vs. variable interest rates",
-              summary: "A fixed rate stays the same for the term; a variable one moves with the market — each suits a different goal.",
-              body: "A fixed-rate product (like most term deposits) locks in a rate for a set period, so you know exactly what you'll earn or pay. A variable rate can rise or fall with the wider market, which can work in your favour or against it. Fixed rates suit predictability; variable rates suit flexibility.",
-            },
-            {
-              title: "Inflation and your savings",
-              summary: "If prices rise faster than your savings rate, the same balance buys less next year than it does today.",
-              body: "Inflation is the general rise in prices over time. Cash sitting at 0% loses purchasing power every year inflation is positive — 100 RON today may not buy the same basket of goods in a year. That's why keeping some savings in interest-bearing accounts, rather than only as idle cash, helps preserve what it can actually buy.",
-            },
-            {
-              title: "Savings account vs. term deposit",
-              summary: "A savings account keeps your money reachable; a term deposit usually pays more for agreeing not to touch it for a while.",
-              body: "A savings account lets you withdraw whenever you need to, typically at a lower rate. A term deposit locks the money away for a fixed period in exchange for a higher rate, with an early-withdrawal penalty if you break it. Match the product to how soon you might realistically need the money.",
-            },
-          ],
-        },
         recommendations: {
           title: "Personalized recommendations",
           loading: "Looking at your recent activity…",
@@ -598,6 +568,7 @@
         goal: {
           title: "Savings goal",
           noGoal: "No savings goal set yet.",
+          setGoal: "Set a goal",
           target: "Target",
           progressOf: "{progress} of {target}",
           projected: "At your current pace, you'll reach it around {date}.",
@@ -606,7 +577,51 @@
           streak: "{count}-week streak",
           streakHint: "Consecutive weeks with a contribution to this goal.",
           streakStart: "Start a streak by contributing to your goal a few weeks in a row.",
+          dialog: {
+            title: "Set a savings goal",
+            subtitle: "Describe what you're saving for — GEMS supports one active goal at a time.",
+            name: "Description",
+            namePlaceholder: "e.g. Car savings, Wedding, Emergency fund",
+            amount: "Target amount",
+            date: "Target date",
+            account: "Savings account",
+            cancel: "Cancel",
+            submit: "Set goal",
+            submitting: "Setting goal…",
+          },
         },
+      },
+      education: {
+        title: "Financial education",
+        readMore: "Read more",
+        showLess: "Show less",
+        tips: [
+          {
+            title: "What's an emergency fund?",
+            summary: "A cushion of 3–6 months of expenses, kept somewhere you can reach quickly without selling anything.",
+            body: "An emergency fund sits in an easy-access account, not invested, so a lost job, a medical bill or a broken appliance doesn't force you into debt. Most guidance suggests 3–6 months of essential expenses as a starting target — build it gradually, a fixed amount each month, before chasing higher-return goals.",
+          },
+          {
+            title: "How compound interest works",
+            summary: "Interest earns interest over time — the earlier you start saving, the more that effect does the work for you.",
+            body: "Simple interest is paid only on your original deposit. Compound interest is paid on your deposit plus everything it has already earned, so the balance grows faster the longer it's left alone. Two savers depositing the same amount reach very different totals if one starts a few years earlier — time in the account matters as much as the rate.",
+          },
+          {
+            title: "Fixed vs. variable interest rates",
+            summary: "A fixed rate stays the same for the term; a variable one moves with the market — each suits a different goal.",
+            body: "A fixed-rate product (like most term deposits) locks in a rate for a set period, so you know exactly what you'll earn or pay. A variable rate can rise or fall with the wider market, which can work in your favour or against it. Fixed rates suit predictability; variable rates suit flexibility.",
+          },
+          {
+            title: "Inflation and your savings",
+            summary: "If prices rise faster than your savings rate, the same balance buys less next year than it does today.",
+            body: "Inflation is the general rise in prices over time. Cash sitting at 0% loses purchasing power every year inflation is positive — 100 RON today may not buy the same basket of goods in a year. That's why keeping some savings in interest-bearing accounts, rather than only as idle cash, helps preserve what it can actually buy.",
+          },
+          {
+            title: "Savings account vs. term deposit",
+            summary: "A savings account keeps your money reachable; a term deposit usually pays more for agreeing not to touch it for a while.",
+            body: "A savings account lets you withdraw whenever you need to, typically at a lower rate. A term deposit locks the money away for a fixed period in exchange for a higher rate, with an early-withdrawal penalty if you break it. Match the product to how soon you might realistically need the money.",
+          },
+        ],
       },
       settings: {
         personalDetails: "PERSONAL DETAILS",
@@ -1062,6 +1077,7 @@
         portfolio: "Portofoliu",
         cards: "Carduri",
         analytics: "Analize",
+        education: "Educație financiară",
         settings: "Setări",
       },
       tag: {
@@ -1072,6 +1088,7 @@
         portfolio: "PORTOFOLIU",
         cards: "GESTIUNE CARDURI",
         analytics: "ANALIZE",
+        education: "EDUCAȚIE FINANCIARĂ",
         settings: "SETĂRI",
       },
       greeting: "Bună ziua, {username}",
@@ -1452,38 +1469,6 @@
         loading: "Se încarcă activitatea…",
         empty: "Nicio tranzacție încă pentru această perioadă.",
         aiDisclaimer: "Informație generată de AI — verifică întotdeauna înainte de a acționa.",
-        education: {
-          title: "Educație financiară",
-          readMore: "Citește mai mult",
-          showLess: "Arată mai puțin",
-          tips: [
-            {
-              title: "Ce este un fond de urgență?",
-              summary: "O rezervă cât 3–6 luni de cheltuieli, ținută undeva ușor accesibil, fără să vinzi nimic.",
-              body: "Fondul de urgență stă într-un cont ușor accesibil, neinvestit, ca să nu ajungi la credit dacă pierzi un venit, apare o factură medicală sau se strică un electrocasnic. Recomandarea uzuală e 3–6 luni de cheltuieli esențiale ca prim obiectiv — construiește-l treptat, cu o sumă fixă lunar, înainte să urmărești obiective cu randament mai mare.",
-            },
-            {
-              title: "Cum funcționează dobânda compusă",
-              summary: "Dobânda produce dobândă în timp — cu cât începi mai devreme să economisești, cu atât acest efect lucrează mai mult pentru tine.",
-              body: "Dobânda simplă se calculează doar la suma depusă inițial. Dobânda compusă se calculează la sumă plus tot ce a produs deja, deci soldul crește mai repede cu cât banii stau mai mult neatinși. Doi economisitori care depun aceeași sumă ajung la totaluri foarte diferite dacă unul începe cu câțiva ani mai devreme — timpul contează la fel de mult ca rata.",
-            },
-            {
-              title: "Dobândă fixă vs. variabilă",
-              summary: "Dobânda fixă rămâne aceeași pe toată perioada; cea variabilă se mișcă odată cu piața — fiecare se potrivește altui obiectiv.",
-              body: "Un produs cu dobândă fixă (cum sunt majoritatea depozitelor la termen) blochează rata pe o perioadă stabilită, deci știi exact cât vei câștiga. O dobândă variabilă poate crește sau scădea odată cu piața, ceea ce poate fi în avantajul sau dezavantajul tău. Dobânda fixă e potrivită pentru predictibilitate; cea variabilă, pentru flexibilitate.",
-            },
-            {
-              title: "Inflația și economiile tale",
-              summary: "Dacă prețurile cresc mai repede decât rata ta de economisire, același sold cumpără mai puțin anul viitor decât azi.",
-              body: "Inflația este creșterea generală a prețurilor în timp. Banii ținuți la 0% dobândă pierd din puterea de cumpărare în fiecare an cu inflație pozitivă — 100 RON azi s-ar putea să nu cumpere același coș de produse peste un an. De aceea, păstrarea unei părți din economii în conturi purtătoare de dobândă, nu doar ca numerar, ajută la păstrarea puterii lor de cumpărare.",
-            },
-            {
-              title: "Cont de economii vs. depozit la termen",
-              summary: "Un cont de economii îți ține banii la îndemână; un depozit la termen plătește de obicei mai mult în schimbul faptului că nu-i atingi o vreme.",
-              body: "Un cont de economii permite retrageri oricând, de obicei la o rată mai mică. Un depozit la termen blochează banii pe o perioadă fixă în schimbul unei rate mai mari, cu penalizare la retragere anticipată. Alege produsul în funcție de cât de curând ai putea avea nevoie realist de bani.",
-            },
-          ],
-        },
         recommendations: {
           title: "Recomandări personalizate",
           loading: "Analizăm activitatea ta recentă…",
@@ -1493,6 +1478,7 @@
         goal: {
           title: "Obiectiv de economisire",
           noGoal: "Nu ai încă un obiectiv de economisire setat.",
+          setGoal: "Setează un obiectiv",
           target: "Țintă",
           progressOf: "{progress} din {target}",
           projected: "În ritmul actual, îl atingi în jurul datei {date}.",
@@ -1501,7 +1487,51 @@
           streak: "Serie de {count} săptămâni",
           streakHint: "Săptămâni consecutive cu o contribuție la acest obiectiv.",
           streakStart: "Pornește o serie contribuind la obiectiv câteva săptămâni la rând.",
+          dialog: {
+            title: "Setează un obiectiv de economisire",
+            subtitle: "Descrie pentru ce economisești — GEMS suportă un singur obiectiv activ deodată.",
+            name: "Descriere",
+            namePlaceholder: "ex. Economisire mașină, Nuntă, Fond de urgență",
+            amount: "Sumă țintă",
+            date: "Dată țintă",
+            account: "Cont de economii",
+            cancel: "Anulează",
+            submit: "Setează obiectivul",
+            submitting: "Se setează…",
+          },
         },
+      },
+      education: {
+        title: "Educație financiară",
+        readMore: "Citește mai mult",
+        showLess: "Arată mai puțin",
+        tips: [
+          {
+            title: "Ce este un fond de urgență?",
+            summary: "O rezervă cât 3–6 luni de cheltuieli, ținută undeva ușor accesibil, fără să vinzi nimic.",
+            body: "Fondul de urgență stă într-un cont ușor accesibil, neinvestit, ca să nu ajungi la credit dacă pierzi un venit, apare o factură medicală sau se strică un electrocasnic. Recomandarea uzuală e 3–6 luni de cheltuieli esențiale ca prim obiectiv — construiește-l treptat, cu o sumă fixă lunar, înainte să urmărești obiective cu randament mai mare.",
+          },
+          {
+            title: "Cum funcționează dobânda compusă",
+            summary: "Dobânda produce dobândă în timp — cu cât începi mai devreme să economisești, cu atât acest efect lucrează mai mult pentru tine.",
+            body: "Dobânda simplă se calculează doar la suma depusă inițial. Dobânda compusă se calculează la sumă plus tot ce a produs deja, deci soldul crește mai repede cu cât banii stau mai mult neatinși. Doi economisitori care depun aceeași sumă ajung la totaluri foarte diferite dacă unul începe cu câțiva ani mai devreme — timpul contează la fel de mult ca rata.",
+          },
+          {
+            title: "Dobândă fixă vs. variabilă",
+            summary: "Dobânda fixă rămâne aceeași pe toată perioada; cea variabilă se mișcă odată cu piața — fiecare se potrivește altui obiectiv.",
+            body: "Un produs cu dobândă fixă (cum sunt majoritatea depozitelor la termen) blochează rata pe o perioadă stabilită, deci știi exact cât vei câștiga. O dobândă variabilă poate crește sau scădea odată cu piața, ceea ce poate fi în avantajul sau dezavantajul tău. Dobânda fixă e potrivită pentru predictibilitate; cea variabilă, pentru flexibilitate.",
+          },
+          {
+            title: "Inflația și economiile tale",
+            summary: "Dacă prețurile cresc mai repede decât rata ta de economisire, același sold cumpără mai puțin anul viitor decât azi.",
+            body: "Inflația este creșterea generală a prețurilor în timp. Banii ținuți la 0% dobândă pierd din puterea de cumpărare în fiecare an cu inflație pozitivă — 100 RON azi s-ar putea să nu cumpere același coș de produse peste un an. De aceea, păstrarea unei părți din economii în conturi purtătoare de dobândă, nu doar ca numerar, ajută la păstrarea puterii lor de cumpărare.",
+          },
+          {
+            title: "Cont de economii vs. depozit la termen",
+            summary: "Un cont de economii îți ține banii la îndemână; un depozit la termen plătește de obicei mai mult în schimbul faptului că nu-i atingi o vreme.",
+            body: "Un cont de economii permite retrageri oricând, de obicei la o rată mai mică. Un depozit la termen blochează banii pe o perioadă fixă în schimbul unei rate mai mari, cu penalizare la retragere anticipată. Alege produsul în funcție de cât de curând ai putea avea nevoie realist de bani.",
+          },
+        ],
       },
       settings: {
         personalDetails: "DATE PERSONALE",

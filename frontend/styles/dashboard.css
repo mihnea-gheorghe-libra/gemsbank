@@ -484,10 +484,9 @@
 .dash-ai-disclaimer { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; color: var(--color-muted); }
 .dash-ai-disclaimer .icon { flex: none; color: var(--color-primary); }
 
-.dash-tip-list { display: flex; flex-direction: column; gap: 14px; }
-.dash-tip { border-top: 1px solid var(--color-border); padding-top: 12px; }
-.dash-tip:first-child { border-top: none; padding-top: 0; }
-.dash-tip-title { font-size: 13px; font-weight: 600; }
+.dash-tip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 18px; }
+.dash-tip-card { padding: 18px; }
+.dash-tip-title { font-size: 14px; font-weight: 600; }
 .dash-tip-toggle {
   border: none; background: none; padding: 0; font-size: 12px; font-weight: 600;
   color: var(--color-primary); cursor: pointer;

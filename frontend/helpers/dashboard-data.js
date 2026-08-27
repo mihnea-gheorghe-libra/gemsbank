@@ -13,7 +13,8 @@
       { key: "portfolio", num: "05" },
       { key: "cards", num: "06" },
       { key: "analytics", num: "07" },
-      { key: "settings", num: "08" },
+      { key: "education", num: "08" },
+      { key: "settings", num: "09" },
     ],
 
     totalBalance: "128.470,55",

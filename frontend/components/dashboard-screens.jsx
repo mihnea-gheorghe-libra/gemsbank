@@ -1317,32 +1317,39 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
   function EducationTip({ tip }) {
     const [expanded, setExpanded] = useState(false);
     return (
-      <div className="dash-tip">
+      <UI.Plate className="elev-sm dash-tip-card">
         <div className="dash-tip-title">{tip.title}</div>
         <p className="text-muted" style={{ fontSize: 13, margin: "4px 0 8px" }}>
           {expanded ? tip.body : tip.summary}
         </p>
         <button type="button" className="dash-tip-toggle" onClick={() => setExpanded((value) => !value)}>
-          {expanded ? t("dashboard.analytics.education.showLess") : t("dashboard.analytics.education.readMore")}
+          {expanded ? t("dashboard.education.showLess") : t("dashboard.education.readMore")}
         </button>
-      </div>
+      </UI.Plate>
     );
   }
 
-  function EducationCard() {
-    const section = GEMS.i18n.dictionary.dashboard.analytics.education;
+  SCR.EducationScreen = function EducationScreen({ accounts }) {
+    const section = GEMS.i18n.dictionary.dashboard.education;
     const tips = (section && section.tips) || [];
     return (
-      <UI.Plate className="elev-sm" style={{ padding: 18 }}>
-        <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.analytics.education.title")}</UI.Kicker>
-        <div className="dash-tip-list">
+      <div>
+        <div className="dash-screen-head">
+          <h3 style={{ margin: 0 }}>{t("dashboard.education.title")}</h3>
+        </div>
+        <div className="dash-tip-grid">
           {tips.map((tip, index) => (
             <EducationTip tip={tip} key={index} />
           ))}
         </div>
-      </UI.Plate>
+
+        <div className="dash-analytics-cols" style={{ marginTop: 20 }}>
+          <RecommendationsCard />
+          <GoalProgressCard accounts={accounts} />
+        </div>
+      </div>
     );
-  }
+  };
 
   function RecommendationsCard() {
     const [state, setState] = useState({ loading: true, answer: null, error: null });
@@ -1390,11 +1397,76 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
     );
   }
 
-  function GoalProgressCard() {
+  function accountPickerLabel(account) {
+    return t("dashboard.accountType." + account.typeKey) + " · " + account.cur + " · " + account.ibanShort;
+  }
+
+  function SetGoalDialog({ accounts, busy, error, onSubmit, onDismiss }) {
+    const [accountId, setAccountId] = useState((accounts[0] && accounts[0].id) || "");
+    const [name, setName] = useState("");
+    const [amount, setAmount] = useState("");
+    const [targetDate, setTargetDate] = useState("");
+
+    const amountMinor = DASH.parseMinor(amount);
+    const minDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const ready = Boolean(accountId) && name.trim() !== "" && amountMinor > 0 && Boolean(targetDate);
+
+    function submit(event) {
+      event.preventDefault();
+      if (!ready) return;
+      onSubmit({ accountId, name: name.trim(), targetMinorUnits: amountMinor, targetDate });
+    }
+
+    return (
+      <UI.Dialog labelledBy="goal-dialog-title" onDismiss={onDismiss}>
+        <h2 id="goal-dialog-title" className="dialog-title">{t("dashboard.analytics.goal.dialog.title")}</h2>
+        <p className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.analytics.goal.dialog.subtitle")}</p>
+        <form noValidate onSubmit={submit}>
+          <UI.Field id="goal-account" label={t("dashboard.analytics.goal.dialog.account")}>
+            <UI.Select id="goal-account" value={accountId} onChange={(event) => setAccountId(event.target.value)}>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {accountPickerLabel(account)}
+                </option>
+              ))}
+            </UI.Select>
+          </UI.Field>
+          <UI.Field id="goal-name" label={t("dashboard.analytics.goal.dialog.name")} error={error ? error.message : null}>
+            <UI.TextInput
+              id="goal-name"
+              autoFocus
+              value={name}
+              placeholder={t("dashboard.analytics.goal.dialog.namePlaceholder")}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </UI.Field>
+          <UI.Field id="goal-amount" label={t("dashboard.analytics.goal.dialog.amount")}>
+            <UI.TextInput id="goal-amount" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} />
+          </UI.Field>
+          <UI.Field id="goal-date" label={t("dashboard.analytics.goal.dialog.date")}>
+            <UI.TextInput id="goal-date" type="date" min={minDate} value={targetDate} onChange={(event) => setTargetDate(event.target.value)} />
+          </UI.Field>
+          <div className="dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onDismiss}>{t("dashboard.analytics.goal.dialog.cancel")}</UI.Button>
+            <UI.Button type="submit" variant="primary" disabled={!ready || busy}>
+              {busy ? t("dashboard.analytics.goal.dialog.submitting") : t("dashboard.analytics.goal.dialog.submit")}
+            </UI.Button>
+          </div>
+        </form>
+      </UI.Dialog>
+    );
+  }
+
+  function GoalProgressCard({ accounts }) {
     const [state, setState] = useState({ loading: true, data: null, error: null });
+    const [refreshKey, setRefreshKey] = useState(0);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [creating, setCreating] = useState(false);
+    const [createError, setCreateError] = useState(null);
 
     useEffect(() => {
       let cancelled = false;
+      setState((previous) => ({ loading: true, data: previous.data, error: null }));
       api
         .getGoalProgress()
         .then((result) => {
@@ -1406,7 +1478,23 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
       return () => {
         cancelled = true;
       };
-    }, []);
+    }, [refreshKey]);
+
+    function submitGoal(payload) {
+      setCreating(true);
+      setCreateError(null);
+      api
+        .createGoal(payload.accountId, payload.name, payload.targetMinorUnits, payload.targetDate)
+        .then(() => {
+          setCreating(false);
+          setDialogOpen(false);
+          setRefreshKey((value) => value + 1);
+        })
+        .catch((err) => {
+          setCreating(false);
+          setCreateError(err);
+        });
+    }
 
     const data = state.data;
     const hasGoal = Boolean(data) && data.status === "ok";
@@ -1415,6 +1503,7 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
       ? Math.max(0, Math.min(100, Math.round((data.progressMinorUnits / data.targetMinorUnits) * 100)))
       : 0;
     const showStreak = hasGoal && data.streakWeeks >= 3;
+    const eligibleAccounts = (accounts || []).filter((account) => account.typeKey !== "invest");
 
     return (
       <UI.Plate className="elev-sm" style={{ padding: 18 }}>
@@ -1422,7 +1511,18 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
         {state.loading ? (
           <div className="dash-chart-empty">{t("dashboard.analytics.loading")}</div>
         ) : !hasGoal ? (
-          <div className="dash-chart-empty">{t("dashboard.analytics.goal.noGoal")}</div>
+          <div>
+            <div className="dash-chart-empty">{t("dashboard.analytics.goal.noGoal")}</div>
+            <UI.Button
+              type="button"
+              variant="secondary"
+              style={{ marginTop: 10 }}
+              disabled={!eligibleAccounts.length}
+              onClick={() => setDialogOpen(true)}
+            >
+              {t("dashboard.analytics.goal.setGoal")}
+            </UI.Button>
+          </div>
         ) : (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
@@ -1456,11 +1556,23 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
             )}
           </div>
         )}
+        {dialogOpen ? (
+          <SetGoalDialog
+            accounts={eligibleAccounts}
+            busy={creating}
+            error={createError}
+            onSubmit={submitGoal}
+            onDismiss={() => {
+              setDialogOpen(false);
+              setCreateError(null);
+            }}
+          />
+        ) : null}
       </UI.Plate>
     );
   }
 
-  SCR.AnalyticsScreen = function AnalyticsScreen({ range, onRange }) {
+  SCR.AnalyticsScreen = function AnalyticsScreen({ range, onRange, accounts }) {
     const RC = window.Recharts;
     const months = range === "3" ? 3 : range === "12" ? 12 : 6;
     const periods = [
@@ -1558,11 +1670,8 @@ SCR.HomeScreen = function HomeScreen({ accounts, transactions, balanceHidden, on
         <UI.ErrorNote error={error} />
 
         <div className="dash-analytics-cols" style={{ marginTop: 20 }}>
-          <EducationCard />
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            <RecommendationsCard />
-            <GoalProgressCard />
-          </div>
+          <RecommendationsCard />
+          <GoalProgressCard accounts={accounts} />
         </div>
       </div>
     );

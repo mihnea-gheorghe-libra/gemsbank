@@ -93,7 +93,7 @@ class ToolCallingAgent:
                 "type": "function",
                 "function": {
                     "name": capability.name,
-                    "description": capability.name,
+                    "description": f"Call this tool using exactly this name: '{capability.name}'.",
                     "parameters": capability.input_schema.model_json_schema(),
                 },
             }

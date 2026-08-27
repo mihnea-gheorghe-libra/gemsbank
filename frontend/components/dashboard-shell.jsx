@@ -20,6 +20,7 @@
     portfolio: "PieChart",
     cards: "CreditCard",
     analytics: "BarChart3",
+    education: "GraduationCap",
     settings: "Settings",
   };
 
