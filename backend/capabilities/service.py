@@ -4,8 +4,12 @@ from pydantic import BaseModel, Field
 
 from backend.auth.service import get_auth_service
 from backend.capabilities import analytics
+<<<<<<< HEAD
+from backend.capabilities import education as education_capabilities
+=======
 from backend.capabilities import cards as cards_capabilities
 from backend.capabilities import investments as investments_capabilities
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
 from backend.capabilities import payments as payments_capabilities
 from backend.capabilities import products as products_capabilities
 from backend.capabilities.registry import (
@@ -184,6 +188,16 @@ def get_capabilities_service() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            name="analytics.goal_pace.get",
+            input_schema=analytics.GoalPaceInput,
+            output_schema=analytics.GoalPaceOutput,
+            side_effect=SideEffect.READ,
+            required_scope="goals:read",
+            resolver=analytics.resolve_goal_pace,
+        )
+    )
+    registry.register(
+        Capability(
             name="analytics.month_recap.get",
             input_schema=analytics.MonthRecapInput,
             output_schema=analytics.MonthRecapOutput,
@@ -244,26 +258,52 @@ def get_capabilities_service() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+<<<<<<< HEAD
+            name="education.docs.search",
+            input_schema=education_capabilities.EducationSearchInput,
+            output_schema=education_capabilities.EducationSearchOutput,
+            side_effect=SideEffect.READ,
+            required_scope="education:read",
+            resolver=education_capabilities.resolve_education_search,
+=======
             name="investments.market.get",
             input_schema=investments_capabilities.MarketInput,
             output_schema=investments_capabilities.MarketOutput,
             side_effect=SideEffect.READ,
             required_scope="investments:read",
             resolver=investments_capabilities.resolve_market,
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
         )
     )
     registry.register(
         Capability(
+<<<<<<< HEAD
+            name="goals.create.propose",
+            input_schema=education_capabilities.GoalProposalInput,
+            output_schema=education_capabilities.GoalProposalOutput,
+            side_effect=SideEffect.WRITE,
+            required_scope="goals:propose",
+            resolver=education_capabilities.resolve_goal_proposal,
+=======
             name="deposits.products.list",
             input_schema=products_capabilities.DepositProductsInput,
             output_schema=products_capabilities.DepositProductsOutput,
             side_effect=SideEffect.READ,
             required_scope="products:read",
             resolver=products_capabilities.resolve_deposit_products,
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
         )
     )
     registry.register(
         Capability(
+<<<<<<< HEAD
+            name="goals.standingOrder.propose",
+            input_schema=education_capabilities.StandingOrderProposalInput,
+            output_schema=education_capabilities.StandingOrderProposalOutput,
+            side_effect=SideEffect.WRITE,
+            required_scope="goals:propose",
+            resolver=education_capabilities.resolve_standing_order_proposal,
+=======
             name="deposits.maturity.estimate",
             input_schema=products_capabilities.MaturityInput,
             output_schema=products_capabilities.MaturityOutput,
@@ -310,6 +350,7 @@ def get_capabilities_service() -> CapabilityRegistry:
             side_effect=SideEffect.WRITE,
             required_scope="cards:propose",
             resolver=cards_capabilities.resolve_card_action,
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
         )
     )
     return registry

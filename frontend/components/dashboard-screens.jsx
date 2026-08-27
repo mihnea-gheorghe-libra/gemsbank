@@ -1524,6 +1524,8 @@
   const CHART_SERIES_LABEL = {
     income: "dashboard.category.income",
     spend: "dashboard.analytics.spend",
+    current: "dashboard.analytics.goal.projectionCurrent",
+    needed: "dashboard.analytics.goal.projectionNeeded",
   };
 
   function monthBucketKey(date) {
@@ -1638,42 +1640,293 @@
     );
   }
 
-  function EducationTip({ tip }) {
-    const [expanded, setExpanded] = useState(false);
-    return (
-      <UI.Plate className="elev-sm dash-tip-card">
-        <div className="dash-tip-title">{tip.title}</div>
-        <p className="text-muted" style={{ fontSize: 13, margin: "4px 0 8px" }}>
-          {expanded ? tip.body : tip.summary}
-        </p>
-        <button type="button" className="dash-tip-toggle" onClick={() => setExpanded((value) => !value)}>
-          {expanded ? t("dashboard.education.showLess") : t("dashboard.education.readMore")}
-        </button>
-      </UI.Plate>
-    );
-  }
-
   SCR.EducationScreen = function EducationScreen({ accounts }) {
-    const section = GEMS.i18n.dictionary.dashboard.education;
-    const tips = (section && section.tips) || [];
+    const [goalVersion, setGoalVersion] = useState(0);
     return (
       <div>
         <div className="dash-screen-head">
           <h3 style={{ margin: 0 }}>{t("dashboard.education.title")}</h3>
         </div>
-        <div className="dash-tip-grid">
-          {tips.map((tip, index) => (
-            <EducationTip tip={tip} key={index} />
-          ))}
-        </div>
 
-        <div className="dash-analytics-cols" style={{ marginTop: 20 }}>
+        <EducationChatPanel onGoalCreated={() => setGoalVersion((value) => value + 1)} />
+
+        <div className="dash-edu-cols" style={{ marginTop: 20 }}>
           <RecommendationsCard />
-          <GoalProgressCard accounts={accounts} />
+          <GoalProgressCard accounts={accounts} goalVersion={goalVersion} />
         </div>
       </div>
     );
   };
+
+  function renderInlineText(line, keyPrefix) {
+    const parts = line.split(/(\*\*[^*]+\*\*)/g).filter((part) => part !== "");
+    return parts.map((part, index) =>
+      part.startsWith("**") && part.endsWith("**") ? (
+        <strong key={`${keyPrefix}-${index}`}>{part.slice(2, -2)}</strong>
+      ) : (
+        <React.Fragment key={`${keyPrefix}-${index}`}>{part}</React.Fragment>
+      )
+    );
+  }
+
+  function renderStructuredText(text) {
+    const blocks = text
+      .split(/\n{2,}/)
+      .map((block) => block.trim())
+      .filter(Boolean);
+    if (!blocks.length) return null;
+
+    return blocks.map((block, blockIndex) => {
+      const lines = block
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const isList = lines.length > 0 && lines.every((line) => /^[-*•]\s+/.test(line));
+
+      if (isList) {
+        return (
+          <ul className="dash-msg-list" key={blockIndex}>
+            {lines.map((line, lineIndex) => (
+              <li key={lineIndex}>
+                {renderInlineText(line.replace(/^[-*•]\s+/, ""), `${blockIndex}-${lineIndex}`)}
+              </li>
+            ))}
+          </ul>
+        );
+      }
+      return (
+        <p className="dash-msg-paragraph" key={blockIndex}>
+          {renderInlineText(lines.join(" "), String(blockIndex))}
+        </p>
+      );
+    });
+  }
+
+  function EducationChatPanel({ onGoalCreated }) {
+    const [messages, setMessages] = useState([
+      { role: "ai", kind: "text", text: t("dashboard.education.chat.seed") },
+    ]);
+    const [draft, setDraft] = useState("");
+    const [busy, setBusy] = useState(false);
+    const inputRef = useRef(null);
+
+    useEffect(() => {
+      if (busy || !inputRef.current) return;
+      const active = document.activeElement;
+      if (active && active !== document.body && active !== inputRef.current) return;
+      inputRef.current.focus();
+    }, [busy]);
+
+    function transcriptOf(list) {
+      return list
+        .filter((message) => message.kind === "text")
+        .filter((message) => typeof message.text === "string" && message.text.trim() !== "")
+        .slice(-10)
+        .map((message) => ({ role: message.role === "user" ? "user" : "assistant", content: message.text }));
+    }
+
+    function send() {
+      const text = draft.trim();
+      if (!text || busy) return;
+      const history = transcriptOf(messages);
+      setMessages((list) => list.concat([{ role: "user", kind: "text", text }]));
+      setDraft("");
+      setBusy(true);
+      api
+        .askGems(text, history, "education")
+        .then((result) => {
+          const proposals = (result.proposals || []).filter(
+            (item) => item && item.status === "proposed"
+          );
+          const goalProposal = proposals.filter((item) => item.proposalKind === "goal")[0];
+          const standingOrderProposal = proposals.filter(
+            (item) => item.proposalKind === "standingOrder"
+          )[0];
+          const answer = (result.answer || "").trim() || t("dashboard.chat.errorNote");
+          let reply = { role: "ai", kind: "text", text: answer, aiGenerated: true };
+          if (goalProposal) {
+            reply = { role: "ai", kind: "goalProposal", text: answer, proposal: goalProposal, aiGenerated: true };
+          } else if (standingOrderProposal) {
+            reply = {
+              role: "ai",
+              kind: "standingOrderProposal",
+              text: answer,
+              proposal: standingOrderProposal,
+              aiGenerated: true,
+            };
+          }
+          setMessages((list) => list.concat([reply]));
+        })
+        .catch((error) => {
+          const retryAfter = error && error.details && error.details.retryAfterSeconds;
+          const note =
+            error && error.code === "rate_limited"
+              ? t("dashboard.chat.rateLimitedNote", {
+                  minutes: Math.max(1, Math.ceil((retryAfter || 60) / 60)),
+                })
+              : t("dashboard.chat.errorNote");
+          setMessages((list) => list.concat([{ role: "ai", kind: "text", text: note }]));
+        })
+        .finally(() => setBusy(false));
+    }
+
+    return (
+      <UI.Plate className="elev-sm dash-edu-panel">
+        <div className="dash-edu-panel-head">
+          <span className="dash-edu-avatar" aria-hidden="true">
+            <UI.Icon name="Sparkles" size={16} />
+          </span>
+          <div>
+            <div className="dash-edu-title">{t("dashboard.education.chat.title")}</div>
+            <div className="dash-edu-subtitle">{t("dashboard.education.chat.subtitle")}</div>
+          </div>
+        </div>
+        <div className="dash-chat-scroll dash-edu-scroll">
+          {messages.map((message, index) => (
+            <div className="dash-msg" key={index}>
+              {message.role === "user" ? (
+                <div className="dash-msg-user">{message.text}</div>
+              ) : (
+                <div className="dash-msg-ai">
+                  <span className="dash-msg-ai-dot" aria-hidden="true" />
+                  <div className="dash-msg-ai-body">
+                    {message.text ? renderStructuredText(message.text) : null}
+
+                    {message.kind === "goalProposal" && message.proposal ? (
+                      <GoalProposalCard proposal={message.proposal} onGoalCreated={onGoalCreated} />
+                    ) : null}
+
+                    {message.kind === "standingOrderProposal" && message.proposal ? (
+                      <StandingOrderProposalCard proposal={message.proposal} />
+                    ) : null}
+
+                    {message.aiGenerated ? (
+                      <div className="dash-ai-disclaimer">
+                        <UI.Icon name="Sparkles" size={13} />
+                        {t("dashboard.analytics.aiDisclaimer")}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          {busy ? (
+            <div className="dash-msg">
+              <div className="dash-msg-ai">
+                <span className="dash-msg-ai-dot" aria-hidden="true" />
+                <div className="dash-msg-ai-body text-muted">{t("dashboard.chat.thinking")}</div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+        <div className="dash-chat-input-row dash-edu-input-row">
+          <input
+            ref={inputRef}
+            className="dash-chat-input"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") send();
+            }}
+            placeholder={t("dashboard.education.chat.placeholder")}
+            aria-label={t("dashboard.education.chat.placeholder")}
+          />
+          <UI.Button type="button" variant="primary" disabled={busy} onClick={send}>
+            {t("dashboard.education.chat.send")}
+          </UI.Button>
+        </div>
+      </UI.Plate>
+    );
+  }
+
+  function GoalProposalCard({ proposal, onGoalCreated }) {
+    const [state, setState] = useState({ busy: false, done: false, error: false });
+
+    function confirm() {
+      setState({ busy: true, done: false, error: false });
+      api
+        .createGoal(proposal.accountId, proposal.name, proposal.targetMinorUnits, proposal.targetDate)
+        .then(() => {
+          setState({ busy: false, done: true, error: false });
+          if (onGoalCreated) onGoalCreated();
+        })
+        .catch(() => setState({ busy: false, done: false, error: true }));
+    }
+
+    return (
+      <UI.Plate className="dash-tx-card">
+        <UI.Kicker style={{ marginBottom: 4 }}>{t("dashboard.education.chat.goalTitle")}</UI.Kicker>
+        <div className="dash-tx-amount">{proposal.targetFormatted}</div>
+        <div className="dash-tx-grid">
+          <span className="text-muted">{t("dashboard.education.chat.goalTarget")}</span>
+          <span>{proposal.name}</span>
+          <span className="text-muted">{t("dashboard.education.chat.goalDate")}</span>
+          <span>{GEMS.i18n.isoToDisplayDate(proposal.targetDate)}</span>
+          <span className="text-muted">{t("dashboard.education.chat.goalAccount")}</span>
+          <span>{proposal.accountLabel}</span>
+        </div>
+        <p className="dash-proposal-note">{t("dashboard.chat.proposalNotSent")}</p>
+        {state.done ? (
+          <p className="dash-proposal-note">{t("dashboard.education.chat.goalSuccess")}</p>
+        ) : (
+          <div style={{ display: "flex", gap: 8 }}>
+            <UI.Button type="button" variant="primary" style={{ flex: 1 }} disabled={state.busy} onClick={confirm}>
+              {state.busy ? t("dashboard.education.chat.goalConfirming") : t("dashboard.education.chat.goalConfirm")}
+            </UI.Button>
+          </div>
+        )}
+        {state.error ? <p className="dash-proposal-note">{t("dashboard.education.chat.goalError")}</p> : null}
+      </UI.Plate>
+    );
+  }
+
+  function StandingOrderProposalCard({ proposal }) {
+    const [state, setState] = useState({ busy: false, done: false, error: false });
+
+    function confirm() {
+      setState({ busy: true, done: false, error: false });
+      api
+        .createStandingOrder(
+          proposal.goalId,
+          proposal.amountMinorUnits,
+          proposal.frequency,
+          "agent-suggestion-confirmed"
+        )
+        .then(() => setState({ busy: false, done: true, error: false }))
+        .catch(() => setState({ busy: false, done: false, error: true }));
+    }
+
+    return (
+      <UI.Plate className="dash-tx-card">
+        <UI.Kicker style={{ marginBottom: 4 }}>{t("dashboard.education.chat.standingOrderTitle")}</UI.Kicker>
+        <div className="dash-tx-amount">{proposal.amountFormatted}</div>
+        <div className="dash-tx-grid">
+          <span className="text-muted">{t("dashboard.education.chat.standingOrderAmount")}</span>
+          <span>{proposal.goalName}</span>
+          <span className="text-muted">{t("dashboard.education.chat.standingOrderFrequency")}</span>
+          <span>
+            {proposal.frequency === "weekly"
+              ? t("dashboard.analytics.goal.standingOrder.weekly")
+              : t("dashboard.analytics.goal.standingOrder.monthly")}
+          </span>
+        </div>
+        <p className="dash-proposal-note">{t("dashboard.chat.proposalNotSent")}</p>
+        {state.done ? (
+          <p className="dash-proposal-note">{t("dashboard.education.chat.standingOrderSuccess")}</p>
+        ) : (
+          <div style={{ display: "flex", gap: 8 }}>
+            <UI.Button type="button" variant="primary" style={{ flex: 1 }} disabled={state.busy} onClick={confirm}>
+              {state.busy
+                ? t("dashboard.education.chat.standingOrderConfirming")
+                : t("dashboard.education.chat.standingOrderConfirm")}
+            </UI.Button>
+          </div>
+        )}
+        {state.error ? <p className="dash-proposal-note">{t("dashboard.education.chat.standingOrderError")}</p> : null}
+      </UI.Plate>
+    );
+  }
 
   function RecommendationsCard() {
     const [state, setState] = useState({ loading: true, answer: null, error: null });
@@ -1708,8 +1961,10 @@
       <UI.Plate className="dash-agent-note elev-sm">
         <span className="dash-agent-dot" aria-hidden="true" style={{ marginTop: 6, flex: "none" }} />
         <div style={{ fontSize: 14, lineHeight: 1.6, flex: 1 }}>
-          <UI.Kicker style={{ marginBottom: 8 }}>{t("dashboard.analytics.recommendations.title")}</UI.Kicker>
-          {body}
+          <div className="dash-edu-title" style={{ marginBottom: 8 }}>
+            {t("dashboard.analytics.recommendations.title")}
+          </div>
+          {renderStructuredText(body)}
           {!state.loading && !state.error && state.answer ? (
             <div className="dash-ai-disclaimer">
               <UI.Icon name="Sparkles" size={13} />
@@ -1730,15 +1985,23 @@
     const [name, setName] = useState("");
     const [amount, setAmount] = useState("");
     const [targetDate, setTargetDate] = useState("");
+    const [initialDeposit, setInitialDeposit] = useState("");
 
     const amountMinor = DASH.parseMinor(amount);
+    const initialDepositMinor = DASH.parseMinor(initialDeposit);
     const minDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const ready = Boolean(accountId) && name.trim() !== "" && amountMinor > 0 && Boolean(targetDate);
 
     function submit(event) {
       event.preventDefault();
       if (!ready) return;
-      onSubmit({ accountId, name: name.trim(), targetMinorUnits: amountMinor, targetDate });
+      onSubmit({
+        accountId,
+        name: name.trim(),
+        targetMinorUnits: amountMinor,
+        targetDate,
+        initialDepositMinorUnits: initialDepositMinor > 0 ? initialDepositMinor : 0,
+      });
     }
 
     return (
@@ -1770,6 +2033,14 @@
           <UI.Field id="goal-date" label={t("dashboard.analytics.goal.dialog.date")}>
             <UI.TextInput id="goal-date" type="date" min={minDate} value={targetDate} onChange={(event) => setTargetDate(event.target.value)} />
           </UI.Field>
+          <UI.Field id="goal-initial-deposit" label={t("dashboard.analytics.goal.dialog.initialDeposit")}>
+            <UI.TextInput
+              id="goal-initial-deposit"
+              inputMode="decimal"
+              value={initialDeposit}
+              onChange={(event) => setInitialDeposit(event.target.value)}
+            />
+          </UI.Field>
           <div className="dialog-actions">
             <UI.Button type="button" variant="secondary" onClick={onDismiss}>{t("dashboard.analytics.goal.dialog.cancel")}</UI.Button>
             <UI.Button type="submit" variant="primary" disabled={!ready || busy}>
@@ -1781,12 +2052,161 @@
     );
   }
 
-  function GoalProgressCard({ accounts }) {
+  function CloseGoalDialog({ name, busy, error, onConfirm, onDismiss }) {
+    return (
+      <UI.Dialog labelledBy="close-goal-dialog-title" onDismiss={onDismiss}>
+        <h2 id="close-goal-dialog-title" className="dialog-title">
+          {t("dashboard.analytics.goal.closeDialog.title")}
+        </h2>
+        <p className="text-muted" style={{ fontSize: 13 }}>
+          {t("dashboard.analytics.goal.closeDialog.body", { name })}
+        </p>
+        {error ? <p className="dash-proposal-note">{t("dashboard.analytics.goal.closeDialog.error")}</p> : null}
+        <div className="dialog-actions">
+          <UI.Button type="button" variant="secondary" onClick={onDismiss} disabled={busy}>
+            {t("dashboard.analytics.goal.closeDialog.cancel")}
+          </UI.Button>
+          <UI.Button type="button" variant="primary" onClick={onConfirm} disabled={busy}>
+            {busy ? t("dashboard.analytics.goal.closeDialog.confirming") : t("dashboard.analytics.goal.closeDialog.confirm")}
+          </UI.Button>
+        </div>
+      </UI.Dialog>
+    );
+  }
+
+  function GoalMovementDialog({ mode, goalName, progressPct, busy, error, onSubmit, onDismiss }) {
+    const [amount, setAmount] = useState("");
+    const [confirmedBelowThreshold, setConfirmedBelowThreshold] = useState(false);
+    const amountMinor = DASH.parseMinor(amount);
+    const needsWarning = mode === "withdraw" && progressPct < 50 && amountMinor > 0;
+    const ready = amountMinor > 0 && (!needsWarning || confirmedBelowThreshold);
+    const isWithdraw = mode === "withdraw";
+    const copy = isWithdraw ? "withdrawDialog" : "depositDialog";
+
+    function submit(event) {
+      event.preventDefault();
+      if (!ready) return;
+      onSubmit(amountMinor);
+    }
+
+    return (
+      <UI.Dialog labelledBy="goal-movement-dialog-title" onDismiss={onDismiss}>
+        <h2 id="goal-movement-dialog-title" className="dialog-title">
+          {t(`dashboard.analytics.goal.${copy}.title`, { name: goalName })}
+        </h2>
+        <form noValidate onSubmit={submit}>
+          <UI.Field id="goal-movement-amount" label={t(`dashboard.analytics.goal.${copy}.amount`)} error={error ? error.message : null}>
+            <UI.TextInput
+              id="goal-movement-amount"
+              autoFocus
+              inputMode="decimal"
+              value={amount}
+              onChange={(event) => {
+                setAmount(event.target.value);
+                setConfirmedBelowThreshold(false);
+              }}
+            />
+          </UI.Field>
+          {needsWarning ? (
+            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={confirmedBelowThreshold}
+                onChange={(event) => setConfirmedBelowThreshold(event.target.checked)}
+              />
+              {t("dashboard.analytics.goal.withdrawDialog.belowThresholdWarning", { pct: progressPct })}
+            </label>
+          ) : null}
+          <div className="dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onDismiss}>
+              {t(`dashboard.analytics.goal.${copy}.cancel`)}
+            </UI.Button>
+            <UI.Button type="submit" variant="primary" disabled={!ready || busy}>
+              {busy ? t(`dashboard.analytics.goal.${copy}.submitting`) : t(`dashboard.analytics.goal.${copy}.submit`)}
+            </UI.Button>
+          </div>
+        </form>
+      </UI.Dialog>
+    );
+  }
+
+  function StandingOrderDialog({ busy, error, onSubmit, onDismiss }) {
+    const [amount, setAmount] = useState("");
+    const [frequency, setFrequency] = useState("weekly");
+    const amountMinor = DASH.parseMinor(amount);
+    const ready = amountMinor > 0;
+
+    function submit(event) {
+      event.preventDefault();
+      if (!ready) return;
+      onSubmit(amountMinor, frequency);
+    }
+
+    return (
+      <UI.Dialog labelledBy="standing-order-dialog-title" onDismiss={onDismiss}>
+        <h2 id="standing-order-dialog-title" className="dialog-title">
+          {t("dashboard.analytics.goal.standingOrder.set")}
+        </h2>
+        <form noValidate onSubmit={submit}>
+          <UI.Field id="standing-order-amount" label={t("dashboard.analytics.goal.standingOrder.amount")} error={error ? error.message : null}>
+            <UI.TextInput id="standing-order-amount" autoFocus inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} />
+          </UI.Field>
+          <UI.Field id="standing-order-frequency" label={t("dashboard.analytics.goal.standingOrder.frequency")}>
+            <UI.Select id="standing-order-frequency" value={frequency} onChange={(event) => setFrequency(event.target.value)}>
+              <option value="weekly">{t("dashboard.analytics.goal.standingOrder.weekly")}</option>
+              <option value="monthly">{t("dashboard.analytics.goal.standingOrder.monthly")}</option>
+            </UI.Select>
+          </UI.Field>
+          <div className="dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onDismiss}>
+              {t("dashboard.analytics.goal.dialog.cancel")}
+            </UI.Button>
+            <UI.Button type="submit" variant="primary" disabled={!ready || busy}>
+              {busy ? t("dashboard.analytics.goal.standingOrder.creating") : t("dashboard.analytics.goal.standingOrder.create")}
+            </UI.Button>
+          </div>
+        </form>
+      </UI.Dialog>
+    );
+  }
+
+  function buildGoalProjection(data) {
+    const target = new Date(data.targetDate);
+    const now = new Date();
+    const rawMonths =
+      (target.getFullYear() - now.getFullYear()) * 12 + (target.getMonth() - now.getMonth());
+    const monthsRemaining = Math.max(1, Math.min(24, rawMonths));
+    const actualPerMonth = data.actualMinorUnitsPerMonth || 0;
+    const requiredPerMonth = data.requiredMinorUnitsPerMonth || 0;
+    const points = [];
+    for (let i = 0; i <= monthsRemaining; i++) {
+      points.push({
+        month: i === 0 ? t("dashboard.analytics.goal.projectionNow") : "+" + i,
+        current: Math.max(0, data.progressMinorUnits + actualPerMonth * i),
+        needed: Math.max(0, data.progressMinorUnits + requiredPerMonth * i),
+      });
+    }
+    return points;
+  }
+
+  function GoalProgressCard({ accounts, goalVersion }) {
+    const RC = window.Recharts;
     const [state, setState] = useState({ loading: true, data: null, error: null });
+    const [pace, setPace] = useState(null);
     const [refreshKey, setRefreshKey] = useState(0);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [creating, setCreating] = useState(false);
     const [createError, setCreateError] = useState(null);
+    const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+    const [closing, setClosing] = useState(false);
+    const [closeError, setCloseError] = useState(null);
+    const [movementDialog, setMovementDialog] = useState(null);
+    const [movementBusy, setMovementBusy] = useState(false);
+    const [movementError, setMovementError] = useState(null);
+    const [standingOrder, setStandingOrder] = useState(null);
+    const [standingOrderDialogOpen, setStandingOrderDialogOpen] = useState(false);
+    const [standingOrderBusy, setStandingOrderBusy] = useState(false);
+    const [standingOrderError, setStandingOrderError] = useState(null);
 
     useEffect(() => {
       let cancelled = false;
@@ -1799,16 +2219,100 @@
         .catch((err) => {
           if (!cancelled) setState({ loading: false, data: null, error: err });
         });
+      api
+        .getGoalPace()
+        .then((result) => {
+          if (!cancelled) setPace(result);
+        })
+        .catch(() => {
+          if (!cancelled) setPace(null);
+        });
       return () => {
         cancelled = true;
       };
-    }, [refreshKey]);
+    }, [refreshKey, goalVersion]);
+
+    const goalId = state.data && state.data.goalId;
+
+    useEffect(() => {
+      if (!goalId) {
+        setStandingOrder(null);
+        return undefined;
+      }
+      let cancelled = false;
+      api
+        .getStandingOrder(goalId)
+        .then((result) => {
+          if (!cancelled) setStandingOrder(result.standingOrder);
+        })
+        .catch(() => {
+          if (!cancelled) setStandingOrder(null);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [goalId, refreshKey]);
+
+    function submitMovement(amountMinor) {
+      if (!goalId) return;
+      setMovementBusy(true);
+      setMovementError(null);
+      const call = movementDialog === "withdraw" ? api.withdrawFromGoal : api.depositToGoal;
+      call(goalId, amountMinor)
+        .then(() => {
+          setMovementBusy(false);
+          setMovementDialog(null);
+          setRefreshKey((value) => value + 1);
+        })
+        .catch((err) => {
+          setMovementBusy(false);
+          setMovementError(err);
+        });
+    }
+
+    function submitStandingOrder(amountMinor, frequency) {
+      if (!goalId) return;
+      setStandingOrderBusy(true);
+      setStandingOrderError(null);
+      api
+        .createStandingOrder(goalId, amountMinor, frequency, "user")
+        .then(() => {
+          setStandingOrderBusy(false);
+          setStandingOrderDialogOpen(false);
+          setRefreshKey((value) => value + 1);
+        })
+        .catch((err) => {
+          setStandingOrderBusy(false);
+          setStandingOrderError(err);
+        });
+    }
+
+    function transitionStandingOrder(action) {
+      if (!standingOrder) return;
+      setStandingOrderBusy(true);
+      setStandingOrderError(null);
+      action(standingOrder.standingOrderId)
+        .then(() => {
+          setStandingOrderBusy(false);
+          setRefreshKey((value) => value + 1);
+        })
+        .catch((err) => {
+          setStandingOrderBusy(false);
+          setStandingOrderError(err);
+        });
+    }
 
     function submitGoal(payload) {
       setCreating(true);
       setCreateError(null);
       api
-        .createGoal(payload.accountId, payload.name, payload.targetMinorUnits, payload.targetDate)
+        .createGoal(
+          payload.accountId,
+          payload.name,
+          payload.targetMinorUnits,
+          payload.targetDate,
+          payload.initialDepositMinorUnits
+        )
         .then(() => {
           setCreating(false);
           setDialogOpen(false);
@@ -1817,6 +2321,23 @@
         .catch((err) => {
           setCreating(false);
           setCreateError(err);
+        });
+    }
+
+    function closeGoal() {
+      if (!state.data || !state.data.goalId) return;
+      setClosing(true);
+      setCloseError(null);
+      api
+        .closeGoal(state.data.goalId)
+        .then(() => {
+          setClosing(false);
+          setCloseDialogOpen(false);
+          setRefreshKey((value) => value + 1);
+        })
+        .catch((err) => {
+          setClosing(false);
+          setCloseError(err);
         });
     }
 
@@ -1830,17 +2351,26 @@
     const eligibleAccounts = (accounts || []).filter((account) => account.typeKey !== "invest");
 
     return (
-      <UI.Plate className="elev-sm" style={{ padding: 18 }}>
-        <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.analytics.goal.title")}</UI.Kicker>
+      <UI.Plate className="elev-sm" style={{ padding: 18, display: "flex", flexDirection: "column" }}>
+        <div className="dash-edu-title" style={{ marginBottom: 14 }}>{t("dashboard.analytics.goal.title")}</div>
         {state.loading ? (
-          <div className="dash-chart-empty">{t("dashboard.analytics.loading")}</div>
+          <div className="dash-chart-empty" style={{ flex: 1 }}>{t("dashboard.analytics.loading")}</div>
         ) : !hasGoal ? (
-          <div>
-            <div className="dash-chart-empty">{t("dashboard.analytics.goal.noGoal")}</div>
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              alignItems: "center",
+              textAlign: "center",
+              gap: 10,
+            }}
+          >
+            <div className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.analytics.goal.noGoal")}</div>
             <UI.Button
               type="button"
               variant="secondary"
-              style={{ marginTop: 10 }}
               disabled={!eligibleAccounts.length}
               onClick={() => setDialogOpen(true)}
             >
@@ -1868,6 +2398,38 @@
                   })
                 : t("dashboard.analytics.goal.projectedUnknown")}
             </p>
+            {!reached && pace && pace.status === "insufficient-data" ? (
+              <p className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>
+                {t("dashboard.analytics.goal.pace.insufficientData")}
+              </p>
+            ) : null}
+            {!reached && pace && pace.status === "at-risk" ? (
+              <p className="dash-proposal-note" style={{ marginTop: 2 }}>
+                {t("dashboard.analytics.goal.pace.atRisk")}
+              </p>
+            ) : null}
+            {!reached ? (
+              <div style={{ marginTop: 12 }}>
+                <div className="text-muted" style={{ fontSize: 12, marginBottom: 6 }}>
+                  {t("dashboard.analytics.goal.projectionTitle")}
+                </div>
+                <RC.ResponsiveContainer width="100%" height={140}>
+                  <RC.LineChart data={buildGoalProjection(data)}>
+                    <RC.CartesianGrid stroke="var(--color-border)" vertical={false} />
+                    <RC.XAxis dataKey="month" tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={{ stroke: "var(--color-border)" }} tickLine={false} />
+                    <RC.YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} width={34} tickFormatter={(value) => Math.round(value / 100)} />
+                    <RC.Tooltip content={<ChartTooltip currency={data.currency} />} />
+                    <RC.Legend
+                      formatter={(value) => t(CHART_SERIES_LABEL[value] || value)}
+                      wrapperStyle={{ fontSize: 11, color: "var(--color-muted)" }}
+                    />
+                    <RC.ReferenceLine y={data.targetMinorUnits} stroke="var(--color-primary)" strokeDasharray="4 4" />
+                    <RC.Line type="monotone" dataKey="current" name="current" stroke="var(--color-plum-400)" strokeWidth={2} dot={false} />
+                    <RC.Line type="monotone" dataKey="needed" name="needed" stroke="var(--color-lime-600)" strokeWidth={2} dot={false} />
+                  </RC.LineChart>
+                </RC.ResponsiveContainer>
+              </div>
+            ) : null}
             {showStreak ? (
               <div className="dash-streak-badge" title={t("dashboard.analytics.goal.streakHint")}>
                 <UI.Icon name="Flame" size={14} />
@@ -1878,6 +2440,91 @@
                 {t("dashboard.analytics.goal.streakStart")}
               </p>
             )}
+            {!reached ? (
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <UI.Button type="button" variant="secondary" onClick={() => setMovementDialog("deposit")}>
+                  {t("dashboard.analytics.goal.addMoney")}
+                </UI.Button>
+                <UI.Button type="button" variant="secondary" onClick={() => setMovementDialog("withdraw")}>
+                  {t("dashboard.analytics.goal.withdraw")}
+                </UI.Button>
+              </div>
+            ) : null}
+            <div style={{ marginTop: 14 }}>
+              <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                {t("dashboard.analytics.goal.standingOrder.title")}
+              </div>
+              {standingOrder ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ fontSize: 13 }}>
+                    {t(
+                      standingOrder.status === "paused"
+                        ? "dashboard.analytics.goal.standingOrder.paused"
+                        : "dashboard.analytics.goal.standingOrder.active",
+                      {
+                        amount: UI.formatMoney(standingOrder.amount.minorUnits, standingOrder.amount.currency),
+                        frequency: t(
+                          standingOrder.frequency === "weekly"
+                            ? "dashboard.analytics.goal.standingOrder.frequencyWeekly"
+                            : "dashboard.analytics.goal.standingOrder.frequencyMonthly"
+                        ),
+                        date: GEMS.i18n.isoToDisplayDate((standingOrder.nextRunAt || "").slice(0, 10)),
+                      }
+                    )}
+                  </span>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {standingOrder.status === "active" ? (
+                      <UI.Button
+                        type="button"
+                        variant="secondary"
+                        disabled={standingOrderBusy}
+                        onClick={() => transitionStandingOrder(api.pauseStandingOrder)}
+                      >
+                        {standingOrderBusy ? t("dashboard.analytics.goal.standingOrder.working") : t("dashboard.analytics.goal.standingOrder.pause")}
+                      </UI.Button>
+                    ) : (
+                      <UI.Button
+                        type="button"
+                        variant="secondary"
+                        disabled={standingOrderBusy}
+                        onClick={() => transitionStandingOrder(api.resumeStandingOrder)}
+                      >
+                        {standingOrderBusy ? t("dashboard.analytics.goal.standingOrder.working") : t("dashboard.analytics.goal.standingOrder.resume")}
+                      </UI.Button>
+                    )}
+                    <button
+                      type="button"
+                      className="dash-handoff-link"
+                      style={{ padding: 0 }}
+                      disabled={standingOrderBusy}
+                      onClick={() => transitionStandingOrder(api.cancelStandingOrder)}
+                    >
+                      {t("dashboard.analytics.goal.standingOrder.cancel")}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                  <span className="text-muted" style={{ fontSize: 12 }}>
+                    {t("dashboard.analytics.goal.standingOrder.none")}
+                  </span>
+                  <UI.Button type="button" variant="secondary" onClick={() => setStandingOrderDialogOpen(true)}>
+                    {t("dashboard.analytics.goal.standingOrder.set")}
+                  </UI.Button>
+                </div>
+              )}
+              {standingOrderError ? (
+                <p className="dash-proposal-note">{t("dashboard.analytics.goal.standingOrder.error")}</p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className="dash-handoff-link"
+              style={{ marginTop: 12, padding: 0 }}
+              onClick={() => setCloseDialogOpen(true)}
+            >
+              {t("dashboard.analytics.goal.closeGoal")}
+            </button>
           </div>
         )}
         {dialogOpen ? (
@@ -1892,11 +2539,48 @@
             }}
           />
         ) : null}
+        {closeDialogOpen ? (
+          <CloseGoalDialog
+            name={data ? data.name : ""}
+            busy={closing}
+            error={closeError}
+            onConfirm={closeGoal}
+            onDismiss={() => {
+              setCloseDialogOpen(false);
+              setCloseError(null);
+            }}
+          />
+        ) : null}
+        {movementDialog ? (
+          <GoalMovementDialog
+            mode={movementDialog}
+            goalName={data ? data.name : ""}
+            progressPct={pct}
+            busy={movementBusy}
+            error={movementError}
+            onSubmit={submitMovement}
+            onDismiss={() => {
+              setMovementDialog(null);
+              setMovementError(null);
+            }}
+          />
+        ) : null}
+        {standingOrderDialogOpen ? (
+          <StandingOrderDialog
+            busy={standingOrderBusy}
+            error={standingOrderError}
+            onSubmit={submitStandingOrder}
+            onDismiss={() => {
+              setStandingOrderDialogOpen(false);
+              setStandingOrderError(null);
+            }}
+          />
+        ) : null}
       </UI.Plate>
     );
   }
 
-  SCR.AnalyticsScreen = function AnalyticsScreen({ range, onRange, accounts }) {
+  SCR.AnalyticsScreen = function AnalyticsScreen({ range, onRange }) {
     const RC = window.Recharts;
     const months = range === "3" ? 3 : range === "12" ? 12 : 6;
     const periods = [
@@ -1992,11 +2676,6 @@
         </div>
 
         <UI.ErrorNote error={error} />
-
-        <div className="dash-analytics-cols" style={{ marginTop: 20 }}>
-          <RecommendationsCard />
-          <GoalProgressCard accounts={accounts} />
-        </div>
       </div>
     );
   };

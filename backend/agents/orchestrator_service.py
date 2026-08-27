@@ -2,10 +2,14 @@ from functools import lru_cache
 
 from backend.agents.adapters import AzureChatCompleter
 from backend.agents.analytics import AnalyticsAgent
+<<<<<<< HEAD
+from backend.agents.education import EducationAgent
+=======
 from backend.agents.cards import CardsAgent
 from backend.agents.credits import CreditsAgent
 from backend.agents.deposits import DepositsAgent
 from backend.agents.investments import InvestmentsAgent
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
 from backend.agents.orchestrator import OrchestratedAnswer, Orchestrator
 from backend.agents.payments import PaymentsAgent
 from backend.agents.support import SupportAgent
@@ -38,10 +42,14 @@ def get_orchestrator_service() -> OrchestratorService:
         "support": SupportAgent(chat=chat, capabilities=capabilities, audit=write_audit),
         "analytics": AnalyticsAgent(chat=chat, capabilities=capabilities, audit=write_audit),
         "payments": PaymentsAgent(chat=chat, capabilities=capabilities, audit=write_audit),
+<<<<<<< HEAD
+        "education": EducationAgent(chat=chat, capabilities=capabilities, audit=write_audit),
+=======
         "investments": InvestmentsAgent(chat=chat, capabilities=capabilities, audit=write_audit),
         "deposits": DepositsAgent(chat=chat, capabilities=capabilities, audit=write_audit),
         "credits": CreditsAgent(chat=chat, capabilities=capabilities, audit=write_audit),
         "cards": CardsAgent(chat=chat, capabilities=capabilities, audit=write_audit),
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
     }
     orchestrator = Orchestrator(chat=chat, workers=workers, audit=write_audit)
     return OrchestratorService(orchestrator)

@@ -21,6 +21,9 @@ _RECURRING_AMOUNT_TOLERANCE = 0.15
 
 _GOAL_RATE_LOOKBACK_MONTHS = 3
 _GOAL_STREAK_LOOKBACK_WEEKS = 26
+_GOAL_WEEKLY_LOOKBACK_WEEKS = 8
+_GOAL_MIN_MOVEMENTS = 3
+_GOAL_MAX_PROJECTION_YEARS = 5
 
 _SIGNIFICANT_PCT_THRESHOLD = 15.0
 _SIGNIFICANT_ABSOLUTE_FLOOR_MINOR = 5000
@@ -253,13 +256,19 @@ async def resolve_goal_gap(actor: Actor, payload: BaseModel) -> BaseModel:
     net_movement = sum(row["amount"]["minorUnits"] for row in account_rows)
     actual_per_month = net_movement // _GOAL_RATE_LOOKBACK_MONTHS
 
+    cap_date = goal.target_date + timedelta(days=365 * _GOAL_MAX_PROJECTION_YEARS)
     if remaining_minor <= 0:
         projected_completion_date = today.isoformat()
     elif actual_per_month <= 0:
         projected_completion_date = None
     else:
         months_needed = -(-remaining_minor // actual_per_month)
-        projected_completion_date = _add_months(today, months_needed).isoformat()
+        months_to_cap = (cap_date - today).days // 28
+        if months_needed > months_to_cap:
+            projected_completion_date = None
+        else:
+            candidate = _add_months(today, months_needed)
+            projected_completion_date = candidate.isoformat() if candidate <= cap_date else None
 
     streak_lookback_start = now - timedelta(weeks=_GOAL_STREAK_LOOKBACK_WEEKS)
     streak_rows = await _transactions_in_range(payments, user_id, streak_lookback_start, now)
@@ -277,6 +286,114 @@ async def resolve_goal_gap(actor: Actor, payload: BaseModel) -> BaseModel:
         actualMinorUnitsPerMonth=actual_per_month,
         gapMinorUnitsPerMonth=required_per_month - actual_per_month,
         projectedCompletionDate=projected_completion_date,
+        streakWeeks=streak,
+    )
+
+
+class GoalPaceInput(BaseModel):
+    goal_id: str | None = Field(default=None, alias="goalId")
+    model_config = {"populate_by_name": True}
+
+
+class GoalPaceOutput(BaseModel):
+    status: Literal["ok", "completed", "at-risk", "insufficient-data", "no_goal_found"]
+    goal_id: str | None = Field(default=None, alias="goalId")
+    name: str | None = None
+    target_minor: int | None = Field(default=None, alias="targetMinorUnits")
+    currency: str | None = None
+    target_date: str | None = Field(default=None, alias="targetDate")
+    progress_minor: int | None = Field(default=None, alias="progressMinorUnits")
+    avg_weekly_contribution_minor: int | None = Field(
+        default=None, alias="avgWeeklyContributionMinorUnits"
+    )
+    required_weekly_rate_minor: int | None = Field(
+        default=None, alias="requiredWeeklyRateMinorUnits"
+    )
+    projected_completion_date: str | None = Field(
+        default=None, alias="projectedCompletionDate"
+    )
+    movements_observed: int = Field(default=0, alias="movementsObserved")
+    streak_weeks: int = Field(default=0, alias="streakWeeks")
+    model_config = {"populate_by_name": True}
+
+
+async def resolve_goal_pace(actor: Actor, payload: BaseModel) -> BaseModel:
+    assert isinstance(payload, GoalPaceInput)
+    user_id = actor.subject_id()
+    progress = await get_goals_service().get_progress_for_user(user_id)
+    if progress is None:
+        return GoalPaceOutput(status="no_goal_found")
+
+    goal = progress.goal
+    today = datetime.now(timezone.utc).date()
+    now = datetime.now(timezone.utc)
+    remaining_minor = goal.target_minor - progress.progress_minor
+
+    payments = get_payments_service()
+    streak_lookback_start = now - timedelta(weeks=_GOAL_STREAK_LOOKBACK_WEEKS)
+    streak_rows = await _transactions_in_range(payments, user_id, streak_lookback_start, now)
+    streak = _streak_weeks(streak_rows, goal.account_id, now)
+
+    if remaining_minor <= 0:
+        return GoalPaceOutput(
+            status="completed",
+            goalId=goal.id,
+            name=goal.name,
+            targetMinorUnits=goal.target_minor,
+            currency=goal.currency,
+            targetDate=goal.target_date.isoformat(),
+            progressMinorUnits=progress.progress_minor,
+            streakWeeks=streak,
+        )
+
+    lookback_start = now - timedelta(weeks=_GOAL_WEEKLY_LOOKBACK_WEEKS)
+    rows = await _transactions_in_range(payments, user_id, lookback_start, now)
+    contributions = [
+        row["amount"]["minorUnits"]
+        for row in rows
+        if row["accountId"] == goal.account_id and row["amount"]["minorUnits"] > 0
+    ]
+    movements_observed = len(contributions)
+    avg_weekly = (
+        sum(contributions) // _GOAL_WEEKLY_LOOKBACK_WEEKS
+        if movements_observed >= _GOAL_MIN_MOVEMENTS
+        else None
+    )
+
+    days_remaining = (goal.target_date - today).days
+    weeks_remaining = max(1, -(-days_remaining // 7))
+    required_weekly = -(-remaining_minor // weeks_remaining)
+
+    cap_date = goal.target_date + timedelta(days=365 * _GOAL_MAX_PROJECTION_YEARS)
+    projected_completion_date: str | None
+    if avg_weekly is None:
+        status: Literal["ok", "at-risk", "insufficient-data"] = "insufficient-data"
+        projected_completion_date = None
+    elif avg_weekly <= 0:
+        status = "at-risk"
+        projected_completion_date = None
+    else:
+        weeks_needed = -(-remaining_minor // avg_weekly)
+        weeks_to_cap = (cap_date - today).days // 7
+        if weeks_needed > weeks_to_cap:
+            status = "at-risk"
+            projected_completion_date = None
+        else:
+            status = "ok"
+            projected_completion_date = (today + timedelta(weeks=weeks_needed)).isoformat()
+
+    return GoalPaceOutput(
+        status=status,
+        goalId=goal.id,
+        name=goal.name,
+        targetMinorUnits=goal.target_minor,
+        currency=goal.currency,
+        targetDate=goal.target_date.isoformat(),
+        progressMinorUnits=progress.progress_minor,
+        avgWeeklyContributionMinorUnits=avg_weekly,
+        requiredWeeklyRateMinorUnits=required_weekly,
+        projectedCompletionDate=projected_completion_date,
+        movementsObserved=movements_observed,
         streakWeeks=streak,
     )
 

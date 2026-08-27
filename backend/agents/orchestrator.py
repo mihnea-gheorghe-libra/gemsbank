@@ -26,6 +26,11 @@ SYSTEM_PROMPT = (
     "forecasts, savings-goal progress, a recap of a month, why a spending category changed.\n"
     "- ask_support: how the app itself works, from its FAQ and user guide, plus the customer's "
     "own profile, language/theme preference and active sign-in sessions.\n"
+<<<<<<< HEAD
+    "- ask_education: general financial-literacy explanations (emergency funds, budgeting, "
+    "compound interest, inflation, debt, deposit guarantee), personalised savings advice, and "
+    "preparing a savings goal for the customer to confirm.\n"
+=======
     "- ask_investments: what markets and prices have done — the MSCI World ETF, Banca "
     "Transilvania and Bitcoin — using real live prices. It cannot trade and does not advise.\n"
     "- ask_deposits: term deposits and savings goals — which terms and rates exist, and what an "
@@ -35,6 +40,7 @@ SYSTEM_PROMPT = (
     "- ask_cards: their bank cards — listing them, freezing, unfreezing, blocking, changing an "
     "ATM or online limit, issuing a new one, and showing a card's PIN or details. It prepares "
     "these for the customer to confirm; it never does them itself.\n"
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
     f"- {ESCALATION_TOOL}: hand over to a human being.\n"
     "Call exactly one specialist when one can answer it alone — that is the normal case. Call "
     "two or three only when the question genuinely needs different specialities at once (for "
@@ -57,10 +63,14 @@ WORKER_TOOLS = {
     "ask_payments": "payments",
     "ask_analytics": "analytics",
     "ask_support": "support",
+<<<<<<< HEAD
+    "ask_education": "education",
+=======
     "ask_investments": "investments",
     "ask_deposits": "deposits",
     "ask_credits": "credits",
     "ask_cards": "cards",
+>>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
 }
 
 SCREEN_HINTS = {
@@ -70,6 +80,10 @@ SCREEN_HINTS = {
     "portfolio": "the Portfolio screen, which shows accounts, deposits, investments and credit",
     "cards": "the Cards screen, which shows their cards and limits",
     "settings": "the Settings screen",
+    "education": (
+        "the Financial Education screen, which offers general financial-literacy content and "
+        "savings-goal help"
+    ),
 }
 
 
