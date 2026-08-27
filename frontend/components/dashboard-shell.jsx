@@ -90,16 +90,6 @@
           <div className="dash-topbar-tag">{t("dashboard.tag." + screen)}</div>
         </div>
 
-        <div className="dash-search-wrap">
-          <UI.Icon name="Search" size={16} />
-          <UI.TextInput
-            className="input dash-search"
-            type="search"
-            aria-label={t("dashboard.searchPlaceholder")}
-            placeholder={t("dashboard.searchPlaceholder")}
-          />
-        </div>
-
         <div className="dash-profile" ref={containerRef}>
           <button
             type="button"

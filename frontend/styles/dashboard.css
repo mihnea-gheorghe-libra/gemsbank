@@ -99,10 +99,7 @@
 }
 .dash-topbar-title { font-family: var(--font-heading); font-size: 19px; line-height: 1.1; color: var(--color-heading); }
 .dash-topbar-tag { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; opacity: 0.5; }
-.dash-search-wrap { position: relative; margin-left: auto; max-width: 340px; width: 100%; }
-.dash-search-wrap .icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); opacity: 0.5; pointer-events: none; }
-.dash-search { width: 100%; padding-left: 38px; }
-.dash-profile { position: relative; flex: none; }
+.dash-profile { position: relative; flex: none; margin-left: auto; }
 .dash-avatar {
   margin-left: auto;
   position: relative;
