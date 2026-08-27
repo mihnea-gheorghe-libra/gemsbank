@@ -75,19 +75,6 @@ from backend.cards.service import (
 )
 from backend.command_bus import bus
 from backend.database.mongo import get_db
-<<<<<<< HEAD
-from backend.goals.service import (
-    CancelStandingOrder,
-    CloseGoal,
-    CreateGoal,
-    CreateStandingOrder,
-    DepositToGoal,
-    PauseStandingOrder,
-    ResumeStandingOrder,
-    WithdrawFromGoal,
-    get_goals_service,
-)
-=======
 from backend.escalations.service import (
     EscalationsService,
     RequestHandoff,
@@ -99,8 +86,17 @@ from backend.exchange.service import (
     get_exchange_service,
 )
 from backend.fx.service import FxInsightsService, get_fx_insights_service
-from backend.goals.service import CreateGoal
->>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
+from backend.goals.service import (
+    CancelStandingOrder,
+    CloseGoal,
+    CreateGoal,
+    CreateStandingOrder,
+    DepositToGoal,
+    PauseStandingOrder,
+    ResumeStandingOrder,
+    WithdrawFromGoal,
+    get_goals_service,
+)
 from backend.helpers.context import Actor
 from backend.helpers.errors import AuthenticationError
 from backend.investments.service import InvestmentsService, get_investments_service
