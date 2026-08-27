@@ -205,6 +205,12 @@ class BeneficiaryRequest(BaseModel):
     iban: str = Field(min_length=15, max_length=42)
 
 
+class IssueCardRequest(BaseModel):
+    account_id: str = Field(alias="accountId")
+
+    model_config = {"populate_by_name": True}
+
+
 class PreferencesRequest(BaseModel):
     prefs: dict[str, Any]
 
@@ -688,16 +694,18 @@ async def list_cards(actor: CurrentActor, service: CardsServiceDep) -> dict[str,
 
 @cards_router.post("/virtual", status_code=201)
 async def issue_virtual_card(
-    actor: CurrentActor, idempotency_key: IdempotencyKey = None
+    actor: CurrentActor, payload: IssueCardRequest, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
-    return await bus.execute(IssueVirtualCard(), actor, idempotency_key)
+    command = IssueVirtualCard(account_id=payload.account_id)
+    return await bus.execute(command, actor, idempotency_key)
 
 
 @cards_router.post("/physical", status_code=201)
 async def issue_physical_card(
-    actor: CurrentActor, idempotency_key: IdempotencyKey = None
+    actor: CurrentActor, payload: IssueCardRequest, idempotency_key: IdempotencyKey = None
 ) -> dict[str, Any]:
-    return await bus.execute(IssuePhysicalCard(), actor, idempotency_key)
+    command = IssuePhysicalCard(account_id=payload.account_id)
+    return await bus.execute(command, actor, idempotency_key)
 
 
 @cards_router.post("/{card_id}/freeze")

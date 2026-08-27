@@ -4,7 +4,7 @@
   const UI = GEMS.ui;
   const { useState, useRef, useEffect } = React;
 
-  DASH.PeriodPicker = function PeriodPicker({ options, value, onChange, label }) {
+  DASH.PeriodPicker = function PeriodPicker({ options, value, onChange, label, icon }) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef(null);
     const current = options.find((option) => option.value === value) || options[0];
@@ -38,7 +38,7 @@
           aria-label={label}
           onClick={() => setOpen((value_) => !value_)}
         >
-          <UI.Icon name="Calendar" size={15} />
+          <UI.Icon name={icon || "Calendar"} size={15} />
           {current ? current.label : ""}
           <UI.Icon name="ChevronDown" size={14} />
         </UI.Button>
