@@ -653,6 +653,7 @@
                     ? t("dashboard.exchange.rateUnavailable")
                     : EXCHANGE_TARGETS.filter((code) => rates[code]).map((code) =>
                         t("dashboard.exchange.rateNote", {
+                          source: "RON",
                           rate: (rates[code].rateMicro / RATE_SCALE).toFixed(4).replace(".", ","),
                           target: code,
                         })

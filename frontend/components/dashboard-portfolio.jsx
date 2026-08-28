@@ -4,9 +4,15 @@
   const UI = GEMS.ui;
   const t = GEMS.i18n.t;
   const DATA = GEMS.dashboardData;
-  const { useState, useRef } = React;
+  const api = GEMS.api;
+  const { useState, useRef, useEffect } = React;
 
   const CURRENCIES = ["RON", "EUR", "USD"];
+  const RATE_SCALE = 1000000;
+
+  function sameCurrencyFirst(accounts, cur) {
+    return accounts.slice().sort((a, b) => (a.cur === cur ? 0 : 1) - (b.cur === cur ? 0 : 1));
+  }
 
   function randomBlock() {
     return String(Math.floor(Math.random() * 10000)).padStart(4, "0");
@@ -847,18 +853,55 @@
     const [amount, setAmount] = useState("");
 
     const source = accounts.find((account) => account.id === sourceId) || null;
-    const targets = accounts.filter((account) => account.cur === (source ? source.cur : null) && account.id !== sourceId);
+    const targets = sameCurrencyFirst(accounts.filter((account) => account.id !== sourceId), source && source.cur);
     const [targetId, setTargetId] = useState(targets[0] ? targets[0].id : "");
     const target = targets.find((account) => account.id === targetId) || null;
 
+    const crossCurrency = Boolean(source && target && source.cur !== target.cur);
+
+    const [rate, setRate] = useState(null);
+    const [rateLoading, setRateLoading] = useState(false);
+    const [rateError, setRateError] = useState(null);
+
+    useEffect(() => {
+      if (!crossCurrency) {
+        setRate(null);
+        setRateError(null);
+        return;
+      }
+      let cancelled = false;
+      setRateLoading(true);
+      setRateError(null);
+      api
+        .exchangeRate(source.cur, target.cur)
+        .then((result) => {
+          if (!cancelled) setRate(result);
+        })
+        .catch((err) => {
+          if (!cancelled) setRateError(err);
+        })
+        .finally(() => {
+          if (!cancelled) setRateLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [crossCurrency, source && source.cur, target && target.cur]);
+
     const amountMinor = DASH.parseMinor(amount);
     const shortfall = source && amountMinor != null && amountMinor > source.minor ? amountMinor - source.minor : null;
-    const ready = Boolean(source) && Boolean(target) && amountMinor > 0 && shortfall == null && !busy;
+    const targetAmountMinor = crossCurrency && rate && amountMinor > 0
+      ? Math.round((amountMinor * rate.rateMicro) / RATE_SCALE)
+      : null;
+    const ready = Boolean(source) && Boolean(target) && amountMinor > 0 && shortfall == null
+      && (!crossCurrency || Boolean(rate)) && !busy;
 
     const selectSource = (value) => {
       setSourceId(value);
       const nextSource = accounts.find((account) => account.id === value) || null;
-      const nextTargets = accounts.filter((account) => account.cur === (nextSource ? nextSource.cur : null) && account.id !== value);
+      const nextTargets = sameCurrencyFirst(
+        accounts.filter((account) => account.id !== value), nextSource && nextSource.cur
+      );
       setTargetId(nextTargets[0] ? nextTargets[0].id : "");
     };
 
@@ -902,6 +945,30 @@
           account={source}
           shortfall={shortfall}
         />
+
+        {crossCurrency ? (
+          <div className="dash-balance-line" role="status">
+            {rateLoading
+              ? t("dashboard.exchange.rateLoading")
+              : rateError
+                ? t("dashboard.exchange.rateUnavailable")
+                : rate
+                  ? t("dashboard.exchange.rateNote", {
+                      source: source.cur,
+                      rate: (rate.rateMicro / RATE_SCALE).toFixed(4).replace(".", ","),
+                      target: target.cur,
+                    })
+                  : null}
+          </div>
+        ) : null}
+
+        {targetAmountMinor != null ? (
+          <div className="dash-balance-line" role="status">
+            {t("dashboard.exchange.youReceive", {
+              amount: DASH.formatMinor(targetAmountMinor) + " " + target.cur,
+            })}
+          </div>
+        ) : null}
 
         {error ? (
           <div className="dash-balance-line is-short" role="alert">{error.message}</div>
