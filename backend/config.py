@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     bnr_fx_source_page_url: str = (
         "https://www.bnr.ro/23988-cursurile-pietei-valutare-in-format-xml"
     )
-    fx_signal_threshold_percent: float = 1.5
+    fx_signal_threshold_percent: float = 0.5
     fx_baseline_days: int = 7
     fx_repeat_rate_tolerance_percent: float = 0.5
     fx_insights_source: str = "bnr"

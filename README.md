@@ -1073,14 +1073,29 @@ orchestrator worker, `EducationAgent` (`backend/agents/education.py`). This is t
 deliberate, explicitly-approved deviation past `PROMPT.md` §4 as the rest of the agent layer — a new
 caller of the existing seams, not a new pathway.
 
-`EducationAgent` reads from four capabilities, all `SideEffect.READ`:
+`EducationAgent` reads from seven capabilities, all `SideEffect.READ`:
 `education.docs.search` (a small hand-authored corpus — emergency funds, budgeting, compound
 interest, inflation, term deposits, debt payoff order, diversification, the deposit guarantee
 scheme, APR — in `backend/capabilities/education_docs.py`, scored by the same bag-of-words matcher
 `support_docs.py` already uses, so it degrades to "here's the whole corpus" rather than inventing
-an answer when nothing scores), plus `analytics.goal_gap.get`, `analytics.cashflow_forecast.get`
-and `payments.balances.get` reused as-is for personalised advice grounded in the customer's own
-numbers.
+an answer when nothing scores), plus `analytics.goal_gap.get`, `analytics.cashflow_forecast.get`,
+`analytics.month_recap.get`, `analytics.what_changed.get`, `analytics.recommendations.get` and
+`payments.balances.get` reused as-is for personalised advice grounded in the customer's own
+numbers. The three transaction-reading analytics tools are the difference between advice about the
+customer's *money* and advice about their one savings goal: without them the agent could only ever
+personalise around a goal, and had nothing to say to a customer who has not set one.
+
+`analytics.recommendations.get` is the same widening on the capability side. It used to lead with
+two goal-derived entries (`goal_projection`, `savings_rate`) and add at most one `category_alert`;
+it now also returns a `spending_cap` on the largest discretionary category
+(`_DISCRETIONARY_CATEGORIES`, trimmed by `_SPENDING_CAP_TRIM_PCT` — both constants had been sitting
+unused), every category that grew past the significance thresholds rather than only the worst one
+(`_MAX_CATEGORY_ALERTS`), a `recurring_spend` roll-up of the subscriptions `_detect_recurring_groups`
+already finds for the cashflow forecast, and — when there is no goal — a `savings_rate` computed
+from last month's income against last month's spend. Every entry still carries its own pre-formatted
+strings; the agents are still forbidden from doing arithmetic. This is what the "Personalized
+recommendations" card on the Education screen renders, so that card no longer degrades to goal talk
+for a customer without a goal.
 
 **Setting a goal from the conversation** is the one new write-shaped capability,
 `goals.create.propose` (`backend/capabilities/education.py::resolve_goal_proposal`), built the same
@@ -1090,6 +1105,14 @@ target amount, target date) and **returns a proposal, never persists one** — n
 goal" proof, the same shape as `test_payments_agent_proposes_but_never_pays.py`. The customer
 confirms it as a card in the chat panel, which calls the existing `POST /goals` — the same command
 `SetGoalDialog` already uses — so a goal is still only ever created through one path.
+
+`GoalProposalInput` also takes an optional `currency`, the ISO code of the currency the customer
+named the amount in. A customer holding both "Cont curent" (RON) and "Cont curent USD" made
+`accountRef: "curent"` tie on `_match_score`, so the proposal came back `needs_clarification` and no
+card ever appeared — the customer asked for a goal and got a question instead. The currency only
+breaks a tie: it narrows an already-ambiguous match set, and if none of the tied accounts hold it
+the proposal still asks. `_match_score` and `_resolve_ref` in `backend/capabilities/payments.py` are
+untouched, so the money-moving transfer proposal keeps its stricter behaviour.
 
 The one piece of shared infrastructure this needed: `ToolCallingAgent`'s proposal path
 (`backend/agents/base.py`) only recognised `SideEffect.MONEY_MOVING` as proposable. `goals.create`
@@ -1399,10 +1422,12 @@ before `baseline_days` (7) earlier — nearest-on-or-before, so a weekend or a h
 to the previous banking day instead of losing the comparison. Over threshold in either direction
 becomes one row in `fxSignals` with `direction: "up" | "down"`.
 
-The threshold is `1.5%`, not the 8%/12% the vendor pipeline uses. Currency rates move roughly an
-order of magnitude less than consumer prices — EUR/RON moved 0.26% over the week of 2026-08-26 —
-so reusing a vendor-sized threshold would mean the rule never fires and a rate crisis would look
-identical to a quiet week.
+The threshold is `0.5%`, not the 8%/12% the vendor pipeline uses. Currency rates move roughly an
+order of magnitude less than consumer prices — EUR/RON moved 0.26% over the week of 2026-08-26 and
+USD/RON 0.55% over the week of 2026-08-28 — so reusing a vendor-sized threshold would mean the
+rule never fires and a rate crisis would look identical to a quiet week. It started at `1.5%`,
+which on a leu this tightly managed against the euro is the same mistake one order of magnitude
+smaller: no week in the feed's ten-day window ever reached it.
 
 **Who hears about it.** Only a user with a positive balance in that currency. There is no
 read-only accounts adapter equivalent to `vendors/payments_adapter.py` — `accounts/service.py` is
