@@ -1675,19 +1675,27 @@
     );
   }
 
+  let _globalGoalVersion = 0;
+
   SCR.EducationScreen = function EducationScreen({ accounts }) {
-    const [goalVersion, setGoalVersion] = useState(0);
+    const [goalVersion, setGoalVersion] = useState(_globalGoalVersion);
+
+    function bumpGoalVersion() {
+      _globalGoalVersion++;
+      setGoalVersion(_globalGoalVersion);
+    }
+
     return (
       <div className="dash-edu-page">
         <div className="dash-screen-head">
           <h3 style={{ margin: 0 }}>{t("dashboard.education.title")}</h3>
         </div>
 
-        <EducationChatPanel onGoalCreated={() => setGoalVersion((value) => value + 1)} />
+        <EducationChatPanel onGoalCreated={bumpGoalVersion} />
 
-        <GoalsPanel accounts={accounts} goalVersion={goalVersion} />
+        <GoalsPanel accounts={accounts} goalVersion={goalVersion} onGoalChange={bumpGoalVersion} />
 
-        <RecommendationsCard />
+        <RecommendationsCard goalVersion={goalVersion} />
 
         <LessonsPanel />
       </div>
@@ -1963,11 +1971,21 @@
     );
   }
 
-  function RecommendationsCard() {
-    const [state, setState] = useState({ loading: true, answer: null, error: null });
+  let _recoCache = { version: -1, answer: null };
+
+  function RecommendationsCard({ goalVersion }) {
+    const [state, setState] = useState({
+      loading: _recoCache.version !== goalVersion,
+      answer: _recoCache.version === goalVersion ? _recoCache.answer : null,
+      error: null
+    });
 
     useEffect(() => {
+      if (_recoCache.version === goalVersion && _recoCache.answer !== null) {
+        return; // Use cache
+      }
       let cancelled = false;
+      setState({ loading: true, answer: null, error: null });
       const prompt =
         GEMS.i18n.locale === "ro"
           ? "Dă-mi recomandările concrete de economisire și buget care reies din tranzacțiile mele: cel " +
@@ -1983,7 +2001,9 @@
         .askAnalytics(prompt)
         .then((result) => {
           if (cancelled) return;
-          setState({ loading: false, answer: (result && result.answer ? result.answer : "").trim(), error: null });
+          const ans = (result && result.answer ? result.answer : "").trim();
+          _recoCache = { version: goalVersion, answer: ans };
+          setState({ loading: false, answer: ans, error: null });
         })
         .catch((err) => {
           if (!cancelled) setState({ loading: false, answer: null, error: err });
@@ -1991,7 +2011,7 @@
       return () => {
         cancelled = true;
       };
-    }, []);
+    }, [goalVersion]);
 
     const body = state.loading
       ? t("dashboard.analytics.recommendations.loading")
@@ -2296,7 +2316,7 @@
     );
   }
 
-  function GoalsPanel({ accounts, goalVersion }) {
+  function GoalsPanel({ accounts, goalVersion, onGoalChange }) {
     const [state, setState] = useState({ loading: true, goals: [], error: null });
     const [refreshKey, setRefreshKey] = useState(0);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -2321,6 +2341,7 @@
 
     function refresh() {
       setRefreshKey((value) => value + 1);
+      if (onGoalChange) onGoalChange();
     }
 
     function submitGoal(payload) {
