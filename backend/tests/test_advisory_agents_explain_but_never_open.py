@@ -1,9 +1,6 @@
 import asyncio
 
 import pytest
-from pydantic import BaseModel
-from pydantic import ValidationError as PydanticValidationError
-
 from backend.agents.credits import CreditsAgent
 from backend.agents.deposits import DepositsAgent
 from backend.agents.investments import InvestmentsAgent
@@ -11,6 +8,8 @@ from backend.capabilities import investments as inv_caps
 from backend.capabilities import products as prod_caps
 from backend.capabilities.registry import Capability, CapabilityRegistry, SideEffect
 from backend.helpers.context import Actor
+from pydantic import BaseModel
+from pydantic import ValidationError as PydanticValidationError
 
 ACTOR = Actor(kind="agent", id="investments-agent", on_behalf_of="user-1")
 
@@ -146,11 +145,11 @@ def test_an_absurd_rate_is_refused_rather_than_illustrated() -> None:
         prod_caps.RepaymentInput(amountMinorUnits=1000, months=12, rateBps=99_999)
 
 
-def test_the_deposit_catalogue_says_plainly_that_nothing_is_opened() -> None:
+def test_the_deposit_catalogue_says_plainly_that_the_conversation_opens_nothing() -> None:
     result = asyncio.run(
         prod_caps.resolve_deposit_products(ACTOR, prod_caps.DepositProductsInput())
     )
-    assert "not wired to the ledger" in result.note
+    assert "not through this conversation" in result.note
     assert {p.id for p in result.products} == {"term", "goal"}
     assert all(term.rate_formatted.endswith("%") for p in result.products for term in p.terms)
 

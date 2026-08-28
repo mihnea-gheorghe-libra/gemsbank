@@ -2,10 +2,6 @@ import re
 from datetime import date, datetime, timezone
 from typing import Any
 
-from motor.motor_asyncio import AsyncIOMotorClientSession
-from pymongo import ASCENDING, DESCENDING
-from pymongo.errors import DuplicateKeyError
-
 from backend.accounts.account import Account, AccountKind, AccountStatus
 from backend.auth.credentials import (
     AuthUser,
@@ -17,12 +13,15 @@ from backend.auth.credentials import (
     Session,
 )
 from backend.cards.card import Card, CardKind, CardState
+from backend.credits.application import CreditApplication
 from backend.database.mongo import (
     accounts_collection,
     beneficiaries_collection,
     cards_collection,
+    credit_applications_collection,
     goals_collection,
     handoffs_collection,
+    investment_orders_collection,
     journal_collection,
     kyc_cases_collection,
     payment_templates_collection,
@@ -30,12 +29,15 @@ from backend.database.mongo import (
     recovery_cases_collection,
     sessions_collection,
     standing_orders_collection,
+    term_deposits_collection,
     users_collection,
 )
+from backend.deposits.deposit import TermDeposit
 from backend.escalations.handoff import Handoff, HandoffStatus
 from backend.goals.goal import Goal
 from backend.goals.standing_order import StandingOrder
 from backend.helpers.errors import ConflictError
+from backend.investments.order import InvestmentOrder, OrderSide
 from backend.ledger.journal import JournalEntry, JournalTransaction, TransactionKind
 from backend.onboarding.kyc import (
     Contact,
@@ -54,6 +56,9 @@ from backend.payments.payment import (
     PaymentTemplate,
     SignatureChallenge,
 )
+from motor.motor_asyncio import AsyncIOMotorClientSession
+from pymongo import ASCENDING, DESCENDING
+from pymongo.errors import DuplicateKeyError
 
 
 def _document_to_bson(document: SubmittedDocument | None) -> dict[str, Any] | None:
@@ -702,6 +707,138 @@ class MongoStandingOrderRepository:
         )
 
 
+def _term_deposit_to_bson(deposit: TermDeposit) -> dict[str, Any]:
+    return {
+        "_id": deposit.id,
+        "userId": deposit.user_id,
+        "accountId": deposit.account_id,
+        "parentAccountId": deposit.parent_account_id,
+        "name": deposit.name,
+        "rateBps": deposit.rate_bps,
+        "termMonths": deposit.term_months,
+        "currency": deposit.currency,
+        "maturesAt": datetime.combine(deposit.matures_at, datetime.min.time(), tzinfo=timezone.utc),
+        "status": deposit.status,
+        "createdAt": deposit.created_at,
+        "closedAt": deposit.closed_at,
+    }
+
+
+def _term_deposit_from_bson(raw: dict[str, Any]) -> TermDeposit:
+    return TermDeposit(
+        id=raw["_id"],
+        user_id=raw["userId"],
+        account_id=raw["accountId"],
+        parent_account_id=raw["parentAccountId"],
+        name=raw["name"],
+        rate_bps=raw["rateBps"],
+        term_months=raw["termMonths"],
+        currency=raw["currency"],
+        matures_at=raw["maturesAt"].date(),
+        status=raw.get("status", "active"),
+        created_at=raw["createdAt"],
+        closed_at=raw.get("closedAt"),
+    )
+
+
+class MongoTermDepositRepository:
+    async def add(
+        self, deposit: TermDeposit, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await term_deposits_collection().insert_one(_term_deposit_to_bson(deposit), session=session)
+
+    async def get(self, deposit_id: str) -> TermDeposit | None:
+        raw = await term_deposits_collection().find_one({"_id": deposit_id})
+        return _term_deposit_from_bson(raw) if raw else None
+
+    async def list_for_user(self, user_id: str) -> list[TermDeposit]:
+        found = term_deposits_collection().find({"userId": user_id}).sort("createdAt", ASCENDING)
+        return [_term_deposit_from_bson(raw) async for raw in found]
+
+    async def close(
+        self,
+        deposit_id: str,
+        user_id: str,
+        closed_at: datetime,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool:
+        result = await term_deposits_collection().update_one(
+            {"_id": deposit_id, "userId": user_id, "status": {"$ne": "closed"}},
+            {"$set": {"status": "closed", "closedAt": closed_at}},
+            session=session,
+        )
+        return result.modified_count == 1
+
+
+def _credit_application_to_bson(application: CreditApplication) -> dict[str, Any]:
+    return {
+        "_id": application.id,
+        "userId": application.user_id,
+        "productId": application.product_id,
+        "kind": application.kind,
+        "amountMinorUnits": application.amount_minor,
+        "termMonths": application.term_months,
+        "rateBps": application.rate_bps,
+        "purpose": application.purpose,
+        "payoutAccountId": application.payout_account_id,
+        "currency": application.currency,
+        "status": application.status,
+        "submittedAt": application.submitted_at,
+    }
+
+
+def _credit_application_from_bson(raw: dict[str, Any]) -> CreditApplication:
+    return CreditApplication(
+        id=raw["_id"],
+        user_id=raw["userId"],
+        product_id=raw["productId"],
+        kind=raw["kind"],
+        amount_minor=raw["amountMinorUnits"],
+        term_months=raw.get("termMonths"),
+        rate_bps=raw["rateBps"],
+        purpose=raw["purpose"],
+        payout_account_id=raw["payoutAccountId"],
+        currency=raw["currency"],
+        status=raw.get("status", "review"),
+        submitted_at=raw["submittedAt"],
+    )
+
+
+class MongoCreditApplicationRepository:
+    async def add(
+        self, application: CreditApplication, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await credit_applications_collection().insert_one(
+            _credit_application_to_bson(application), session=session
+        )
+
+    async def get(self, application_id: str) -> CreditApplication | None:
+        raw = await credit_applications_collection().find_one({"_id": application_id})
+        return _credit_application_from_bson(raw) if raw else None
+
+    async def list_for_user(self, user_id: str) -> list[CreditApplication]:
+        found = (
+            credit_applications_collection()
+            .find({"userId": user_id})
+            .sort("submittedAt", DESCENDING)
+        )
+        return [_credit_application_from_bson(raw) async for raw in found]
+
+    async def set_status(
+        self,
+        application_id: str,
+        user_id: str,
+        status: str,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool:
+        result = await credit_applications_collection().update_one(
+            {"_id": application_id, "userId": user_id, "status": {"$ne": "withdrawn"}},
+            {"$set": {"status": status}},
+            session=session,
+        )
+        return result.modified_count == 1
+
+
 def _handoff_to_bson(handoff: Handoff) -> dict[str, Any]:
     return {
         "_id": handoff.id,
@@ -1170,3 +1307,73 @@ class MongoCardRepository:
         payload = _card_to_bson(card)
         payload.pop("_id")
         await cards_collection().update_one({"_id": card.id}, {"$set": payload}, session=session)
+
+
+def _investment_order_to_bson(order: InvestmentOrder) -> dict[str, Any]:
+    return {
+        "_id": order.id,
+        "userId": order.user_id,
+        "accountId": order.account_id,
+        "instrumentId": order.instrument_id,
+        "side": order.side.value,
+        "quantityMicro": order.quantity_micro,
+        "unitPriceMinor": order.unit_price_minor,
+        "amountMinor": order.amount_minor,
+        "currency": order.currency,
+        "journalTransactionId": order.journal_transaction_id,
+        "executedAt": order.executed_at,
+    }
+
+
+def _investment_order_from_bson(raw: dict[str, Any]) -> InvestmentOrder:
+    return InvestmentOrder(
+        id=raw["_id"],
+        user_id=raw["userId"],
+        account_id=raw["accountId"],
+        instrument_id=raw["instrumentId"],
+        side=OrderSide(raw["side"]),
+        quantity_micro=raw["quantityMicro"],
+        unit_price_minor=raw["unitPriceMinor"],
+        amount_minor=raw["amountMinor"],
+        currency=raw["currency"],
+        journal_transaction_id=raw["journalTransactionId"],
+        executed_at=raw["executedAt"],
+    )
+
+
+class MongoInvestmentOrderRepository:
+    async def append(
+        self, order: InvestmentOrder, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await investment_orders_collection().insert_one(
+            _investment_order_to_bson(order), session=session
+        )
+
+    async def holdings_for_account(self, account_id: str) -> dict[str, int]:
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {"accountId": account_id}},
+            {
+                "$group": {
+                    "_id": "$instrumentId",
+                    "quantity": {
+                        "$sum": {
+                            "$cond": [
+                                {"$eq": ["$side", OrderSide.BUY.value]},
+                                "$quantityMicro",
+                                {"$multiply": ["$quantityMicro", -1]},
+                            ]
+                        }
+                    },
+                }
+            },
+        ]
+        found = investment_orders_collection().aggregate(pipeline)
+        return {row["_id"]: int(row["quantity"]) async for row in found if row["quantity"] > 0}
+
+    async def list_for_account(self, account_id: str) -> list[InvestmentOrder]:
+        found = (
+            investment_orders_collection()
+            .find({"accountId": account_id})
+            .sort("executedAt", DESCENDING)
+        )
+        return [_investment_order_from_bson(raw) async for raw in found]

@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import httpx
-
 from backend.agents.adapters import DEFAULT_RETRY_AFTER_SECONDS
 from backend.config import Settings
 from backend.helpers.errors import DeliveryError, RateLimitedError, ValidationError

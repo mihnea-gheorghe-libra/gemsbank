@@ -197,10 +197,19 @@ For each of these: build nothing. A feature folder appears the day its first lin
 **Deliberately taken out of this list since:**
 
 - **Cards** — `backend/cards/` exists; see README.
-- **Investments, read-only market data** — `backend/investments/` exists. It fetches prices and
-  FX from public providers and converts to RON minor units. It moves no money: no command, no
-  journal entry, no outbox event, and Buy/Sell on the Portfolio screen remain React state. Real
-  ledger-backed trading stays out of scope.
+- **Investments, real ledger-backed trading, gated by an investment account** —
+  `backend/investments/` fetches prices and FX from public providers and converts to RON minor
+  units, as before. It now also moves real money: `BuyInstrument` and `SellInstrument` run through
+  `bus.execute` like every other write, each posting a single balanced transaction between the
+  customer's `invest`-kind account and a `house:invest_suspense:{currency}` suspense account (the
+  same demo-treasury pattern as `house:fx`). This is a deliberate, explicitly requested and
+  approved deviation from the original "real ledger-backed trading stays out of scope" note — see
+  README.md ("Investments — real prices, real trades") for the reasoning and the guard chain.
+  A trade is refused, both at the route (`require_investment_account`) and again inside the
+  command handler (the actual enforcement boundary, consistent with every other feature), unless
+  the customer already holds an active `invest`-kind account. Holdings are a derived read model —
+  summed from the append-only `investmentOrders` collection, never stored as a mutable balance —
+  the same "derive, don't store" discipline rule 4 requires of the ledger.
 - **FX conversion, display only, for investments** — the USD→RON conversion in
   `backend/investments/` is presentational, applied to market prices. It moves no money.
 - **Currency exchange** — `backend/exchange/` exists; see README. A customer can convert RON into
@@ -212,6 +221,17 @@ For each of these: build nothing. A feature folder appears the day its first lin
   correlated, single-currency journal transactions against a `house:fx` suspense account per
   currency — never a mixed-currency entry, so rule 2 (double-entry, sums to zero *per currency*)
   still holds.
+- **Savings — real term deposits, real savings goal** — `backend/deposits/` and `backend/goals/`
+  both open a real `savings`-kind pot account and move real money into and out of it via
+  `LedgerService.transfer`, the same door `payments` already uses. This is a deliberate,
+  explicitly requested and approved deviation from "savings" in the not-in-v0 list above — see
+  README.md's "Portfolio" section for the mechanics and the demo simplifications (no
+  early-withdrawal penalty, no compounding).
+- **Credit applications, recorded but never decided** — `backend/credits/` lets a customer submit
+  a real, persisted application against a product from `products.catalogue.CREDIT_PRODUCTS`. This
+  adds a small new feature not named anywhere in this file, explicitly requested and approved. It
+  changes nothing about eligibility: no application is ever approved or refused here, matching the
+  agent-layer design in §7 — a future agent is still the seam for that decision.
 
 ### Definition of done for v0
 

@@ -1,8 +1,6 @@
 from datetime import date, datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
 from backend.accounts.service import AccountsService, get_accounts_service
 from backend.capabilities import analytics as analytics_capabilities
 from backend.capabilities.education_docs import search_education_docs
@@ -17,6 +15,7 @@ from backend.goals import validation as goals_validation
 from backend.goals.service import GoalsService, get_goals_service
 from backend.helpers.context import Actor
 from backend.helpers.errors import ValidationError
+from pydantic import BaseModel, Field
 
 
 class EducationSearchInput(BaseModel):

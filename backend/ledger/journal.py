@@ -15,6 +15,7 @@ class HouseAccount(StrEnum):
     FEE_REVENUE = "house:fee_revenue"
     SUSPENSE = "house:suspense"
     FX = "house:fx"
+    INVEST_SUSPENSE = "house:invest_suspense"
 
 
 def house_account_id(account: HouseAccount, currency: str) -> str:

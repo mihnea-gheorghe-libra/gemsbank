@@ -41,3 +41,12 @@ def is_gems_iban(iban: str) -> bool:
 
 def format_iban(iban: str) -> str:
     return " ".join(iban[i : i + 4] for i in range(0, len(iban), 4))
+
+
+def normalise_label(raw: str) -> str:
+    candidate = raw.strip()
+    if not (1 <= len(candidate) <= 40):
+        raise ValidationError(
+            "Give the account a short name, up to 40 characters.", details={"field": "label"}
+        )
+    return candidate

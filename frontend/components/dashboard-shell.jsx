@@ -9,7 +9,8 @@
   const { useState, useEffect, useRef, useMemo } = React;
 
   function accountLabel(account) {
-    return t("dashboard.accountType." + account.typeKey) + " · " + account.cur + " · " + account.ibanShort;
+    const name = account.label || t("dashboard.accountType." + account.typeKey);
+    return name + " · " + account.cur + " · " + account.ibanShort;
   }
 
   const NAV_ICONS = {

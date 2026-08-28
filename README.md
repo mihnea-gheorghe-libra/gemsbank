@@ -35,8 +35,8 @@ Cards screen itself still renders from `dashboard-data.js`, not from these endpo
 "Cards — a backend without a session" below before wiring it up.
 
 The **Investments** widget on the Portfolio screen is the other: its prices, history and FX are
-real, fetched live through `backend/investments/`. See "Investments — real prices, demo trades"
-below.
+real, fetched live through `backend/investments/`, and so are Buy and Sell — see
+"Investments — real prices, real trades" below.
 
 The mockup's **Payments** screen now moves real money for its core flow, through the same
 `backend/payments/` module as the (currently unrendered) standalone `PaymentsPage`:
@@ -61,35 +61,61 @@ The mockup's **Payments** screen now moves real money for its core flow, through
   movements table. `Cards` selects card-channel movements; the filter box matches counterparty,
   reference or IBAN.
 
-The **Portfolio** screen mixes the same way:
+The **Portfolio** screen (nav key `accounts`, i18n-labeled "Portfolio") is now real end to end —
+accounts, term deposits, savings goals and credit applications all read from and write to MongoDB
+through the one write path. It used to mix real accounts with React-state-only deposit and credit
+mocks; that mock data is gone, replaced by two small new feature folders (`backend/deposits/` and
+`backend/credits/`) shaped exactly like `backend/goals/` below:
 
-- **Open new account** picks a type and currency. For **Current** and **Savings** — and now
-  **Invest** — it posts `OpenAccount` to `/accounts`, which mints a real GEMS IBAN and writes the
-  account to MongoDB; an optional funding amount is a second, real internal transfer through the
-  same payments path above (and can itself land in `awaiting_signature`). The new account shows up
-  everywhere accounts are listed, including the payment dropdowns. **Term deposit** and **Savings
-  goal** still create React-state-only products, since deposits are not a v0 concept on the ledger.
-- **New deposit** opens a term deposit or a savings goal with a target — React state only. Term
-  rates come from `depositTerms`; the money leaves the funding account (a real account, debited
-  only in local state) and the maturity date is computed from the term. Every product can be
-  topped up, withdrawn from, or closed — closing returns the balance to an account in the same
-  currency, again only in local state.
-- **Investments** buy and sell holdings at the stored unit price, spending *cash to invest* before
-  touching an account, exactly as `PROMPT.md` requires — no command, no journal entry, no outbox
-  event for a trade. *Cash to invest* itself is real, though: it is the balance of the customer's
-  `invest`-kind account, read the same way as any other account. A customer with no investment
-  account sees an **"Open an investment account"** button in its place instead of an invented
-  number. Position value is derived from units times price, so the INVESTMENTS header always
-  equals the sum of what is listed under it.
-- **Apply for credit** records an application against a product from `creditProducts` (with its
-  rate and maximum) and leaves it in `review`. **Nothing is approved here.** The eligibility
-  decision is the seam left for a future agent that reads accounts and income; until that agent
-  exists, applications sit in review and say so on screen. React state only.
+- **Open new account** picks a type, a currency, and an optional **name** — a plain `label` on the
+  `Account` aggregate (it already existed for the auto-generated default; the dialog just lets the
+  customer override it now). For **Current**, **Savings** and **Invest** it posts `OpenAccount` to
+  `/accounts`, which mints a real GEMS IBAN and writes the account to MongoDB; an optional funding
+  amount is a second, real internal transfer through the same payments path above (and can itself
+  land in `awaiting_signature`). The new account shows up everywhere accounts are listed, including
+  the payment dropdowns. **Term deposit** now opens a real account too (see below); **Savings
+  goal** is created from its own card rather than this dialog (see below).
+- **Term deposits** (`backend/deposits/`) open a real `savings`-kind pot account — same shape as a
+  goal's pot — funded by a real transfer from a chosen account of the customer's, at a rate looked
+  up server-side from `products.catalogue.DEPOSIT_PRODUCTS["term"]` by the term in months (the
+  client cannot submit a rate). Top-up and withdraw are real transfers between the pot and its
+  parent account (`LedgerService.transfer`, the same door `payments` and `goals` already use — not
+  a new caller of `post_transaction`). Closing sweeps any balance back to the parent and closes the
+  pot account, same as a goal. Unlike goals, a customer can hold **several** term deposits at once,
+  and a deposit can be **closed anytime** — no early-withdrawal penalty is modeled, a deliberate
+  demo simplification.
+- **Savings goal** is unchanged and was already real (see "Agents" below for `backend/goals/`) —
+  the Portfolio screen now simply surfaces the same `GoalProgressCard` component the Analytics and
+  Education screens already used, instead of duplicating goal creation in the Open Account dialog.
+  GEMS still supports one *active* goal per customer at a time.
+- **Investments** buy and sell holdings for real, at the live unit price. Every trade runs
+  `BuyInstrument` / `SellInstrument` through `bus.execute` — idempotent, audited, one outbox event
+  — exactly like every other write in this system. A customer with no `invest`-kind account cannot
+  reach the screen's trading actions at all: they see an **"Open an investment account"** button
+  instead, and the API refuses the trade regardless (`require_investment_account` at the route,
+  the command handler's own ownership-and-kind check underneath it — the real enforcement
+  boundary). Position value is derived from units times price, so the INVESTMENTS header always
+  equals the sum of what is listed under it. See "Investments — real prices, real trades" below
+  for the money mechanics.
+- **Apply for credit** (`backend/credits/`) records a real `CreditApplication` against a product
+  from `products.catalogue.CREDIT_PRODUCTS` (amount and term validated against it server-side) and
+  leaves it in `review`, persisted in MongoDB — it survives a refresh, unlike the old mock.
+  **Nothing is approved here.** The eligibility decision is still the seam left for a future agent
+  that reads accounts and income; until that agent exists, applications sit in `review` and say so
+  on screen. Withdrawing an application is a real status transition to `withdrawn`, never a delete
+  — consistent with the rest of the app never hard-deleting state. The Credits card shows only real
+  applications; there is no fake "active loan" placeholder any more.
+- **Transfer between my accounts** is a quick-access button on the Portfolio screen's accounts
+  section. It calls the exact same `/payments/transfers` endpoint the "Between my accounts" tab of
+  New Payment already uses — a second, more convenient front door onto the one existing money door,
+  not a new pathway.
 
 The Dashboard home screen's quick actions split the same way. **Add funds** is a mock top-up —
 React state only, chosen deliberately over a real house-treasury deposit so it stays an obvious
 sandbox action, not something that reads as a real funding rail. **Exchange** is real: see
-"Exchange — real currency conversion" below.
+"Exchange — real currency conversion" below. The home screen's account list is now a preview of the
+first three accounts with a "see all" link to Portfolio, rather than the full list duplicated in
+both places.
 
 Balances and amounts in the mockup are integer minor units, formatted for display, so the
 arithmetic above matches rule 1 even though no money is real. Interest rates are integer basis
@@ -171,6 +197,20 @@ backend/
     service.py       open, resolve by IBAN, list with balances derived from the ledger
     validation.py    IBAN mod-97 check and generation
     adapters.py      clock, the starter-account list
+  goals/             savings goals — a real pot account plus a target, funded/topped up/withdrawn
+                     via LedgerService.transfer; one active goal per user; standing orders
+    goal.py          the Goal aggregate
+    standing_order.py the StandingOrder aggregate
+    service.py       create/close/deposit/withdraw, standing-order create/pause/resume/cancel/run
+    validation.py    name, target amount/date, movement amount, frequency
+  deposits/          term deposits — shaped exactly like goals/, minus the one-per-user limit
+    deposit.py       the TermDeposit aggregate
+    service.py       create/top-up/withdraw/close, rate looked up from products.catalogue by term
+    validation.py    name, term-months whitelist, movement amount
+  credits/           credit applications — a record only, no money movement, no approval
+    application.py   the CreditApplication aggregate
+    service.py       submit/withdraw, amount and term validated against products.catalogue
+    validation.py    amount/term/purpose bounds
   investments/       market data only — read-only, no money movement
     instrument.py    Instrument, Quote, HistoryPoint, ExchangeRate, MarketSnapshot
     service.py       catalogue reads, TTL cache, last-known-good fallback, FX conversion
@@ -448,11 +488,11 @@ Other tradeoffs worth knowing:
     self-service recovery, by design. A correct password at any stage before that resets the
     track to zero.
 
-## Investments — real prices, demo trades
+## Investments — real prices, real trades
 
-`backend/investments/` is the only feature that reaches outside the system. It is **read-only**:
-no command, no journal entry, no outbox event. Buy and Sell on the Portfolio screen still move
-React state only, exactly as before — the money door is untouched.
+`backend/investments/` is the only feature that reaches outside the system for prices, and (like
+`backend/exchange/`) one of the two feature folders approved to call `LedgerService.post_transaction`
+directly for a trade — see rule 5 in `CLAUDE.md`.
 
 Two public providers, neither needing a key or an account:
 
@@ -485,8 +525,58 @@ says so, with the timestamp of the data it is actually showing. Retries back off
 The cache is per-process and in memory: a restart loses the last-known-good and falls back to the
 baked-in prices until the first successful fetch.
 
-`Instrument.id` values (`h-msci`, `h-tlv`, `h-btc`) match the holding ids in `dashboard-data.js`;
-that join is what lets the mockup's unit counts meet real prices.
+The Portfolio screen no longer keeps its own holding list in `dashboard-data.js`: it builds the
+row set straight from `market.quotes` (the full catalogue) and overlays each customer's real
+`quantityMicro` from `GET /investments/portfolio` by `Instrument.id`, so a newly-listed instrument
+in `CATALOGUE` appears with zero units automatically, with nothing to keep in sync by hand.
+
+### Trading — gated by an investment account, real money
+
+- `GET /investments/portfolio` — the caller's `invest`-kind accounts, each with its RON cash
+  balance and its holdings, valued at the current live quote
+- `POST /investments/buy` / `POST /investments/sell` — `{ accountId, instrumentId, amountMinorUnits }`,
+  run through `bus.execute` like every other write: idempotent (`Idempotency-Key`), audited, one
+  outbox event (`investments.bought` / `investments.sold`)
+
+All three routes carry a `require_investment_account` dependency that 404s upfront if the caller
+holds no active `invest`-kind account — the fast, UX-facing rejection. The actual security
+boundary is inside the command handler itself, same as every other feature: it re-resolves the
+account through `AccountsService.get_owned` (refuses one that isn't the caller's) and checks
+`account.kind is AccountKind.INVEST` before doing anything else. A route-level check alone would
+not be enough — nothing stops a handler from being called another way in the future — so the
+guard lives in both places, exactly the pattern `exchange` and `payments` already use for
+ownership checks.
+
+A trade posts **one** `investment_buy` / `investment_sell` journal transaction, quantity computed
+server-side from the *live* quote (never trusted from the client):
+
+- **Buy**: `-amount` from the `invest` account, `+amount` into `house:invest_suspense:{currency}`.
+- **Sell**: `-amount` from `house:invest_suspense:{currency}`, `+amount` into the account.
+
+`house:invest_suspense` is a demo treasury exactly like `house:fx` and `house:settlement` — not a
+real `Account` document, never balance-checked. Each trade also appends one row to the
+append-only `investmentOrders` collection (`userId`, `accountId`, `instrumentId`, `side`,
+`quantityMicro`, `unitPriceMinor`, `amountMinor`, `journalTransactionId`) — units are scaled by
+1e6 (`quantityMicro`) the same way FX rates are scaled by 1e6, so fractional shares and crypto
+never need a float. **Holdings are never stored as a mutable number**: a position is the signed
+sum of that account's orders, computed on read —
+
+```python
+[
+    {"$match": {"accountId": account_id}},
+    {"$group": {
+        "_id": "$instrumentId",
+        "quantity": {"$sum": {
+            "$cond": [{"$eq": ["$side", "buy"]}, "$quantityMicro", {"$multiply": ["$quantityMicro", -1]}]
+        }},
+    }},
+]
+```
+
+against `investmentOrders` — the same "derive from an append-only log, never mutate a balance"
+discipline rule 4 requires of the ledger itself. `MongoInvestmentOrderRepository.holdings_for_account`
+(`backend/database/repositories.py`) runs exactly this pipeline; `InvestmentsService.portfolio`
+joins its result with the live market snapshot to price each position.
 
 ## Exchange — real currency conversion
 

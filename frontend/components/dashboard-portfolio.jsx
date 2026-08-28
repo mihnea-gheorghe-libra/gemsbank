@@ -44,28 +44,6 @@
     return Math.round(holding.units * holding.unitPriceMinor);
   };
 
-  DASH.applyQuotes = function applyQuotes(holdings, market) {
-    if (!market || !market.quotes) return holdings;
-    const byId = {};
-    market.quotes.forEach((quote) => { byId[quote.id] = quote; });
-    return holdings.map((holding) => {
-      const quote = byId[holding.id];
-      if (!quote) return holding;
-      return Object.assign({}, holding, {
-        name: quote.name,
-        cur: quote.currency,
-        unitPriceMinor: quote.unitPriceMinor,
-        quoteCurrency: quote.quoteCurrency,
-        quoteUnitPriceMinor: quote.quoteUnitPriceMinor,
-        changeBps: quote.changeBps,
-        history: quote.history,
-        live: quote.live,
-        symbol: quote.symbol,
-        asOf: quote.asOf,
-      });
-    });
-  };
-
   DASH.formatChangeBps = function formatChangeBps(changeBps) {
     const sign = changeBps > 0 ? "+" : changeBps < 0 ? "−" : "";
     return sign + (Math.abs(changeBps) / 100).toFixed(2).replace(".", ",") + "%";
@@ -487,13 +465,11 @@
     const [fundFromId, setFundFromId] = useState("");
     const [amount, setAmount] = useState("");
     const [name, setName] = useState("");
-    const [target, setTarget] = useState("");
     const [months, setMonths] = useState(defaultMonths(initialType));
 
     const type = DATA.accountTypes.find((item) => item.key === typeKey) || DATA.accountTypes[0];
     const product = depositFor(type);
     const opensDeposit = Boolean(product);
-    const isGoal = type.depositKind === "goal";
     const terms = product ? product.terms : [];
     const term = terms.find((option) => String(option.months) === months) || null;
     const rateBps = term ? term.rateBps : type.rateBps;
@@ -501,14 +477,11 @@
     const sources = accounts.filter((account) => account.cur === cur);
     const from = sources.find((account) => account.id === fundFromId) || null;
     const amountMinor = DASH.parseMinor(amount);
-    const targetMinor = DASH.parseMinor(target);
     const shortfall = from && amountMinor != null && amountMinor > from.minor ? amountMinor - from.minor : null;
 
     const ready = shortfall == null
-      && (!opensDeposit || name.trim() !== "")
-      && (!isGoal || targetMinor > 0)
       && (opensDeposit
-        ? Boolean(from) && amountMinor > 0
+        ? name.trim() !== "" && Boolean(from) && amountMinor > 0
         : !from || amountMinor == null || amountMinor > 0)
       && !busy;
 
@@ -521,32 +494,18 @@
     const submit = () => {
       if (opensDeposit) {
         onSubmit({
-          deposit: {
-            id: "dep-" + Date.now(),
-            kind: type.depositKind,
+          termDeposit: {
+            parentAccountId: from.id,
             name: name.trim(),
-            rateBps,
-            matures: term ? DASH.addMonths(new Date(), term.months) : null,
-            minor: amountMinor,
-            targetMinor: isGoal ? targetMinor : null,
-            cur,
+            termMonths: term.months,
+            initialDepositMinorUnits: amountMinor,
           },
-          fromId: from.id,
-          amountMinor,
         });
         return;
       }
 
-      const iban = DASH.buildIban();
       onSubmit({
-        account: {
-          id: "acc-" + Date.now(),
-          cur,
-          typeKey,
-          minor: 0,
-          iban,
-          ibanShort: DASH.shortIban(iban),
-        },
+        account: { cur, typeKey, label: name.trim() || t("dashboard.accountType." + typeKey) },
         fundFromId: from && amountMinor > 0 ? from.id : null,
         fundMinor: from && amountMinor > 0 ? amountMinor : 0,
       });
@@ -578,11 +537,7 @@
         </div>
 
         {terms.length ? (
-          <UI.Field
-            id="open-term"
-            label={isGoal ? t("dashboard.deposit.horizon") : t("dashboard.deposit.term")}
-            hint={t("dashboard.deposit.rateHint")}
-          >
+          <UI.Field id="open-term" label={t("dashboard.deposit.term")} hint={t("dashboard.deposit.rateHint")}>
             <UI.Select id="open-term" value={months} onChange={(event) => setMonths(event.target.value)}>
               {terms.map((option) => (
                 <option key={option.months} value={String(option.months)}>
@@ -605,17 +560,18 @@
 
         <AccountTypeTerms type={type} cur={cur} showRate={!term} />
 
-        {opensDeposit ? (
-          <UI.Field id="open-name" label={t("dashboard.deposit.name")}>
-            <UI.TextInput id="open-name" value={name} placeholder={t("dashboard.deposit.namePh")} onChange={(event) => setName(event.target.value)} />
-          </UI.Field>
-        ) : null}
-
-        {isGoal ? (
-          <UI.Field id="open-target" label={t("dashboard.deposit.target")}>
-            <UI.TextInput id="open-target" inputMode="decimal" value={target} placeholder="0,00" onChange={(event) => setTarget(event.target.value)} />
-          </UI.Field>
-        ) : null}
+        <UI.Field
+          id="open-name"
+          label={opensDeposit ? t("dashboard.deposit.name") : t("dashboard.openAccount.name")}
+          hint={opensDeposit ? null : t("dashboard.openAccount.nameHint")}
+        >
+          <UI.TextInput
+            id="open-name"
+            value={name}
+            placeholder={opensDeposit ? t("dashboard.deposit.namePh") : t("dashboard.openAccount.namePh")}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </UI.Field>
 
         {opensDeposit && !sources.length ? (
           <div className="dash-balance-line is-short" role="alert">
@@ -656,17 +612,15 @@
     );
   };
 
-  DASH.MoveDepositDialog = function MoveDepositDialog({ deposit, accounts, direction, onClose, onSubmit }) {
-    const targets = accounts.filter((account) => account.cur === deposit.cur);
-    const [accountId, setAccountId] = useState(targets.length ? targets[0].id : "");
+  DASH.MoveDepositDialog = function MoveDepositDialog({ deposit, accounts, direction, busy, error, onClose, onSubmit }) {
     const [amount, setAmount] = useState("");
+    const parent = accounts.find((item) => item.id === deposit.parentAccountId) || null;
 
-    const account = targets.find((item) => item.id === accountId) || null;
     const amountMinor = DASH.parseMinor(amount);
     const topUp = direction === "in";
-    const source = topUp ? account : { minor: deposit.minor, cur: deposit.cur };
+    const source = topUp ? parent : { minor: deposit.minor, cur: deposit.cur };
     const shortfall = source && amountMinor != null && amountMinor > source.minor ? amountMinor - source.minor : null;
-    const ready = Boolean(account) && amountMinor > 0 && shortfall == null;
+    const ready = Boolean(parent) && amountMinor > 0 && shortfall == null && !busy;
 
     return (
       <Dialog
@@ -674,52 +628,55 @@
         title={topUp ? t("dashboard.deposit.topUpTitle", { name: deposit.name }) : t("dashboard.deposit.withdrawTitle", { name: deposit.name })}
         subtitle={topUp ? t("dashboard.deposit.topUpSubtitle") : t("dashboard.deposit.withdrawSubtitle")}
         onClose={onClose}
-        action={topUp ? t("dashboard.deposit.topUp") : t("dashboard.deposit.withdraw")}
+        action={busy ? t("dashboard.payDialog.sending") : (topUp ? t("dashboard.deposit.topUp") : t("dashboard.deposit.withdraw"))}
         actionDisabled={!ready}
-        onAction={() => onSubmit({ depositId: deposit.id, accountId: account.id, amountMinor, direction })}
+        onAction={() => onSubmit({ depositId: deposit.id, amountMinor, direction })}
       >
-        {targets.length ? (
-          <UI.Field id="move-account" label={topUp ? t("dashboard.deposit.fundFrom") : t("dashboard.deposit.payInto")}>
-            <UI.Select id="move-account" value={accountId} onChange={(event) => setAccountId(event.target.value)}>
-              {targets.map((item) => (
-                <option key={item.id} value={item.id}>{DASH.accountLabel(item)}</option>
-              ))}
-            </UI.Select>
-          </UI.Field>
-        ) : (
-          <div className="dash-balance-line is-short" role="alert">
-            {t("dashboard.deposit.noAccount", { currency: deposit.cur })}
-          </div>
-        )}
-
         <AmountField
           id="move-amount"
           label={t("dashboard.payDialog.amount")}
           value={amount}
           onChange={setAmount}
-          account={topUp ? account : { minor: deposit.minor, cur: deposit.cur }}
+          account={topUp ? parent : { minor: deposit.minor, cur: deposit.cur }}
           shortfall={shortfall}
         />
+
+        {error ? (
+          <div className="dash-balance-line is-short" role="alert">{error.message}</div>
+        ) : null}
       </Dialog>
     );
   };
 
-  DASH.InvestDialog = function InvestDialog({ holdings, accounts, investCashMinor, holdingId, direction, onClose, onSubmit }) {
+  DASH.DeleteAccountDialog = function DeleteAccountDialog({ account, busy, error, onClose, onSubmit }) {
+    return (
+      <Dialog
+        labelledBy="delete-account-title"
+        title={t("dashboard.accounts.deleteDialogTitle")}
+        subtitle={t("dashboard.accounts.deleteDialogBody", { label: DASH.accountLabel(account) })}
+        onClose={onClose}
+        action={busy ? t("dashboard.payDialog.sending") : t("dashboard.accounts.deleteConfirm")}
+        actionDisabled={busy}
+        onAction={() => onSubmit(account.id)}
+      >
+        {error ? (
+          <div className="dash-balance-line is-short" role="alert">{error.message}</div>
+        ) : null}
+      </Dialog>
+    );
+  };
+
+  DASH.InvestDialog = function InvestDialog({ holdings, investCashMinor, holdingId, direction, busy, error, onClose, onSubmit }) {
     const [selectedId, setSelectedId] = useState(holdingId || holdings[0].id);
-    const [accountId, setAccountId] = useState(() => {
-      const match = accounts.find((account) => account.cur === "RON");
-      return match ? match.id : accounts[0].id;
-    });
     const [amount, setAmount] = useState("");
 
     const holding = holdings.find((item) => item.id === selectedId) || holdings[0];
-    const account = accounts.find((item) => item.id === accountId) || accounts[0];
     const amountMinor = DASH.parseMinor(amount);
     const buying = direction === "buy";
 
-    const available = buying ? account.minor + (investCashMinor || 0) : DASH.holdingValue(holding);
+    const available = buying ? investCashMinor || 0 : DASH.holdingValue(holding);
     const shortfall = amountMinor != null && amountMinor > available ? amountMinor - available : null;
-    const ready = amountMinor > 0 && shortfall == null && account.cur === holding.cur;
+    const ready = amountMinor > 0 && shortfall == null && !busy;
 
     const units = amountMinor > 0 ? amountMinor / holding.unitPriceMinor : 0;
 
@@ -729,9 +686,9 @@
         title={buying ? t("dashboard.invest.buyTitle") : t("dashboard.invest.sellTitle")}
         subtitle={t("dashboard.invest.subtitle")}
         onClose={onClose}
-        action={buying ? t("dashboard.invest.buy") : t("dashboard.invest.sell")}
+        action={busy ? t("dashboard.payDialog.sending") : (buying ? t("dashboard.invest.buy") : t("dashboard.invest.sell"))}
         actionDisabled={!ready}
-        onAction={() => onSubmit({ holdingId: holding.id, accountId: account.id, amountMinor, direction })}
+        onAction={() => onSubmit({ holdingId: holding.id, amountMinor, direction })}
       >
         <UI.Field id="invest-holding" label={t("dashboard.invest.instrument")}>
           <UI.Select id="invest-holding" value={holding.id} onChange={(event) => setSelectedId(event.target.value)}>
@@ -747,20 +704,6 @@
           })}
         </div>
 
-        <UI.Field id="invest-account" label={buying ? t("dashboard.deposit.fundFrom") : t("dashboard.deposit.payInto")}>
-          <UI.Select id="invest-account" value={account.id} onChange={(event) => setAccountId(event.target.value)}>
-            {accounts.map((item) => (
-              <option key={item.id} value={item.id}>{DASH.accountLabel(item)}</option>
-            ))}
-          </UI.Select>
-        </UI.Field>
-
-        {account.cur === holding.cur ? null : (
-          <div className="dash-balance-line is-short" role="alert">
-            {t("dashboard.payDialog.sameCurrency")}
-          </div>
-        )}
-
         <AmountField
           id="invest-amount"
           label={t("dashboard.payDialog.amount")}
@@ -775,11 +718,15 @@
             ? t("dashboard.invest.buyPreview", { units: UNIT_FORMAT.format(units), unit: t("dashboard.portfolio.unit." + holding.unitKey) })
             : t("dashboard.invest.sellPreview", { units: UNIT_FORMAT.format(Math.min(units, holding.units)), unit: t("dashboard.portfolio.unit." + holding.unitKey) })}
         </div>
+
+        {error ? (
+          <div className="dash-balance-line is-short" role="alert">{error.message}</div>
+        ) : null}
       </Dialog>
     );
   };
 
-  DASH.CreditApplicationDialog = function CreditApplicationDialog({ accounts, onClose, onSubmit }) {
+  DASH.CreditApplicationDialog = function CreditApplicationDialog({ accounts, busy, error, onClose, onSubmit }) {
     const defaultTerm = (item) => (item.terms.length ? String(item.terms[item.terms.length - 1].months) : "");
 
     const [productId, setProductId] = useState(DATA.creditProducts[0].id);
@@ -794,7 +741,7 @@
     const payout = accounts.find((account) => account.id === payoutId) || accounts[0];
     const amountMinor = DASH.parseMinor(amount);
     const overMax = amountMinor != null && amountMinor > product.maxMinor ? amountMinor - product.maxMinor : null;
-    const ready = amountMinor > 0 && overMax == null;
+    const ready = amountMinor > 0 && overMax == null && !busy;
 
     const selectProduct = (id) => {
       const next = DATA.creditProducts.find((item) => item.id === id) || DATA.creditProducts[0];
@@ -804,17 +751,11 @@
 
     const submit = () => {
       onSubmit({
-        id: "app-" + Date.now(),
         productId: product.id,
-        kind: product.kind,
-        amountMinor,
+        amountMinorUnits: amountMinor,
         termMonths: term ? term.months : null,
-        rateBps,
         purpose: purpose.trim(),
         payoutAccountId: payout.id,
-        cur: payout.cur,
-        status: "review",
-        submitted: new Date().toISOString().slice(0, 10),
       });
     };
 
@@ -824,7 +765,7 @@
         title={t("dashboard.portfolio.applyCredit")}
         subtitle={t("dashboard.credit.subtitle")}
         onClose={onClose}
-        action={t("dashboard.credit.submit")}
+        action={busy ? t("dashboard.payDialog.sending") : t("dashboard.credit.submit")}
         actionDisabled={!ready}
         onAction={submit}
       >
@@ -893,6 +834,78 @@
         </UI.Field>
 
         <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>{t("dashboard.credit.agentNote")}</p>
+
+        {error ? (
+          <div className="dash-balance-line is-short" role="alert">{error.message}</div>
+        ) : null}
+      </Dialog>
+    );
+  };
+
+  DASH.QuickTransferDialog = function QuickTransferDialog({ accounts, busy, error, onClose, onSubmit }) {
+    const [sourceId, setSourceId] = useState(accounts[0] ? accounts[0].id : "");
+    const [amount, setAmount] = useState("");
+
+    const source = accounts.find((account) => account.id === sourceId) || null;
+    const targets = accounts.filter((account) => account.cur === (source ? source.cur : null) && account.id !== sourceId);
+    const [targetId, setTargetId] = useState(targets[0] ? targets[0].id : "");
+    const target = targets.find((account) => account.id === targetId) || null;
+
+    const amountMinor = DASH.parseMinor(amount);
+    const shortfall = source && amountMinor != null && amountMinor > source.minor ? amountMinor - source.minor : null;
+    const ready = Boolean(source) && Boolean(target) && amountMinor > 0 && shortfall == null && !busy;
+
+    const selectSource = (value) => {
+      setSourceId(value);
+      const nextSource = accounts.find((account) => account.id === value) || null;
+      const nextTargets = accounts.filter((account) => account.cur === (nextSource ? nextSource.cur : null) && account.id !== value);
+      setTargetId(nextTargets[0] ? nextTargets[0].id : "");
+    };
+
+    return (
+      <Dialog
+        labelledBy="quick-transfer-title"
+        title={t("dashboard.accounts.quickTransferTitle")}
+        subtitle={t("dashboard.accounts.quickTransferSubtitle")}
+        onClose={onClose}
+        action={busy ? t("dashboard.payDialog.sending") : t("dashboard.accounts.quickTransferSubmit")}
+        actionDisabled={!ready}
+        onAction={() => onSubmit({ sourceAccountId: source.id, targetAccountId: target.id, amountMinor })}
+      >
+        <UI.Field id="quick-transfer-source" label={t("dashboard.accounts.quickTransferFrom")}>
+          <UI.Select id="quick-transfer-source" value={sourceId} onChange={(event) => selectSource(event.target.value)}>
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>{DASH.accountLabel(account)}</option>
+            ))}
+          </UI.Select>
+        </UI.Field>
+
+        {targets.length ? (
+          <UI.Field id="quick-transfer-target" label={t("dashboard.accounts.quickTransferTo")}>
+            <UI.Select id="quick-transfer-target" value={targetId} onChange={(event) => setTargetId(event.target.value)}>
+              {targets.map((account) => (
+                <option key={account.id} value={account.id}>{DASH.accountLabel(account)}</option>
+              ))}
+            </UI.Select>
+          </UI.Field>
+        ) : (
+          <div className="dash-balance-line is-short" role="alert">
+            {t("dashboard.accounts.quickTransferNoTarget")}
+          </div>
+        )}
+
+        <AmountField
+          id="quick-transfer-amount"
+          label={t("dashboard.payDialog.amount")}
+          value={amount}
+          onChange={setAmount}
+          account={source}
+          shortfall={shortfall}
+        />
+
+        {error ? (
+          <div className="dash-balance-line is-short" role="alert">{error.message}</div>
+        ) : null}
       </Dialog>
     );
   };

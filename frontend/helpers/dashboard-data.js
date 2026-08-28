@@ -19,46 +19,10 @@
 
     totalBalance: "128.470,55",
 
-    accounts: [
-      {
-        id: "acc-current-ron",
-        cur: "RON",
-        typeKey: "current",
-        minor: 4218055,
-        iban: "RO49 AAAA 1B31 0075 9384 4127",
-        ibanShort: "RO49 •••• 4127",
-      },
-      {
-        id: "acc-savings-eur",
-        cur: "EUR",
-        typeKey: "savings",
-        minor: 1194000,
-        iban: "RO12 BBBB 2C44 0011 2288 8802",
-        ibanShort: "RO12 •••• 8802",
-      },
-      {
-        id: "acc-deposit-ron",
-        cur: "RON",
-        typeKey: "deposit",
-        minor: 5541000,
-        iban: "RO88 CCCC 3D55 0099 4410 6610",
-        ibanShort: "RO88 •••• 6610",
-      },
-      {
-        id: "acc-invest-usd",
-        cur: "USD",
-        typeKey: "invest",
-        minor: 402010,
-        iban: "RO31 DDDD 4E66 0044 7712 2210",
-        ibanShort: "RO31 •••• 2210",
-      },
-    ],
-
     accountTypes: [
       { key: "current", creates: "account", rateBps: 0, monthlyFeeMinor: 0, minOpenMinor: 0, accessKey: "anytime" },
       { key: "savings", creates: "account", rateBps: 225, monthlyFeeMinor: 0, minOpenMinor: 10000, accessKey: "anytime" },
       { key: "deposit", creates: "deposit", depositKind: "term", monthlyFeeMinor: 0, minOpenMinor: 100000, accessKey: "maturity" },
-      { key: "goal", creates: "deposit", depositKind: "goal", monthlyFeeMinor: 0, minOpenMinor: 10000, accessKey: "goalExit" },
       { key: "invest", creates: "account", rateBps: 0, monthlyFeeMinor: 0, minOpenMinor: 0, accessKey: "anytime" },
     ],
 
@@ -105,11 +69,6 @@
       { num: "02", who: "Chirie august", noteKey: "rent", minor: 240000 },
     ],
 
-    deposits: [
-      { id: "dep-term-12m", kind: "term", name: "Term deposit 12M", rateBps: 610, matures: "2027-02-14", minor: 5541000, cur: "RON" },
-      { id: "dep-eur-savings", kind: "savings", name: "EUR savings", rateBps: 225, matures: null, minor: 1194000, cur: "EUR" },
-      { id: "dep-goal-apartment", kind: "goal", name: "Goal — apartment", rateBps: 300, matures: "2028-06-01", minor: 820000, targetMinor: 5000000, cur: "RON" },
-    ],
     depositProducts: {
       term: {
         defaultMonths: 12,
@@ -135,10 +94,6 @@
       },
     },
 
-    credits: [
-      { id: "cr-personal", kind: "loan", nameKey: "personal", termMonths: 60, paidMonths: 24, outstandingMinor: 3410000, cur: "RON", rateBps: 890 },
-      { id: "cr-line", kind: "line", nameKey: "line", limitMinor: 600000, usedMinor: 120000, cur: "RON", rateBps: 1890 },
-    ],
     creditProducts: [
       {
         id: "personal",
@@ -168,26 +123,6 @@
         ],
       },
     ],
-
-    holdings: [
-      { id: "h-msci", name: "MSCI World ETF", unitKey: "units", units: 20, unitPriceMinor: 45700, cur: "RON" },
-      { id: "h-tlv", name: "TLV — Banca Transilvania", unitKey: "shares", units: 320, unitPriceMinor: 2100, cur: "RON" },
-      { id: "h-btc", name: "BTC", unitKey: "coins", units: 0.014, unitPriceMinor: 14857143, cur: "RON" },
-      { id: "h-spy", name: "S&P 500 ETF", unitKey: "units", units: 0, unitPriceMinor: 254800, cur: "RON" },
-      { id: "h-aapl", name: "Apple", unitKey: "shares", units: 0, unitPriceMinor: 104650, cur: "RON" },
-      { id: "h-snp", name: "OMV Petrom", unitKey: "shares", units: 0, unitPriceMinor: 50, cur: "RON" },
-      { id: "h-eth", name: "Ethereum", unitKey: "coins", units: 0, unitPriceMinor: 1729000, cur: "RON" },
-      { id: "h-msft", name: "Microsoft", unitKey: "shares", units: 0, unitPriceMinor: 213850, cur: "RON" },
-      { id: "h-amzn", name: "Amazon", unitKey: "shares", units: 0, unitPriceMinor: 100100, cur: "RON" },
-      { id: "h-googl", name: "Alphabet", unitKey: "shares", units: 0, unitPriceMinor: 86450, cur: "RON" },
-      { id: "h-nvda", name: "Nvidia", unitKey: "shares", units: 0, unitPriceMinor: 61425, cur: "RON" },
-      { id: "h-meta", name: "Meta", unitKey: "shares", units: 0, unitPriceMinor: 282100, cur: "RON" },
-      { id: "h-tsla", name: "Tesla", unitKey: "shares", units: 0, unitPriceMinor: 118300, cur: "RON" },
-      { id: "h-gld", name: "Gold", unitKey: "units", units: 0, unitPriceMinor: 113750, cur: "RON" },
-      { id: "h-slv", name: "Silver", unitKey: "units", units: 0, unitPriceMinor: 13195, cur: "RON" },
-      { id: "h-pplt", name: "Platinum", unitKey: "units", units: 0, unitPriceMinor: 44135, cur: "RON" },
-    ],
-    investCashMinor: 100000,
 
     groceryBars: [
       { label: "MAR", pct: 68 },

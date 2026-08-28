@@ -3,13 +3,12 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
-from pydantic import ValidationError as PydanticValidationError
-
 from backend.agents.adapters import ChatCompleter
 from backend.capabilities.registry import Capability, CapabilityRegistry, SideEffect
 from backend.database.records import AuditRecord
 from backend.helpers.context import Actor, get_correlation_id, log_event, new_id
 from backend.helpers.errors import NotFoundError, ValidationError
+from pydantic import ValidationError as PydanticValidationError
 
 logger = logging.getLogger(__name__)
 
