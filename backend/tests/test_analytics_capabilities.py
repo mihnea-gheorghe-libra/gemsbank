@@ -52,6 +52,8 @@ class _FakeAccounts:
 class _FakeGoalProgress:
     goal: Goal
     progress_minor: int
+    streak_weeks: int = 0
+    streak_last_week: str | None = None
 
 
 class _FakeGoals:
@@ -179,7 +181,7 @@ async def test_goal_gap_projects_a_completion_date_and_counts_a_contribution_str
         currency="RON",
         target_date=(now + timedelta(days=400)).date(),
     )
-    progress = _FakeGoalProgress(goal=goal, progress_minor=40_000)
+    progress = _FakeGoalProgress(goal=goal, progress_minor=40_000, streak_weeks=3)
     monkeypatch.setattr(analytics, "get_goals_service", lambda: _FakeGoals(progress))
     rows = [
         _row(now - timedelta(days=2), "Self", "transfer", 20_000, account_id="acc-1"),

@@ -49,6 +49,15 @@ async def _standing_orders_loop() -> None:
         await asyncio.sleep(settings.standing_orders_poll_seconds)
 
 
+async def _index_reassert_loop() -> None:
+    while True:
+        await asyncio.sleep(settings.index_reassert_seconds)
+        try:
+            await ensure_indexes()
+        except Exception:
+            logger.exception("index_reassert_loop_failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
@@ -64,7 +73,9 @@ async def lifespan(app: FastAPI):
     get_escalations_service()
     await ensure_indexes()
     standing_orders_task = asyncio.create_task(_standing_orders_loop())
+    index_reassert_task = asyncio.create_task(_index_reassert_loop())
     yield
+    index_reassert_task.cancel()
     standing_orders_task.cancel()
     await close_investments_clients()
     await close_client()

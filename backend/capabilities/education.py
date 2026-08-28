@@ -85,6 +85,21 @@ class GoalProposalOutput(BaseModel):
     target_minor: int | None = Field(default=None, alias="targetMinorUnits")
     target_formatted: str | None = Field(default=None, alias="targetFormatted")
     target_date: date | None = Field(default=None, alias="targetDate")
+    days_remaining: int | None = Field(default=None, alias="daysRemaining")
+    weeks_remaining: int | None = Field(default=None, alias="weeksRemaining")
+    months_remaining: int | None = Field(default=None, alias="monthsRemaining")
+    suggested_monthly_minor: int | None = Field(
+        default=None, alias="suggestedMonthlyMinorUnits"
+    )
+    suggested_monthly_formatted: str | None = Field(
+        default=None, alias="suggestedMonthlyFormatted"
+    )
+    suggested_weekly_minor: int | None = Field(
+        default=None, alias="suggestedWeeklyMinorUnits"
+    )
+    suggested_weekly_formatted: str | None = Field(
+        default=None, alias="suggestedWeeklyFormatted"
+    )
     requires_human_confirmation: bool = Field(default=True, alias="requiresHumanConfirmation")
     candidates: list[AccountBalance] = Field(default_factory=list)
     blockers: list[ProposalBlocker] = Field(default_factory=list)
@@ -100,21 +115,6 @@ async def resolve_goal_proposal(
     assert isinstance(payload, GoalProposalInput)
     accounts_svc = accounts_service or get_accounts_service()
     goals_svc = goals_service or get_goals_service()
-
-    existing = await goals_svc.get_for_user(actor.subject_id())
-    if existing is not None:
-        return GoalProposalOutput(
-            status="blocked",
-            blockers=[
-                ProposalBlocker(
-                    code="already_has_goal",
-                    message=(
-                        f"There is already an active goal, '{existing.name}'. GEMS supports one "
-                        "active goal per user for now."
-                    ),
-                )
-            ],
-        )
 
     accounts = await accounts_svc.list_for_user(actor.subject_id())
     eligible = [account for account in accounts if account["kind"] != "invest"]
@@ -166,6 +166,27 @@ async def resolve_goal_proposal(
             blockers=[ProposalBlocker(code=f"invalid_{field}", message=exc.message)],
         )
 
+    active = await goals_svc.list_active_for_user(actor.subject_id())
+    if any(goal.name.casefold() == name.casefold() for goal in active):
+        return GoalProposalOutput(
+            status="blocked",
+            blockers=[
+                ProposalBlocker(
+                    code="duplicate_goal_name",
+                    message=(
+                        f"They already have an active goal called '{name}'. Ask them for a "
+                        "different name, or pay into the existing goal instead."
+                    ),
+                )
+            ],
+        )
+
+    days_remaining = max(1, (target_date - today).days)
+    weeks_remaining = max(1, round(days_remaining / 7))
+    months_remaining = max(1, round(days_remaining / 30.4375))
+    suggested_monthly_minor = max(1, round(target_minor / (days_remaining / 30.4375)))
+    suggested_weekly_minor = max(1, round(target_minor / (days_remaining / 7)))
+
     return GoalProposalOutput(
         status="proposed",
         proposalId=f"goal-{account['accountId'][:8]}-{target_minor}",
@@ -176,16 +197,52 @@ async def resolve_goal_proposal(
         targetMinorUnits=target_minor,
         targetFormatted=format_minor(target_minor, account["currency"]),
         targetDate=target_date,
+        daysRemaining=days_remaining,
+        weeksRemaining=weeks_remaining,
+        monthsRemaining=months_remaining,
+        suggestedMonthlyMinorUnits=suggested_monthly_minor,
+        suggestedMonthlyFormatted=format_minor(suggested_monthly_minor, account["currency"]),
+        suggestedWeeklyMinorUnits=suggested_weekly_minor,
+        suggestedWeeklyFormatted=format_minor(suggested_weekly_minor, account["currency"]),
         requiresHumanConfirmation=True,
     )
 
 
 class StandingOrderProposalInput(BaseModel):
-    pass
+    goal_ref: str | None = Field(
+        default=None,
+        alias="goalRef",
+        max_length=80,
+        description=(
+            "Which goal the standing order should feed, in the customer's own words: the goal's "
+            "name or its id. Leave it out only when they have a single active goal."
+        ),
+    )
+    amount_minor: int | None = Field(
+        default=None,
+        alias="amountMinorUnits",
+        ge=1,
+        description=(
+            "The amount the customer asked to put aside each run, in integer minor units: "
+            "370,00 RON is 37000. Leave it out to let GEMS size it from their required rate."
+        ),
+    )
+    frequency: Literal["weekly", "monthly"] | None = Field(
+        default=None, description="How often the money moves. Defaults to weekly."
+    )
+    model_config = {"populate_by_name": True}
+
+
+class GoalOption(BaseModel):
+    goal_id: str = Field(alias="goalId")
+    name: str
+    currency: str
+    target_date: date = Field(alias="targetDate")
+    model_config = {"populate_by_name": True}
 
 
 class StandingOrderProposalOutput(BaseModel):
-    status: Literal["proposed", "blocked"]
+    status: Literal["proposed", "blocked", "needs_clarification"]
     proposal_kind: Literal["standingOrder"] = Field(default="standingOrder", alias="proposalKind")
     goal_id: str | None = Field(default=None, alias="goalId")
     goal_name: str | None = Field(default=None, alias="goalName")
@@ -194,6 +251,7 @@ class StandingOrderProposalOutput(BaseModel):
     frequency: Literal["weekly", "monthly"] | None = None
     currency: str | None = None
     requires_human_confirmation: bool = Field(default=True, alias="requiresHumanConfirmation")
+    goals: list[GoalOption] = Field(default_factory=list)
     blockers: list[ProposalBlocker] = Field(default_factory=list)
     model_config = {"populate_by_name": True}
 
@@ -207,8 +265,8 @@ async def resolve_standing_order_proposal(
     goals_svc = goals_service or get_goals_service()
     user_id = actor.subject_id()
 
-    goal = await goals_svc.get_for_user(user_id)
-    if goal is None:
+    active = await goals_svc.list_active_for_user(user_id)
+    if not active:
         return StandingOrderProposalOutput(
             status="blocked",
             blockers=[
@@ -218,6 +276,48 @@ async def resolve_standing_order_proposal(
                 )
             ],
         )
+
+    options = [
+        GoalOption(
+            goalId=candidate.id,
+            name=candidate.name,
+            currency=candidate.currency,
+            targetDate=candidate.target_date,
+        )
+        for candidate in active
+    ]
+    matches = await goals_svc.match_active_for_user(user_id, payload.goal_ref)
+    if not matches:
+        return StandingOrderProposalOutput(
+            status="needs_clarification",
+            goals=options,
+            blockers=[
+                ProposalBlocker(
+                    code="goal_not_found",
+                    message="None of their active goals matches that description.",
+                )
+            ],
+        )
+    if len(matches) > 1:
+        return StandingOrderProposalOutput(
+            status="needs_clarification",
+            goals=[
+                GoalOption(
+                    goalId=candidate.id,
+                    name=candidate.name,
+                    currency=candidate.currency,
+                    targetDate=candidate.target_date,
+                )
+                for candidate in matches
+            ],
+            blockers=[
+                ProposalBlocker(
+                    code="goal_ambiguous",
+                    message="They have more than one active goal. Ask which one this is for.",
+                )
+            ],
+        )
+    goal = matches[0]
 
     existing_order = await goals_svc.get_standing_order_for_goal(goal.id, user_id)
     if existing_order is not None:
@@ -233,8 +333,10 @@ async def resolve_standing_order_proposal(
             ],
         )
 
+    frequency: Literal["weekly", "monthly"] = payload.frequency or "weekly"
+
     pace = await analytics_capabilities.resolve_goal_pace(
-        actor, analytics_capabilities.GoalPaceInput()
+        actor, analytics_capabilities.GoalPaceInput(goalId=goal.id)
     )
     assert isinstance(pace, analytics_capabilities.GoalPaceOutput)
 
@@ -250,7 +352,18 @@ async def resolve_standing_order_proposal(
                 )
             ],
         )
-    if pace.required_weekly_rate_minor is None:
+
+    amount = payload.amount_minor
+    if amount is None and frequency == "monthly":
+        gap = await analytics_capabilities.resolve_goal_gap(
+            actor, analytics_capabilities.GoalGapInput(goalId=goal.id)
+        )
+        assert isinstance(gap, analytics_capabilities.GoalGapOutput)
+        amount = gap.required_minor_per_month
+    elif amount is None:
+        amount = pace.required_weekly_rate_minor
+
+    if amount is None or amount <= 0:
         return StandingOrderProposalOutput(
             status="blocked",
             goalId=goal.id,
@@ -258,19 +371,21 @@ async def resolve_standing_order_proposal(
             blockers=[
                 ProposalBlocker(
                     code="no_rate_available",
-                    message="GEMS could not work out a required weekly rate for this goal.",
+                    message=(
+                        "GEMS could not work out a rate for this goal. Ask them how much they "
+                        "want to put aside each time."
+                    ),
                 )
             ],
         )
 
-    amount = pace.required_weekly_rate_minor
     return StandingOrderProposalOutput(
         status="proposed",
         goalId=goal.id,
         goalName=goal.name,
         amountMinorUnits=amount,
         amountFormatted=format_minor(amount, goal.currency),
-        frequency="weekly",
+        frequency=frequency,
         currency=goal.currency,
         requiresHumanConfirmation=True,
     )

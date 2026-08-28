@@ -105,6 +105,7 @@ class Settings(BaseSettings):
     cashflow_low_balance_threshold_minor: int = 0
 
     standing_orders_poll_seconds: int = 3600
+    index_reassert_seconds: int = 300
 
     yahoo_chart_base_url: str = "https://query1.finance.yahoo.com"
     frankfurter_base_url: str = "https://api.frankfurter.app"

@@ -46,12 +46,24 @@ class _FakeAccountRepository:
 class _FakeJournalRepository:
     def __init__(self, balances: dict[str, int]) -> None:
         self._balances = dict(balances)
+        self._transactions: list[object] = []
 
     async def append(self, transaction, session=None) -> None:
+        self._transactions.append(transaction)
         for entry in transaction.entries:
             self._balances[entry.account_id] = (
                 self._balances.get(entry.account_id, 0) + entry.amount
             )
+
+    async def in_range_for(self, account_ids, date_from, date_to):
+        wanted = set(account_ids)
+        return [
+            transaction
+            for transaction in self._transactions
+            if any(entry.account_id in wanted for entry in transaction.entries)
+            and (date_from is None or transaction.posted_at >= date_from)
+            and (date_to is None or transaction.posted_at <= date_to)
+        ]
 
     async def balances_for(self, account_ids: list[str]) -> dict[str, int]:
         return {account_id: self._balances.get(account_id, 0) for account_id in account_ids}
@@ -96,9 +108,24 @@ class _FakeGoalRepository:
         return self._goals.get(goal_id)
 
     async def get_for_user(self, user_id: str):
-        return next(
-            (g for g in self._goals.values() if g.user_id == user_id and g.status == "active"),
-            None,
+        active = await self.list_active_for_user(user_id)
+        return active[0] if active else None
+
+    async def list_active_for_user(self, user_id: str):
+        return [
+            g for g in self._goals.values() if g.user_id == user_id and g.status == "active"
+        ]
+
+    async def set_streak(
+        self, goal_id: str, streak_weeks, streak_last_week, computed_at, session=None
+    ) -> None:
+        goal = self._goals[goal_id]
+        self._goals[goal_id] = goal.model_copy(
+            update={
+                "streak_weeks": streak_weeks,
+                "streak_last_week": streak_last_week,
+                "streak_computed_at": computed_at,
+            }
         )
 
     async def close(self, goal_id: str, user_id: str, closed_at, session=None) -> bool:
@@ -254,20 +281,40 @@ async def test_create_goal_rejects_initial_deposit_over_the_parent_balance() -> 
         await service._handle_create(command, context, session=None)
 
 
-async def test_create_goal_rejects_a_second_goal_for_the_same_user() -> None:
+async def test_several_goals_stay_active_in_parallel_each_with_its_own_pot() -> None:
     account = _account()
-    service, _, _ = _build_service(account, balance_minor=0)
+    service, _, _ = _build_service(account, balance_minor=1_000_000)
     context = _context()
-    first = CreateGoal(
-        parent_account_id=account.id, name="Apartment", target_minor=5_000_000, target_date=date(2028, 1, 1)
+    first = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id,
+            name="Apartment",
+            target_minor=5_000_000,
+            target_date=date(2028, 1, 1),
+            initial_deposit_minor=300_000,
+        ),
+        context,
+        session=None,
     )
-    await service._handle_create(first, context, session=None)
+    second = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id,
+            name="Car",
+            target_minor=1_000_000,
+            target_date=date(2027, 1, 1),
+            initial_deposit_minor=100_000,
+        ),
+        context,
+        session=None,
+    )
 
-    second = CreateGoal(
-        parent_account_id=account.id, name="Car", target_minor=1_000_000, target_date=date(2027, 1, 1)
-    )
-    with pytest.raises(ConflictError):
-        await service._handle_create(second, context, session=None)
+    assert first.data["accountId"] != second.data["accountId"]
+    progress = await service.list_active_progress_for_user("user-1")
+    assert sorted(item.goal.name for item in progress) == ["Apartment", "Car"]
+    assert {item.goal.name: item.progress_minor for item in progress} == {
+        "Apartment": 300_000,
+        "Car": 100_000,
+    }
 
 
 async def test_create_goal_rejects_an_account_that_does_not_belong_to_the_user() -> None:
@@ -384,7 +431,7 @@ async def test_withdrawal_moves_money_back_to_the_parent() -> None:
     assert await service._ledger.balance_of(account.id) == 800_000
 
 
-async def test_closing_a_goal_sweeps_the_remaining_balance_back_and_frees_the_slot() -> None:
+async def test_closing_a_goal_sweeps_the_remaining_balance_back_and_keeps_it_in_history() -> None:
     account = _account()
     service, repo, accounts = _build_service(account, balance_minor=1_000_000)
     context = _context()
@@ -513,3 +560,82 @@ async def test_run_due_standing_orders_skips_insufficient_funds_without_raising(
     assert run_result.data["reason"] == "insufficient_funds"
     progress = await service.get_progress_for_user("user-1")
     assert progress.progress_minor == 0
+
+
+async def test_streak_counts_consecutive_weeks_with_a_contribution() -> None:
+    account = _account()
+    service, repo, _ = _build_service(account, balance_minor=1_000_000, today=date(2026, 1, 22))
+    context = _context()
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id,
+            name="Apartment",
+            target_minor=5_000_000,
+            target_date=date(2028, 1, 1),
+        ),
+        context,
+        session=None,
+    )
+    goal_id = created.data["goalId"]
+
+    for day in (date(2026, 1, 8), date(2026, 1, 15), date(2026, 1, 22)):
+        service._clock = service._ledger._clock = _FixedClock(day)
+        await service._handle_deposit(
+            DepositToGoal(goal_id=goal_id, amount_minor=10_000), context, session=None
+        )
+
+    stored = await repo.get(goal_id)
+    assert stored.streak_weeks == 3
+    assert stored.streak_last_week == "2026-W04"
+
+
+async def test_streak_breaks_when_a_week_is_skipped() -> None:
+    account = _account()
+    service, repo, _ = _build_service(account, balance_minor=1_000_000, today=date(2026, 1, 22))
+    context = _context()
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id,
+            name="Apartment",
+            target_minor=5_000_000,
+            target_date=date(2028, 1, 1),
+        ),
+        context,
+        session=None,
+    )
+    goal_id = created.data["goalId"]
+
+    for day in (date(2026, 1, 8), date(2026, 1, 22)):
+        service._clock = service._ledger._clock = _FixedClock(day)
+        await service._handle_deposit(
+            DepositToGoal(goal_id=goal_id, amount_minor=10_000), context, session=None
+        )
+
+    stored = await repo.get(goal_id)
+    assert stored.streak_weeks == 1
+
+
+async def test_closing_a_legacy_goal_never_closes_the_account_that_funds_it() -> None:
+    account = _account()
+    service, repo, accounts = _build_service(account, balance_minor=500_000)
+    context = _context()
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id,
+            name="Wedding",
+            target_minor=5_000_000,
+            target_date=date(2028, 1, 1),
+        ),
+        context,
+        session=None,
+    )
+    goal_id = created.data["goalId"]
+    stored = await repo.get(goal_id)
+    repo._goals[goal_id] = stored.model_copy(update={"account_id": account.id})
+
+    result = await service._handle_close(CloseGoal(goal_id=goal_id), context, session=None)
+
+    assert result.data["sharedParentAccount"] is True
+    assert result.data["sweptBackMinorUnits"] == 0
+    assert (await accounts.get(account.id)).status.value == "active"
+    assert (await repo.get(goal_id)).status == "closed"
