@@ -1174,6 +1174,95 @@ and toggling Read Aloud in Settings or the chat header automatically reads incom
 aloud with seamless in-memory audio caching and client-side `window.speechSynthesis` fallback.
 >>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
 
+## Savings goals: many at once, with a real streak
+
+> The conflict block immediately above this section is an **unresolved merge conflict committed to
+> `main`** in `af2f062` ("fixed app"). Both of its sides describe the superseded "one active goal
+> per user" model. It needs the goals track's owner to resolve it; this section documents what the
+> code actually does now.
+
+**One active goal per user is gone.** A user may hold any number of active goals in parallel, each
+with its own savings pot, target, projection and streak.
+
+The single-goal rule was never enforced in one place, which is what made it fail. It lived in three:
+a `ConflictError` in `GoalsService._handle_create`, a `get_for_user` query, and a unique Mongo index.
+`ops/011_goals_status.js` was supposed to replace the plain unique index `uq_user`
+(`ops/008_goals_schema.js`) with a partial one, but **on any database where 011 was never applied by
+hand, `uq_user` survived** — and a plain unique index on `userId` rejects a second goal whether the
+first is active or closed. Closing worked correctly; creating the replacement then failed on a
+`DuplicateKeyError` that `MongoGoalRepository.add` relabelled as "You already have a goal", naming a
+constraint that was not the one firing. That is the whole bug.
+
+Both indexes are now gone, replaced by a non-unique `ix_user_status` on `{userId, status}`.
+Because the original failure was a migration that never ran, `ensure_indexes`
+(`backend/database/mongo.py`) **drops every unique index on `goals` except `_id_`** before creating
+the new index, so neither an unapplied migration nor a legacy index under some other name can
+resurrect the bug. `ops/013_goals_multi_and_streak.js` records the same change for databases rebuilt
+from the migration set.
+
+The shared demo database is written by several API instances at once, and one still running
+pre-fix code re-creates `uq_user_active` at its own startup. Dropping the index once therefore does
+not hold. `_index_reassert_loop` in `backend/main.py` re-runs `ensure_indexes` every
+`INDEX_REASSERT_SECONDS` (default 300) so that drift is corrected without waiting for a restart;
+`create_index` is a no-op when the index already matches, so the loop only ever removes the legacy
+unique index. It is a guard for a shared demo database, not a substitute for every instance running
+current code.
+
+**Closing a goal is still a status transition, never a delete** — the history is needed for streaks
+and reporting. Closing now also refuses to touch the funding account when a goal's `accountId`
+equals its `parentAccountId` (`Goal.uses_shared_parent_account`); see the risk note below.
+
+**The streak is derived and persisted.** `backend/goals/streak.py` counts consecutive ISO calendar
+weeks with at least one credit into the goal's pot, reading the pot's own journal movements — the
+ledger stays the source of truth, and the count is a rebuildable read model stored on the goal as
+`streakWeeks` / `streakLastWeek` / `streakComputedAt`. It is refreshed inside the command-bus
+handlers that can change it (deposit, withdraw, standing-order run), so the write still goes through
+the one write path. Read paths derive it fresh, so a streak that lapses is shown as lapsed
+immediately rather than waiting for the next contribution.
+
+`analytics.goal_gap.get` and `analytics.goal_pace.get` no longer compute a second, different streak
+from the payments list; they report the goals service's number, so the agent's narration and the
+card on screen can never disagree. Both capabilities now honour the `goalId` they already accepted,
+so each goal can be projected independently.
+
+`GET /goals` returns every active goal with its progress, streak and projection.
+`GET /goals/progress` and `GET /goals/pace` still answer for a single goal, unchanged, so the
+existing agent tools keep working.
+
+**Financial education content.** `backend/capabilities/education_lessons.py` holds eight
+micro-lessons, **each carrying its own five-question quiz** (40 questions in total), as frozen
+dataclasses in EN and RO, following `education_docs.py` — static seed content, no CMS, no
+collection, no generation flow. `GET /education/lessons` serves each lesson with its questions
+nested inside it. Each lesson card has a "Start quiz" button that opens the quiz as a modal
+(`QuizDialog`); on submit it shows the score, marks the correct answer on every question, and
+explains each one. Grading happens in the browser and nothing about an attempt is persisted, so the
+quiz adds no write path and no new collection.
+
+**Reading the goal.** The projection is a **progress ring**, not a line chart: percentage, amount
+saved and target in the centre, with a slider beside it for "if I put aside this much each month".
+Moving it recomputes the completion date live, entirely client-side from figures the API already
+returned, and the result is tinted by whether that pace still meets the target date. A one-tap hint
+sets the slider to the rate the goal actually needs. The earlier two-series line chart was replaced
+because it was hard to read at a glance and never answered the question the user was actually
+asking.
+
+### Known risk: legacy goals whose pot is the account that funds them
+
+`ops/012_savings.js` backfilled `parentAccountId = "$accountId"` for goals created before dedicated
+pots existed. For those rows the pot **is** the funding account, and the close path used to sweep
+the pot into the parent and then close it. On the shared demo database that has already happened
+once: a goal closed on 2026-08-28 posted journal transaction `01a04742-8a4a…` with both entries on
+account `01a01ed4-9a3a…` (`-79140` and `+79140` — balanced, so the double-entry constraint passed,
+but economically a no-op now permanent in an append-only journal), and then closed that account,
+which was the customer's main current account. `JournalTransaction.entry_for` returns only the first
+matching entry, so that transaction also renders misleadingly in a statement.
+
+The close path is now guarded, so this cannot happen again. **The existing damaged data has been
+left exactly as it is** — the closed account and the self-transfer are the goals track's to decide
+on, and the journal is append-only in any case. Affected rows are visible with
+`db.goals.find({$expr: {$eq: ["$accountId", "$parentAccountId"]}})`.
+
+
 ## What the payments screen does not do yet
 
 Present in the interface, deliberately inert, each marked "coming soon" rather than removed
@@ -1212,8 +1301,9 @@ Also missing, and worth knowing:
 
 ## Agent insights on the dashboard
 
-The AGENT INSIGHTS card reads `GET /api/insights?username=...`. That endpoint is scoped to the
-signed-in user and nothing else: a user with no notifications of their own gets an empty card.
+The AGENT INSIGHTS card reads `GET /api/insights`. The user id comes from the session actor, not
+from a query parameter, so the endpoint is scoped to the signed-in user and nothing else: a user
+with no notifications of their own gets an empty card.
 It never falls back to another user's rows — an earlier version did, and showed one synthetic
 user's bill as if it were yours.
 
@@ -1354,7 +1444,7 @@ redirect to the homepage, so this one is configuration, not a constant). Vendor 
 the first URL in `newsUrls`, labelled with the publishers; an insight with no external source
 (`origin: internal_mathematical`) says so in words instead of offering a dead link.
 
-**The endpoint.** `GET /api/insights?username=...` was extended rather than duplicated, and the
+**The endpoint.** `GET /api/insights` was extended rather than duplicated, and the
 FX rows sit in their own `fx` key:
 
 ```json

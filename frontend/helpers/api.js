@@ -206,6 +206,8 @@
       send("/cards/" + cardId + "/limits/online", { method: "POST", json: { limitMinor } }),
 
     listInsights: () => send("/insights"),
+    listGoals: () => send("/goals"),
+    getEducationLessons: () => send("/education/lessons"),
     getGoalProgress: () => send("/goals/progress"),
     getGoalPace: () => send("/goals/pace"),
     createGoal: (parentAccountId, name, targetMinorUnits, targetDate, initialDepositMinorUnits) =>

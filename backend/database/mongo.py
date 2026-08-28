@@ -94,6 +94,12 @@ def handoffs_collection() -> AsyncIOMotorCollection:
     return get_db()["supportHandoffs"]
 
 
+async def _drop_unique_indexes(collection: AsyncIOMotorCollection) -> None:
+    for name, spec in (await collection.index_information()).items():
+        if name != "_id_" and spec.get("unique"):
+            await collection.drop_index(name)
+
+
 async def ensure_indexes() -> None:
     await users_collection().create_index([("username", ASCENDING)], unique=True, name="uq_username")
     await users_collection().create_index([("email", ASCENDING)], unique=True, name="uq_email")
@@ -166,11 +172,9 @@ async def ensure_indexes() -> None:
     await cards_collection().create_index([("userId", ASCENDING)], name="ix_user")
     await cards_collection().create_index([("createdAt", ASCENDING)], name="ix_created")
 
+    await _drop_unique_indexes(goals_collection())
     await goals_collection().create_index(
-        [("userId", ASCENDING)],
-        unique=True,
-        name="uq_user_active",
-        partialFilterExpression={"status": "active"},
+        [("userId", ASCENDING), ("status", ASCENDING)], name="ix_user_status"
     )
 
     await standing_orders_collection().create_index(

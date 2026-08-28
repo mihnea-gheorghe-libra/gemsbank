@@ -319,7 +319,7 @@
     useEffect(() => {
       let cancelled = false;
       api
-        .listInsights(username)
+        .listInsights()
         .then((response) => {
           if (!cancelled && response) {
             setInsights(response.insights || []);

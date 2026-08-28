@@ -201,7 +201,7 @@ class ToolCallingAgent:
                 used.append(capability.name)
                 is_proposal = capability.name in self._proposal_tool_names
                 if is_proposal:
-                    proposals.append(output.model_dump(by_alias=True))
+                    proposals.append(output.model_dump(by_alias=True, mode="json"))
                 await self._audit(
                     AuditRecord(
                         action=f"capability.{capability.name}",

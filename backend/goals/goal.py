@@ -18,6 +18,12 @@ class Goal(BaseModel):
     status: Literal["active", "closed"] = "active"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     closed_at: datetime | None = None
+    streak_weeks: int = 0
+    streak_last_week: str | None = None
+    streak_computed_at: datetime | None = None
+
+    def uses_shared_parent_account(self) -> bool:
+        return self.account_id == self.parent_account_id
 
     def public_view(self) -> dict[str, Any]:
         return {
@@ -29,4 +35,6 @@ class Goal(BaseModel):
             "targetDate": self.target_date.isoformat(),
             "status": self.status,
             "createdAt": self.created_at.isoformat(),
+            "streakWeeks": self.streak_weeks,
+            "streakLastWeek": self.streak_last_week,
         }
