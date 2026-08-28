@@ -402,7 +402,7 @@
             <UI.Kicker>{t("dashboard.home.recentActivity")}</UI.Kicker>
             <a href="#" onClick={(event) => { event.preventDefault(); onNavigate("payments"); }}>{t("dashboard.home.allTransactions")}</a>
           </div>
-          <TxTable rows={transactions.slice(0, 4)} compact />
+          <TxTable rows={transactions.slice(0, 4)} />
         </UI.Plate>
       </div>
     );
