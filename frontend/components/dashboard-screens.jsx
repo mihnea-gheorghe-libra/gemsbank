@@ -3265,7 +3265,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   };
 
-  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, micBusy, micError, onToggleMic, onPromptClick, prompts, onConfirmTx, onConfirmProposal, onRequestHuman, handoffBusy, handoffSent, username, ttsOn, onToggleTts, playingMessageIndex, ttsBusyIndex, onSpeakMessage, onStopSpeaking }) {
+  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, micBusy, micError, onToggleMic, onPromptClick, prompts, onConfirmTx, onConfirmProposal, onRequestHuman, handoffBusy, handoffSent, username, ttsOn, onToggleTts, playingMessageIndex, ttsBusyIndex, onSpeakMessage, onStopSpeaking, onClearChat }) {
     const inputRef = useRef(null);
 
     useEffect(() => {
@@ -3280,6 +3280,18 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
       <div className="dash-chat-layout">
         <div className="dash-chat-col">
           <div className="dash-chat-header-actions">
+            <UI.Button
+              type="button"
+              variant="secondary"
+              disabled={busy || messages.length <= 1}
+              onClick={onClearChat}
+              style={{ fontSize: 12, padding: "4px 8px", gap: 6, marginRight: "auto" }}
+              title={t("dashboard.chat.clear")}
+            >
+              <UI.Icon name="Trash2" size={14} />
+              <span>{t("dashboard.chat.clear")}</span>
+            </UI.Button>
+
             {(playingMessageIndex !== null || ttsBusyIndex !== null) ? (
               <UI.Button
                 type="button"
@@ -3321,7 +3333,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                   <div className="dash-msg-ai">
                     <span className="dash-msg-ai-dot" aria-hidden="true" />
                     <div className="dash-msg-ai-body">
-                      {message.text ? <div>{message.text}</div> : null}
+                      {message.text ? renderStructuredText(message.text) : null}
 
                       {message.text ? (
                         <div className="dash-msg-actions">
