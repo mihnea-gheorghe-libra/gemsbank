@@ -437,9 +437,12 @@
 .dash-card-tile:hover { background: color-mix(in srgb, var(--color-primary) 10%, transparent); box-shadow: var(--shadow-lg), var(--relief-highlight); transform: translateY(-2px); }
 .dash-card-tile:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 
-/* ── frozen state: a blue veil over the card, front or back ── */
+/* ── frozen state: a blue veil over the card, front or back ──
+   Hosted on .dash-card-tile itself (not its .dash-card-face-front
+   wrapper) so the veil scales and lifts together with the tile on
+   hover instead of staying behind at the wrapper's unscaled size. */
 .dash-card-tile.is-frozen::after,
-.dash-card-flip.is-frozen .dash-card-face-front::after,
+.dash-card-flip.is-frozen .dash-card-face-front .dash-card-tile::after,
 .dash-card-flip.is-frozen .dash-card-face-back::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: color-mix(in srgb, var(--color-info) 42%, transparent);

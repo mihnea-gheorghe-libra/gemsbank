@@ -2063,6 +2063,7 @@
       api
         .createStandingOrder(
           proposal.goalId,
+          null,
           proposal.amountMinorUnits,
           proposal.frequency,
           "agent-suggestion-confirmed"
@@ -2349,16 +2350,20 @@
     );
   }
 
-  function StandingOrderDialog({ busy, error, onSubmit, onDismiss }) {
+  function StandingOrderDialog({ accounts, goalCurrency, busy, error, onSubmit, onDismiss }) {
+    const eligibleAccounts = (accounts || []).filter(
+      (account) => (account.typeKey === "current" || account.typeKey === "invest") && account.cur === goalCurrency
+    );
+    const [accountId, setAccountId] = useState((eligibleAccounts[0] && eligibleAccounts[0].id) || "");
     const [amount, setAmount] = useState("");
     const [frequency, setFrequency] = useState("weekly");
     const amountMinor = DASH.parseMinor(amount);
-    const ready = amountMinor > 0;
+    const ready = Boolean(accountId) && amountMinor > 0;
 
     function submit(event) {
       event.preventDefault();
       if (!ready) return;
-      onSubmit(amountMinor, frequency);
+      onSubmit(accountId, amountMinor, frequency);
     }
 
     return (
@@ -2367,6 +2372,19 @@
           {t("dashboard.analytics.goal.standingOrder.set")}
         </h2>
         <form noValidate onSubmit={submit}>
+          {eligibleAccounts.length ? (
+            <UI.Field id="standing-order-account" label={t("dashboard.analytics.goal.standingOrder.account")}>
+              <UI.Select id="standing-order-account" value={accountId} onChange={(event) => setAccountId(event.target.value)}>
+                {eligibleAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>{accountPickerLabel(account)}</option>
+                ))}
+              </UI.Select>
+            </UI.Field>
+          ) : (
+            <div className="dash-balance-line is-short" role="alert">
+              {t("dashboard.analytics.goal.standingOrder.noAccount")}
+            </div>
+          )}
           <UI.Field id="standing-order-amount" label={t("dashboard.analytics.goal.standingOrder.amount")} error={error ? error.message : null}>
             <UI.TextInput id="standing-order-amount" autoFocus inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} />
           </UI.Field>
@@ -2382,6 +2400,39 @@
             </UI.Button>
             <UI.Button type="submit" variant="primary" disabled={!ready || busy}>
               {busy ? t("dashboard.analytics.goal.standingOrder.creating") : t("dashboard.analytics.goal.standingOrder.create")}
+            </UI.Button>
+          </div>
+        </form>
+      </UI.Dialog>
+    );
+  }
+
+  function EditStandingOrderAmountDialog({ currentAmountMinor, busy, error, onSubmit, onDismiss }) {
+    const [amount, setAmount] = useState(formatMinor(currentAmountMinor));
+    const amountMinor = DASH.parseMinor(amount);
+    const ready = amountMinor > 0;
+
+    function submit(event) {
+      event.preventDefault();
+      if (!ready) return;
+      onSubmit(amountMinor);
+    }
+
+    return (
+      <UI.Dialog labelledBy="standing-order-edit-title" onDismiss={onDismiss}>
+        <h2 id="standing-order-edit-title" className="dialog-title">
+          {t("dashboard.analytics.goal.standingOrder.editTitle")}
+        </h2>
+        <form noValidate onSubmit={submit}>
+          <UI.Field id="standing-order-edit-amount" label={t("dashboard.analytics.goal.standingOrder.amount")} error={error ? error.message : null}>
+            <UI.TextInput id="standing-order-edit-amount" autoFocus inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} />
+          </UI.Field>
+          <div className="dialog-actions">
+            <UI.Button type="button" variant="secondary" onClick={onDismiss}>
+              {t("dashboard.analytics.goal.dialog.cancel")}
+            </UI.Button>
+            <UI.Button type="submit" variant="primary" disabled={!ready || busy}>
+              {busy ? t("dashboard.analytics.goal.standingOrder.saving") : t("dashboard.analytics.goal.standingOrder.save")}
             </UI.Button>
           </div>
         </form>
@@ -2544,7 +2595,7 @@
         ) : (
           <div className="dash-goals-grid">
             {goals.map((goal) => (
-              <GoalCard key={goal.goalId} goal={goal} onChanged={refresh} />
+              <GoalCard key={goal.goalId} goal={goal} accounts={accounts} onChanged={refresh} />
             ))}
           </div>
         )}
@@ -2675,7 +2726,7 @@
     );
   }
 
-  function GoalCard({ goal, onChanged }) {
+  function GoalCard({ goal, accounts, onChanged }) {
     const [standingOrder, setStandingOrder] = useState(null);
     const [closeDialogOpen, setCloseDialogOpen] = useState(false);
     const [closing, setClosing] = useState(false);
@@ -2686,6 +2737,9 @@
     const [standingOrderDialogOpen, setStandingOrderDialogOpen] = useState(false);
     const [standingOrderBusy, setStandingOrderBusy] = useState(false);
     const [standingOrderError, setStandingOrderError] = useState(null);
+    const [editAmountOpen, setEditAmountOpen] = useState(false);
+    const [editAmountBusy, setEditAmountBusy] = useState(false);
+    const [editAmountError, setEditAmountError] = useState(null);
 
     const goalId = goal.goalId;
 
@@ -2720,11 +2774,11 @@
         });
     }
 
-    function submitStandingOrder(amountMinor, frequency) {
+    function submitStandingOrder(sourceAccountId, amountMinor, frequency) {
       setStandingOrderBusy(true);
       setStandingOrderError(null);
       api
-        .createStandingOrder(goalId, amountMinor, frequency, "user")
+        .createStandingOrder(goalId, sourceAccountId, amountMinor, frequency, "user")
         .then(() => {
           setStandingOrderBusy(false);
           setStandingOrderDialogOpen(false);
@@ -2733,6 +2787,24 @@
         .catch((err) => {
           setStandingOrderBusy(false);
           setStandingOrderError(err);
+        });
+    }
+
+    function submitEditAmount(amountMinor) {
+      if (!standingOrder) return;
+      setEditAmountBusy(true);
+      setEditAmountError(null);
+      api
+        .updateStandingOrderAmount(standingOrder.standingOrderId, amountMinor)
+        .then(() => {
+          setEditAmountBusy(false);
+          setEditAmountOpen(false);
+          setStandingOrder((prev) => prev && { ...prev, amount: { ...prev.amount, minorUnits: amountMinor } });
+          onChanged();
+        })
+        .catch((err) => {
+          setEditAmountBusy(false);
+          setEditAmountError(err);
         });
     }
 
@@ -2851,11 +2923,25 @@
                           ? "dashboard.analytics.goal.standingOrder.frequencyWeekly"
                           : "dashboard.analytics.goal.standingOrder.frequencyMonthly"
                       ),
+                      account: (() => {
+                        const source = (accounts || []).find(
+                          (account) => account.id === standingOrder.sourceAccountId
+                        );
+                        return source ? DASH.accountLabel(source) : t("dashboard.cards.accountUnknown");
+                      })(),
                       date: GEMS.i18n.isoToDisplayDate((standingOrder.nextRunAt || "").slice(0, 10)),
                     }
                   )}
                 </span>
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <button
+                    type="button"
+                    className="dash-copy-btn"
+                    aria-label={t("dashboard.analytics.goal.standingOrder.edit")}
+                    onClick={() => setEditAmountOpen(true)}
+                  >
+                    <UI.Icon name="Pencil" size={14} />
+                  </button>
                   {standingOrder.status === "active" ? (
                     <UI.Button
                       type="button"
@@ -2958,12 +3044,26 @@
         ) : null}
         {standingOrderDialogOpen ? (
           <StandingOrderDialog
+            accounts={accounts}
+            goalCurrency={goal.currency}
             busy={standingOrderBusy}
             error={standingOrderError}
             onSubmit={submitStandingOrder}
             onDismiss={() => {
               setStandingOrderDialogOpen(false);
               setStandingOrderError(null);
+            }}
+          />
+        ) : null}
+        {editAmountOpen && standingOrder ? (
+          <EditStandingOrderAmountDialog
+            currentAmountMinor={standingOrder.amount.minorUnits}
+            busy={editAmountBusy}
+            error={editAmountError}
+            onSubmit={submitEditAmount}
+            onDismiss={() => {
+              setEditAmountOpen(false);
+              setEditAmountError(null);
             }}
           />
         ) : null}

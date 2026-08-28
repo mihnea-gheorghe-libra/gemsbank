@@ -673,6 +673,20 @@ class MongoStandingOrderRepository:
         )
         return result.modified_count == 1
 
+    async def set_amount(
+        self,
+        order_id: str,
+        user_id: str,
+        amount_minor: int,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool:
+        result = await standing_orders_collection().update_one(
+            {"_id": order_id, "userId": user_id, "status": {"$ne": "cancelled"}},
+            {"$set": {"amountMinorUnits": amount_minor, "updatedAt": datetime.now(timezone.utc)}},
+            session=session,
+        )
+        return result.modified_count == 1
+
     async def record_run(
         self,
         order_id: str,

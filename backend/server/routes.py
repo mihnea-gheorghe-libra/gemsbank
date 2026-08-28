@@ -99,6 +99,7 @@ from backend.goals.service import (
     DepositToGoal,
     PauseStandingOrder,
     ResumeStandingOrder,
+    UpdateStandingOrderAmount,
     WithdrawFromGoal,
     get_goals_service,
 )
@@ -364,9 +365,17 @@ class CreditApplicationRequest(BaseModel):
 
 
 class StandingOrderRequest(BaseModel):
+    source_account_id: str | None = Field(
+        default=None, alias="sourceAccountId", max_length=64
+    )
     amount_minor: int = Field(alias="amountMinorUnits", gt=0)
     frequency: str
     created_via: str = Field(default="user", alias="createdVia")
+    model_config = {"populate_by_name": True}
+
+
+class StandingOrderAmountRequest(BaseModel):
+    amount_minor: int = Field(alias="amountMinorUnits", gt=0)
     model_config = {"populate_by_name": True}
 
 
@@ -1287,9 +1296,24 @@ async def create_standing_order(
 ) -> dict[str, Any]:
     command = CreateStandingOrder(
         goal_id=goal_id,
+        source_account_id=payload.source_account_id,
         amount_minor=payload.amount_minor,
         frequency=payload.frequency,
         created_via=payload.created_via,
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@goals_router.post("/standing-order/{standing_order_id}/amount")
+async def update_standing_order_amount(
+    actor: CurrentActor,
+    standing_order_id: str,
+    payload: StandingOrderAmountRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = UpdateStandingOrderAmount(
+        standing_order_id=standing_order_id,
+        amount_minor=payload.amount_minor,
     )
     return await bus.execute(command, actor, idempotency_key)
 
