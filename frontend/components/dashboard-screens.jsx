@@ -1512,13 +1512,13 @@
   };
 
   const CATEGORY_COLORS = {
-    groceries: "var(--color-primary)",
-    utilities: "var(--color-info)",
-    transport: "var(--color-warning)",
-    entertainment: "var(--color-lime-600)",
-    transfer: "var(--color-neutral-500)",
-    income: "var(--color-positive)",
-    other: "var(--color-muted)",
+    groceries: "var(--chart-1)",
+    utilities: "var(--chart-2)",
+    transport: "var(--chart-3)",
+    entertainment: "var(--chart-4)",
+    transfer: "var(--chart-5)",
+    income: "var(--chart-6)",
+    other: "var(--chart-7)",
   };
 
   const CHART_SERIES_LABEL = {
@@ -2688,23 +2688,36 @@
     );
   };
 
+  const analyticsInsightsCache = {};
+
   function AnalyticsInsights({ range }) {
-    const [insights, setInsights] = useState(null);
-    const [loading, setLoading] = useState(false);
+    const [insights, setInsights] = useState(analyticsInsightsCache[range] || null);
+    const [loading, setLoading] = useState(!analyticsInsightsCache[range]);
     
     useEffect(() => {
+      if (analyticsInsightsCache[range]) {
+        setInsights(analyticsInsightsCache[range]);
+        setLoading(false);
+        return;
+      }
+      
       let cancelled = false;
       setLoading(true);
       setInsights(null);
-      api.askAnalytics(`Ofera-mi fix 3 recomandari extrem de scurte despre cheltuielile mele din ultimele ${range} luni, strict pentru client. Fiecare pe un rând nou. Fara nicio introducere sau concluzie, doar cele 3 puncte.`)
+      
+      const prompt = `Analizeaza datele financiare reale ale utilizatorului pe ultimele ${range} luni (folosind tool-urile tale). Ofera-i fix 3 observatii personalizate si actionabile legate de sumele si categoriile lui de cheltuieli (de ex: "In ultima perioada ai cheltuit ... pe X. Ai putea sa mai reduci..."). NU oferi sfaturi generice, ci strict observatii aplicate pe cheltuielile lui. Fiecare observatie sa fie un bullet point scurt. Nu folosi nicio introducere.`;
+      
+      api.askAnalytics(prompt)
         .then(res => {
           if (!cancelled) {
-             setInsights(res.answer);
+             const answer = res.answer.split('\n').filter(l => l.trim().length > 0);
+             analyticsInsightsCache[range] = answer;
+             setInsights(answer);
           }
         })
         .catch(err => {
           if (!cancelled) {
-             setInsights("Nu am putut genera interpretarea.");
+             setInsights(["Nu am putut genera interpretarea."]);
           }
         })
         .finally(() => {
@@ -2716,15 +2729,18 @@
     if (loading) {
        return <div className="dash-chart-empty">{t("dashboard.analytics.loading")}</div>;
     }
-    if (!insights) return null;
+    if (!insights || insights.length === 0) return null;
     return (
-      <div className="dash-msg-ai" style={{ maxWidth: "100%", background: "transparent", padding: 0 }}>
-        {insights.split('\n').map((line, i) => (
-          <div key={i} style={{ minHeight: "1.2em", marginBottom: "4px" }}>
-            {renderInlineText(line, i)}
-          </div>
-        ))}
-      </div>
+      <ul className="dash-msg-list">
+        {insights.map((line, i) => {
+          const cleanLine = line.replace(/^[\s*-]+/, '').trim();
+          return (
+            <li key={i}>
+              {renderInlineText(cleanLine, i)}
+            </li>
+          );
+        })}
+      </ul>
     );
   }
 

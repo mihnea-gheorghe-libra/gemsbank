@@ -646,3 +646,39 @@
 
 .dash-copy-btn { all: unset; cursor: pointer; opacity: 0.6; display: flex; align-items: center; padding: 4px; border-radius: var(--radius-sm); } 
 .dash-copy-btn:hover { opacity: 1; background: var(--color-surface); }
+
+:root {
+  --chart-1: #2563eb;
+  --chart-2: #ea580c;
+  --chart-3: #16a34a;
+  --chart-4: #9333ea;
+  --chart-5: #db2777;
+  --chart-6: #0891b2;
+  --chart-7: #64748b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chart-1: #60a5fa;
+    --chart-2: #fb923c;
+    --chart-3: #4ade80;
+    --chart-4: #c084fc;
+    --chart-5: #f472b6;
+    --chart-6: #22d3ee;
+    --chart-7: #94a3b8;
+  }
+}
+
+
+.dash-msg-list {
+  list-style-type: disc !important;
+  margin: 0 !important;
+  padding-left: 20px !important;
+  display: block !important;
+  color: var(--color-text);
+}
+.dash-msg-list li {
+  margin-bottom: 6px;
+  line-height: 1.4;
+  display: list-item !important;
+}
+
