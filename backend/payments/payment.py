@@ -107,6 +107,9 @@ class Payment(BaseModel):
     counterparty: str
     amount_minor: int
     currency: str
+    target_currency: str | None = None
+    target_amount_minor: int | None = None
+    conversion_rate_micro: int | None = None
     reference: str
     category: str
     payee_check: PayeeVerification = PayeeVerification.NOT_CHECKED
@@ -163,6 +166,11 @@ class Payment(BaseModel):
         self.status = PaymentStatus.POSTED
         self._touch()
 
+    def record_conversion(self, target_amount_minor: int, rate_micro: int) -> None:
+        self.target_amount_minor = target_amount_minor
+        self.conversion_rate_micro = rate_micro
+        self._touch()
+
     def reject(self, reason: str) -> None:
         self._require(PaymentStatus.DRAFT, PaymentStatus.AWAITING_SIGNATURE)
         self.rejected_reason = reason
@@ -182,6 +190,13 @@ class Payment(BaseModel):
             "category": self.category,
             "payeeCheck": self.payee_check.value,
             "amount": {"minorUnits": self.amount_minor, "currency": self.currency},
+            "convertedAmount": {
+                "minorUnits": self.target_amount_minor,
+                "currency": self.target_currency,
+                "rateMicro": self.conversion_rate_micro,
+            }
+            if self.target_amount_minor is not None
+            else None,
             "createdAt": self.created_at.isoformat(),
             "signatureExpiresAt": self.signature.expires_at.isoformat()
             if self.signature

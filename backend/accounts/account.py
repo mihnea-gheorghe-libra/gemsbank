@@ -44,13 +44,6 @@ class Account(BaseModel):
                 details={"field": "iban", "status": self.status.value},
             )
 
-    def guard_same_currency(self, other: "Account") -> None:
-        if self.currency != other.currency:
-            raise ValidationError(
-                "GEMS does not convert currencies yet. Both accounts must hold the same one.",
-                details={"field": "iban", "from": self.currency, "to": other.currency},
-            )
-
     def guard_not_self(self, other: "Account") -> None:
         if self.id == other.id:
             raise ValidationError(

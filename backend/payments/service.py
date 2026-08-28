@@ -21,6 +21,7 @@ from backend.database.repositories import (
     MongoPaymentRepository,
     MongoPaymentTemplateRepository,
 )
+from backend.exchange.service import ExchangeService, get_exchange_service
 from backend.helpers.context import ActorContext, log_event
 from backend.helpers.crypto import Argon2idHasher
 from backend.helpers.errors import DomainError, NotFoundError, ValidationError
@@ -211,6 +212,7 @@ class PaymentsService:
         templates: PaymentTemplateRepository,
         accounts: AccountsService,
         ledger: LedgerService,
+        exchange: ExchangeService,
         policy: Policy,
         step_up: StepUp,
         payees: PayeeVerifier,
@@ -224,6 +226,7 @@ class PaymentsService:
         self._templates = templates
         self._accounts = accounts
         self._ledger = ledger
+        self._exchange = exchange
         self._policy = policy
         self._step_up = step_up
         self._payees = payees
@@ -328,6 +331,23 @@ class PaymentsService:
         session: AsyncIOMotorClientSession,
     ) -> JournalTransaction:
         assert payment.target_account_id is not None
+        if payment.target_currency and payment.target_currency != payment.currency:
+            result = await self._exchange.bridge(
+                session=session,
+                context=context,
+                source_account_id=source.id,
+                target_account_id=payment.target_account_id,
+                amount_minor=payment.amount_minor,
+                source_currency=payment.currency,
+                target_currency=payment.target_currency,
+                reference=payment.reference,
+                counterparty=payment.counterparty,
+                category=payment.category,
+            )
+            payment.record_conversion(result.target_amount_minor, result.rate_micro)
+            payment.mark_posted(result.source_transaction.id)
+            return result.source_transaction
+
         transaction = await self._ledger.transfer(
             source_account_id=source.id,
             target_account_id=payment.target_account_id,
@@ -385,7 +405,6 @@ class PaymentsService:
 
         target = await self._resolve_target(command, user_id)
         source.guard_not_self(target)
-        source.guard_same_currency(target)
         target.guard_can_receive()
 
         balance = await self._ledger.balance_of(source.id)
@@ -424,6 +443,7 @@ class PaymentsService:
             counterparty=counterparty,
             amount_minor=amount,
             currency=source.currency,
+            target_currency=target.currency if target.currency != source.currency else None,
             reference=reference,
             category=category,
             payee_check=payee_check,
@@ -770,6 +790,7 @@ def get_payments_service() -> PaymentsService:
         templates=MongoPaymentTemplateRepository(),
         accounts=get_accounts_service(),
         ledger=get_ledger_service(),
+        exchange=get_exchange_service(),
         policy=StaticLimitPolicy(settings),
         step_up=DevCodeStepUp(settings),
         payees=InternalPayeeVerifier(),
