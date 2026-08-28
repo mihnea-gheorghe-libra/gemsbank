@@ -1512,13 +1512,13 @@
   };
 
   const CATEGORY_COLORS = {
-    groceries: "var(--color-plum-600)",
-    utilities: "var(--color-lime-600)",
-    transport: "var(--color-plum-400)",
-    entertainment: "var(--color-lime-400)",
-    transfer: "var(--color-plum-400)",
-    income: "var(--color-lime-700)",
-    other: "var(--color-neutral-600)",
+    groceries: "var(--color-primary)",
+    utilities: "var(--color-info)",
+    transport: "var(--color-warning)",
+    entertainment: "var(--color-lime-600)",
+    transfer: "var(--color-neutral-500)",
+    income: "var(--color-positive)",
+    other: "var(--color-muted)",
   };
 
   const CHART_SERIES_LABEL = {
@@ -2678,7 +2678,7 @@
         <UI.Plate className="elev-sm" style={{ padding: 18, marginTop: 20 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
              <UI.Icon name="Sparkles" size={16} color="var(--color-primary)" />
-             <UI.Kicker style={{ margin: 0 }}>Interpretare AI</UI.Kicker>
+             <UI.Kicker style={{ margin: 0 }}>Sinteză inteligentă</UI.Kicker>
           </div>
           <AnalyticsInsights range={range} />
         </UI.Plate>
@@ -2696,7 +2696,7 @@
       let cancelled = false;
       setLoading(true);
       setInsights(null);
-      api.askAnalytics(`Oferă-mi fix 3 recomandări extrem de scurte despre cheltuielile mele din ultimele ${range} luni, strict pentru client. Fiecare pe un rând nou. Fără nicio introducere sau concluzie, doar cele 3 puncte.`)
+      api.askAnalytics(`Ofera-mi fix 3 recomandari extrem de scurte despre cheltuielile mele din ultimele ${range} luni, strict pentru client. Fiecare pe un rând nou. Fara nicio introducere sau concluzie, doar cele 3 puncte.`)
         .then(res => {
           if (!cancelled) {
              setInsights(res.answer);
@@ -2717,7 +2717,15 @@
        return <div className="dash-chart-empty">{t("dashboard.analytics.loading")}</div>;
     }
     if (!insights) return null;
-    return <div className="dash-msg-ai" style={{ maxWidth: "100%", background: "transparent", padding: 0, whiteSpace: "pre-wrap" }}>{insights}</div>;
+    return (
+      <div className="dash-msg-ai" style={{ maxWidth: "100%", background: "transparent", padding: 0 }}>
+        {insights.split('\n').map((line, i) => (
+          <div key={i} style={{ minHeight: "1.2em", marginBottom: "4px" }}>
+            {renderInlineText(line, i)}
+          </div>
+        ))}
+      </div>
+    );
   }
 
 function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
