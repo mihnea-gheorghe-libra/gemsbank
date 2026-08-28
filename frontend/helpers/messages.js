@@ -712,6 +712,7 @@
       },
       settings: {
         personalDetails: "PERSONAL DETAILS",
+        username: "Username",
         fullName: "Full name",
         birthDate: "Date of birth",
         phone: "Phone",
@@ -753,6 +754,7 @@
           confirm: "Confirm",
           cancel: "Cancel",
           devHint: "Dev code (no email configured): {code}",
+          successUsername: "Username updated.",
           successEmail: "Email updated.",
           successPhone: "Phone number updated.",
           successPin: "PIN updated.",
@@ -1777,6 +1779,7 @@
       },
       settings: {
         personalDetails: "DATE PERSONALE",
+        username: "Nume de utilizator",
         fullName: "Nume complet",
         birthDate: "Data nașterii",
         phone: "Telefon",
@@ -1818,6 +1821,7 @@
           confirm: "Confirmă",
           cancel: "Anulează",
           devHint: "Cod de test (fără email configurat): {code}",
+          successUsername: "Numele de utilizator a fost actualizat.",
           successEmail: "Adresa de email a fost actualizată.",
           successPhone: "Numărul de telefon a fost actualizat.",
           successPin: "PIN-ul a fost actualizat.",

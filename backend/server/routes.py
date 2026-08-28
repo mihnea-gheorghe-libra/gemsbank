@@ -47,6 +47,7 @@ from backend.auth.service import (
     RequestPasswordReset,
     RequestPhoneChange,
     RequestPinChange,
+    RequestUsernameChange,
     ResetPassword,
     RevealPin,
     RevokeSession,
@@ -168,6 +169,11 @@ class NewPasswordRequest(BaseModel):
         min_length=1, max_length=200, alias="passwordConfirmation"
     )
 
+    model_config = {"populate_by_name": True}
+
+
+class UsernameChangeRequest(BaseModel):
+    new_username: str = Field(min_length=3, max_length=32, alias="newUsername")
     model_config = {"populate_by_name": True}
 
 
@@ -573,6 +579,16 @@ async def revoke_session(
     idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
     command = RevokeSession(session_id=session_id)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@auth_router.post("/username/change", status_code=201)
+async def request_username_change(
+    actor: CurrentActor,
+    payload: UsernameChangeRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = RequestUsernameChange(new_username=payload.new_username)
     return await bus.execute(command, actor, idempotency_key)
 
 

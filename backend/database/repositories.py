@@ -271,6 +271,7 @@ class MongoAuthUserRepository:
                 {"_id": user.id},
                 {
                     "$set": {
+                        "username": user.username,
                         "email": user.email,
                         "phone": user.phone,
                         "passwordHash": user.password_hash,
@@ -289,6 +290,10 @@ class MongoAuthUserRepository:
                 session=session,
             )
         except DuplicateKeyError as exc:
+            if "uq_username" in str(exc):
+                raise ConflictError(
+                    "That username is taken.", details={"field": "username"}
+                ) from exc
             raise ConflictError(
                 "That email is already registered.", details={"field": "email"}
             ) from exc
