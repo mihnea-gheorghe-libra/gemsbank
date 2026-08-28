@@ -236,6 +236,10 @@
         draft: "Draft",
       },
       category: {
+        investment: "Investment",
+        investment_buy: "Investment",
+        investment_sell: "Investment",
+        savings: "Savings",
         groceries: "Groceries",
         utilities: "Utilities",
         income: "Income",
@@ -1037,6 +1041,10 @@
       },
       kind: { current: "Current", savings: "Savings" },
       category: {
+        investment: "Investment",
+        investment_buy: "Investment",
+        investment_sell: "Investment",
+        savings: "Savings",
         transfer: "Transfer",
         groceries: "Groceries",
         utilities: "Utilities",
@@ -2104,6 +2112,10 @@
       },
       kind: { current: "Curent", savings: "Economii" },
       category: {
+        investment: "Investiții",
+        investment_buy: "Investiții",
+        investment_sell: "Investiții",
+        savings: "Economii",
         transfer: "Transfer",
         groceries: "Alimente",
         utilities: "Utilități",
