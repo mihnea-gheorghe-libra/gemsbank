@@ -264,10 +264,10 @@
         method: "POST",
         json: { parentAccountId, name, termMonths, initialDepositMinorUnits },
       }),
-    topUpTermDeposit: (depositId, amountMinorUnits) =>
+    topUpTermDeposit: (depositId, amountMinorUnits, sourceAccountId) =>
       send("/deposits/" + encodeURIComponent(depositId) + "/topup", {
         method: "POST",
-        json: { amountMinorUnits },
+        json: { amountMinorUnits, sourceAccountId: sourceAccountId || null },
       }),
     withdrawFromTermDeposit: (depositId, amountMinorUnits) =>
       send("/deposits/" + encodeURIComponent(depositId) + "/withdraw", {

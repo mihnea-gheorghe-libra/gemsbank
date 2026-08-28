@@ -321,6 +321,7 @@
     const [addFundsShown, setAddFundsShown] = useState(false);
     const [addFundsBusy, setAddFundsBusy] = useState(false);
     const [addFundsError, setAddFundsError] = useState(null);
+    const [statementOpen, setStatementOpen] = useState(false);
     const [statementAccount, setStatementAccount] = useState(null);
     const [statementBusy, setStatementBusy] = useState(false);
     const [statementError, setStatementError] = useState(null);
@@ -1301,10 +1302,12 @@
 
     const openStatement = useCallback((account) => {
       setStatementError(null);
-      setStatementAccount(account);
+      setStatementAccount(account || null);
+      setStatementOpen(true);
     }, []);
 
     const closeStatement = useCallback(() => {
+      setStatementOpen(false);
       setStatementAccount(null);
       setStatementError(null);
     }, []);
@@ -1431,12 +1434,15 @@
       [createTermDeposit, openAccount]
     );
 
-    const moveDeposit = useCallback(async ({ depositId, amountMinor, direction }) => {
+    const moveDeposit = useCallback(async ({ depositId, amountMinor, direction, sourceAccountId }) => {
       setDepositMoveBusy(true);
       setDepositMoveError(null);
       try {
-        const call = direction === "in" ? api.topUpTermDeposit : api.withdrawFromTermDeposit;
-        await call(depositId, amountMinor);
+        if (direction === "in") {
+          await api.topUpTermDeposit(depositId, amountMinor, sourceAccountId);
+        } else {
+          await api.withdrawFromTermDeposit(depositId, amountMinor);
+        }
         await loadPaymentsData();
         setDepositMove(null);
       } catch (err) {
@@ -1499,6 +1505,16 @@
         setCreditActionError(err);
       }
     }, [loadPaymentsData]);
+
+    const topUpAccount = useCallback((account) => {
+      setQuickTransferError(null);
+      setQuickTransferShown({ accountId: account.id, side: "target" });
+    }, []);
+
+    const withdrawFromAccount = useCallback((account) => {
+      setQuickTransferError(null);
+      setQuickTransferShown({ accountId: account.id, side: "source" });
+    }, []);
 
     const quickTransfer = useCallback(async (payload) => {
       setQuickTransferBusy(true);
@@ -1635,6 +1651,8 @@
                 onOpenStatement={openStatement}
                 onDeleteAccount={requestCloseAccount}
                 onOpenQuickTransfer={() => { setQuickTransferError(null); setQuickTransferShown(true); }}
+                onTopUpAccount={topUpAccount}
+                onWithdrawAccount={withdrawFromAccount}
               />
             ) : null}
             {screen === "portfolio" ? (
@@ -1762,9 +1780,10 @@
           />
         ) : null}
 
-        {statementAccount ? (
+        {statementOpen ? (
           <DASH.StatementDialog
             account={statementAccount}
+            accounts={accounts}
             busy={statementBusy}
             error={statementError}
             onClose={closeStatement}
@@ -1819,7 +1838,10 @@
 
         {quickTransferShown ? (
           <DASH.QuickTransferDialog
+            key={quickTransferShown === true ? "quick-transfer" : quickTransferShown.accountId + quickTransferShown.side}
             accounts={accounts}
+            fixedAccountId={quickTransferShown === true ? null : quickTransferShown.accountId}
+            fixedSide={quickTransferShown === true ? null : quickTransferShown.side}
             busy={quickTransferBusy}
             error={quickTransferError}
             onClose={() => setQuickTransferShown(false)}

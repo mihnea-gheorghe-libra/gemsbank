@@ -111,8 +111,6 @@ body,
 :is(
   .dash-grid-home,
   .dash-accounts-tiles,
-  .dash-portfolio-tiles,
-  .dash-portfolio-cols,
   .dash-analytics-cols,
   .dash-cards-grid,
   .dash-goals-grid,
@@ -127,11 +125,11 @@ body,
 ) > * {
   animation: gemsRise var(--dur-4) var(--ease-out) both;
 }
-:is(.dash-grid-home, .dash-accounts-tiles, .dash-portfolio-tiles, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(2) { animation-delay: 55ms; }
-:is(.dash-grid-home, .dash-accounts-tiles, .dash-portfolio-tiles, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(3) { animation-delay: 110ms; }
-:is(.dash-grid-home, .dash-accounts-tiles, .dash-portfolio-tiles, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(4) { animation-delay: 160ms; }
-:is(.dash-grid-home, .dash-accounts-tiles, .dash-portfolio-tiles, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(5) { animation-delay: 205ms; }
-:is(.dash-grid-home, .dash-accounts-tiles, .dash-portfolio-tiles, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(n + 6) { animation-delay: 245ms; }
+:is(.dash-grid-home, .dash-accounts-tiles, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(2) { animation-delay: 55ms; }
+:is(.dash-grid-home, .dash-accounts-tiles, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(3) { animation-delay: 110ms; }
+:is(.dash-grid-home, .dash-accounts-tiles, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(4) { animation-delay: 160ms; }
+:is(.dash-grid-home, .dash-accounts-tiles, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(5) { animation-delay: 205ms; }
+:is(.dash-grid-home, .dash-accounts-tiles, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(n + 6) { animation-delay: 245ms; }
 
 .dash-table tbody tr,
 .table tbody tr { animation: gemsFade var(--dur-3) var(--ease-out) both; }

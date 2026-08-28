@@ -197,6 +197,7 @@
 
 /* ── payments ────────────────────────────────────────────── */
 .dash-screen-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.dash-accounts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; margin-bottom: 18px; }
 .dash-pending-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .dash-pending-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--radius-lg); background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-sm), var(--relief-highlight); }
 .dash-filters-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
@@ -263,7 +264,6 @@
 .dash-split-share-amount { font-family: var(--font-heading); font-size: 15px; }
 
 /* ── portfolio ───────────────────────────────────────────── */
-.dash-portfolio-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px; }
 .dash-account-tile-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .dash-tile-menu { position: relative; flex: none; margin: -6px -6px 0 0; }
 .dash-tile-menu-trigger {
@@ -273,7 +273,7 @@
 }
 .dash-tile-menu-trigger:hover { background: color-mix(in srgb, var(--color-primary) 8%, transparent); color: var(--color-text); }
 .dash-tile-menu-list {
-  position: absolute; top: calc(100% + 4px); right: 0; z-index: 20;
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 35;
   min-width: 180px; padding: 6px; display: flex; flex-direction: column; gap: 2px;
   background: var(--color-bg);
 }
@@ -285,11 +285,13 @@
 .dash-tile-menu-item:hover { background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
 .dash-tile-menu-item.is-danger { color: var(--color-negative); }
 .dash-tile-menu-item.is-danger:hover { background: color-mix(in srgb, var(--color-negative) 10%, transparent); }
-.dash-portfolio-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .dash-product-list { display: flex; flex-direction: column; gap: 12px; }
 .dash-product-row { padding: 12px 14px; border-radius: var(--radius-lg); background: var(--color-surface); }
 .dash-product-head { display: flex; align-items: flex-start; gap: 12px; }
 .dash-product-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.dash-scroll-accounts { max-height: 268px; overflow-y: auto; padding-right: 4px; }
+.dash-scroll-deposits { max-height: 360px; overflow-y: auto; padding-right: 4px; }
+.dash-scroll-credits { max-height: 268px; overflow-y: auto; padding-right: 4px; }
 .dash-progress { height: 9px; border-radius: 999px; overflow: hidden; background: var(--color-bg); border: 1px solid var(--color-border); }
 .dash-progress > span { display: block; height: 100%; background: var(--color-lime-600); }
 .dash-donut { width: 150px; height: 150px; flex: none; border-radius: 50%; }
@@ -807,12 +809,12 @@
   .dash-sidebar { width: 100%; flex-direction: row; align-items: center; padding: 12px; overflow-x: auto; }
   .dash-sidebar-brand { padding: 0 12px 0 4px; }
   .dash-sidebar-foot { display: none; }
-  .dash-grid-home, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-layout, .dash-settings-grid, .dash-chat-layout, .dash-invest-row {
+  .dash-grid-home, .dash-analytics-cols, .dash-cards-layout, .dash-settings-grid, .dash-chat-layout, .dash-invest-row, .dash-accounts-row {
     grid-template-columns: 1fr;
   }
   .dash-balance-card { grid-row: auto; }
   .dash-accounts-card { grid-column: auto; }
-  .dash-accounts-tiles, .dash-portfolio-tiles, .dash-cards-grid, .dash-field-grid {
+  .dash-accounts-tiles, .dash-cards-grid, .dash-field-grid {
     grid-template-columns: 1fr;
   }
   .dash-trade-actions { flex-wrap: wrap; }

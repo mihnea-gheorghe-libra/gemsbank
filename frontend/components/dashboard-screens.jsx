@@ -658,38 +658,61 @@
   };
   function AccountTileMenu({ onStatement, onDelete }) {
     const [open, setOpen] = useState(false);
-    const containerRef = useRef(null);
+    const [position, setPosition] = useState(null);
+    const triggerRef = useRef(null);
+    const menuRef = useRef(null);
+
+    const openMenu = () => {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPosition({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+      setOpen(true);
+    };
 
     useEffect(() => {
       if (!open) return undefined;
       function onPointerDown(event) {
-        if (containerRef.current && !containerRef.current.contains(event.target)) setOpen(false);
+        if (triggerRef.current && triggerRef.current.contains(event.target)) return;
+        if (menuRef.current && menuRef.current.contains(event.target)) return;
+        setOpen(false);
       }
       function onKeyDown(event) {
         if (event.key === "Escape") setOpen(false);
       }
+      function onDismiss() {
+        setOpen(false);
+      }
       document.addEventListener("mousedown", onPointerDown);
       document.addEventListener("keydown", onKeyDown);
+      window.addEventListener("scroll", onDismiss, true);
+      window.addEventListener("resize", onDismiss);
       return () => {
         document.removeEventListener("mousedown", onPointerDown);
         document.removeEventListener("keydown", onKeyDown);
+        window.removeEventListener("scroll", onDismiss, true);
+        window.removeEventListener("resize", onDismiss);
       };
     }, [open]);
 
     return (
-      <div className="dash-tile-menu" ref={containerRef}>
+      <div className="dash-tile-menu">
         <button
           type="button"
+          ref={triggerRef}
           className="dash-tile-menu-trigger"
           aria-haspopup="true"
           aria-expanded={open}
           aria-label={t("dashboard.accounts.moreActions")}
-          onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }}
+          onClick={(event) => { event.stopPropagation(); if (open) setOpen(false); else openMenu(); }}
         >
           <UI.Icon name="MoreVertical" size={16} />
         </button>
-        {open ? (
-          <div className="dash-tile-menu-list elev-md plate" role="menu">
+        {open && position ? ReactDOM.createPortal(
+          <div
+            ref={menuRef}
+            className="dash-tile-menu-list elev-md plate"
+            role="menu"
+            style={{ position: "fixed", top: position.top, right: position.right }}
+          >
             <button
               type="button"
               role="menuitem"
@@ -699,17 +722,83 @@
               <UI.Icon name="FileText" size={14} />
               {t("dashboard.accounts.statementMenuItem")}
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="dash-tile-menu-item is-danger"
-              onClick={() => { setOpen(false); onDelete(); }}
-            >
-              <UI.Icon name="Trash2" size={14} />
-              {t("dashboard.accounts.deleteMenuItem")}
-            </button>
-          </div>
+            {onDelete ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="dash-tile-menu-item is-danger"
+                onClick={() => { setOpen(false); onDelete(); }}
+              >
+                <UI.Icon name="Trash2" size={14} />
+                {t("dashboard.accounts.deleteMenuItem")}
+              </button>
+            ) : null}
+          </div>,
+          document.body
         ) : null}
+      </div>
+    );
+  }
+
+  function AccountRow({ account, onStatement, onDelete }) {
+    return (
+      <div className="dash-product-row">
+        <div className="dash-product-head">
+          <div style={{ flex: 1 }}>
+            <div className="dash-account-tile-head">
+              <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>
+                {account.label || t("dashboard.accountType." + account.typeKey)}
+              </div>
+              <AccountTileMenu onStatement={onStatement} onDelete={onDelete} />
+            </div>
+            <div className="text-muted" style={{ fontSize: 11 }}>
+              {account.cur} &middot; {t("dashboard.accountType." + account.typeKey)} &middot; {account.iban}
+            </div>
+          </div>
+          <div style={{ fontFamily: "var(--font-heading)", fontSize: 18 }}>
+            {formatMinor(account.minor)} {account.cur}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function SavingsAccountRow({ account, onStatement, onTopUp, onWithdraw, onClose }) {
+    return (
+      <div className="dash-product-row">
+        <div className="dash-product-head">
+          <div style={{ flex: 1 }}>
+            <div className="dash-account-tile-head">
+              <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>
+                {account.label || t("dashboard.accountType." + account.typeKey)}
+              </div>
+              <AccountTileMenu onStatement={onStatement} />
+            </div>
+            <div className="text-muted" style={{ fontSize: 11 }}>
+              {account.cur} &middot; {t("dashboard.accountType." + account.typeKey)} &middot; {account.iban}
+            </div>
+          </div>
+          <div style={{ fontFamily: "var(--font-heading)", fontSize: 18 }}>
+            {formatMinor(account.minor)} {account.cur}
+          </div>
+        </div>
+
+        <div className="dash-product-actions">
+          <UI.Button type="button" variant="secondary" onClick={() => onTopUp(account)}>
+            {t("dashboard.deposit.topUp")}
+          </UI.Button>
+          <UI.Button type="button" variant="secondary" onClick={() => onWithdraw(account)}>
+            {t("dashboard.deposit.withdraw")}
+          </UI.Button>
+          <UI.Button
+            type="button"
+            variant="secondary"
+            aria-label={t("dashboard.deposit.closeLabel", { name: DASH.accountLabel(account) })}
+            onClick={() => onClose(account)}
+          >
+            {t("dashboard.deposit.close")}
+          </UI.Button>
+        </div>
       </div>
     );
   }
@@ -728,43 +817,58 @@
     onOpenStatement,
     onDeleteAccount,
     onOpenQuickTransfer,
+    onTopUpAccount,
+    onWithdrawAccount,
   }) {
     const activeApplications = creditApplications.filter((application) => application.status === "review");
+    const cashAccounts = accounts.filter((account) => account.typeKey === "current" || account.typeKey === "invest");
+    const depositPotIds = new Set(termDeposits.map((deposit) => deposit.accountId));
+    const savingsAccounts = accounts.filter(
+      (account) => account.typeKey === "savings" && !depositPotIds.has(account.id)
+    );
 
     return (
       <div>
         <div className="dash-screen-head">
           <h3 style={{ margin: 0 }}>{t("dashboard.accounts.title")}</h3>
           <div style={{ display: "flex", gap: 8 }}>
+            <UI.Button type="button" variant="secondary" disabled={!accounts.length} onClick={() => onOpenStatement()}>
+              {t("dashboard.accounts.generateStatement")}
+            </UI.Button>
             <UI.Button type="button" variant="secondary" disabled={accounts.length < 2} onClick={onOpenQuickTransfer}>
               {t("dashboard.accounts.quickTransfer")}
             </UI.Button>
-            <UI.Button type="button" variant="primary" onClick={() => onOpenAccount()}>{t("dashboard.portfolio.openAccount")}</UI.Button>
           </div>
         </div>
 
-        <div className="dash-portfolio-tiles">
-          {accounts.map((account) => (
-            <UI.Plate key={account.id} className="elev-sm" style={{ padding: 14, position: "relative" }}>
-              <div className="dash-account-tile-head">
-                <div style={{ fontFamily: "var(--font-heading)", fontSize: 14 }}>
-                  {account.label || t("dashboard.accountType." + account.typeKey)}
-                </div>
-                <AccountTileMenu onStatement={() => onOpenStatement(account)} onDelete={() => onDeleteAccount(account)} />
-              </div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55, marginTop: 2 }}>
-                {account.cur} &middot; {t("dashboard.accountType." + account.typeKey)}
-              </div>
-              <div className="dash-account-amount">{formatMinor(account.minor)}</div>
-              <div className="text-muted" style={{ fontSize: 11 }}>{account.iban}</div>
-            </UI.Plate>
-          ))}
-        </div>
+        <div className="dash-accounts-row">
+        <UI.Plate className="elev-sm" style={{ padding: 16 }}>
+          <div className="dash-kicker-row">
+            <UI.Kicker>{t("dashboard.portfolio.cashAccounts")}</UI.Kicker>
+            <UI.Button type="button" variant="primary" onClick={() => onOpenAccount("current")}>
+              {t("dashboard.portfolio.openCashAccount")}
+            </UI.Button>
+          </div>
+          {cashAccounts.length ? (
+            <div className="dash-product-list dash-scroll-accounts">
+              {cashAccounts.map((account) => (
+                <AccountRow
+                  key={account.id}
+                  account={account}
+                  onStatement={() => onOpenStatement(account)}
+                  onDelete={() => onDeleteAccount(account)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.accounts.empty")}</div>
+          )}
+        </UI.Plate>
 
         <UI.Plate className="elev-sm" style={{ padding: 16 }}>
           <div className="dash-kicker-row">
             <UI.Kicker>{t("dashboard.portfolio.deposits")}</UI.Kicker>
-            <UI.Button type="button" variant="ghost" onClick={() => onOpenAccount("deposit")}>
+            <UI.Button type="button" variant="primary" onClick={() => onOpenAccount("deposit")}>
               {t("dashboard.deposit.new")}
             </UI.Button>
           </div>
@@ -773,8 +877,8 @@
               {depositActionError.message}
             </div>
           ) : null}
-          {termDeposits.length ? (
-            <div className="dash-product-list">
+          {termDeposits.length || savingsAccounts.length ? (
+            <div className="dash-product-list dash-scroll-deposits">
               {termDeposits.map((deposit) => (
                 <div className="dash-product-row" key={deposit.id}>
                   <div className="dash-product-head">
@@ -810,16 +914,27 @@
                   </div>
                 </div>
               ))}
+              {savingsAccounts.map((account) => (
+                <SavingsAccountRow
+                  key={account.id}
+                  account={account}
+                  onStatement={() => onOpenStatement(account)}
+                  onTopUp={onTopUpAccount}
+                  onWithdraw={onWithdrawAccount}
+                  onClose={onDeleteAccount}
+                />
+              ))}
             </div>
           ) : (
             <div className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.deposit.empty")}</div>
           )}
         </UI.Plate>
+        </div>
 
-        <UI.Plate className="elev-sm" style={{ padding: 16, marginTop: 20 }}>
+        <UI.Plate className="elev-sm" style={{ padding: 16 }}>
           <div className="dash-kicker-row">
             <UI.Kicker>{t("dashboard.portfolio.credits")}</UI.Kicker>
-            <UI.Button type="button" variant="secondary" onClick={onApplyCredit}>{t("dashboard.portfolio.applyCredit")}</UI.Button>
+            <UI.Button type="button" variant="primary" onClick={onApplyCredit}>{t("dashboard.portfolio.applyCredit")}</UI.Button>
           </div>
 
             {creditActionError ? (
@@ -835,7 +950,7 @@
             {activeApplications.length ? (
               <div style={{ marginTop: 18 }}>
                 <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.credit.applicationsTitle")}</UI.Kicker>
-                <div className="dash-product-list">
+                <div className="dash-product-list dash-scroll-credits">
                   {activeApplications.map((application) => (
                     <div className="dash-product-row" key={application.id}>
                       <div className="dash-product-head">

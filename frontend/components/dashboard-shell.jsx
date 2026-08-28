@@ -482,11 +482,14 @@
     return { from: customFrom, to: customTo };
   }
 
-  DASH.StatementDialog = function StatementDialog({ account, busy, error, onClose, onSubmit }) {
+  DASH.StatementDialog = function StatementDialog({ account, accounts, busy, error, onClose, onSubmit }) {
+    const [accountId, setAccountId] = useState(account ? account.id : (accounts[0] ? accounts[0].id : ""));
     const [format, setFormat] = useState("pdf");
     const [period, setPeriod] = useState("month");
     const [customFrom, setCustomFrom] = useState("");
     const [customTo, setCustomTo] = useState("");
+
+    const selectedAccount = accounts.find((item) => item.id === accountId) || null;
 
     const formatOptions = [
       { value: "pdf", label: t("dashboard.statement.formatPdf") },
@@ -500,17 +503,25 @@
     ];
 
     const range = statementRange(period, customFrom, customTo);
-    const ready = Boolean(range) && !busy;
+    const ready = Boolean(selectedAccount) && Boolean(range) && !busy;
 
     const submit = () => {
-      if (!range) return;
-      onSubmit({ accountId: account.id, format, from: range.from, to: range.to });
+      if (!range || !selectedAccount) return;
+      onSubmit({ accountId: selectedAccount.id, format, from: range.from, to: range.to });
     };
 
     return (
       <div className="dash-dialog-backdrop" onClick={onClose}>
         <UI.Plate className="dash-dialog elev-lg" role="dialog" aria-modal="true" aria-labelledby="statement-dialog-title" onClick={(event) => event.stopPropagation()}>
           <h2 id="statement-dialog-title" style={{ margin: 0 }}>{t("dashboard.statement.title")}</h2>
+
+          <UI.Field id="statement-account" label={t("dashboard.statement.account")}>
+            <UI.Select id="statement-account" value={accountId} onChange={(event) => setAccountId(event.target.value)}>
+              {accounts.map((item) => (
+                <option key={item.id} value={item.id}>{accountLabel(item)}</option>
+              ))}
+            </UI.Select>
+          </UI.Field>
 
           <DASH.SegmentedControl
             className="dash-seg-full"
@@ -653,6 +664,7 @@
                     ? t("dashboard.exchange.rateUnavailable")
                     : EXCHANGE_TARGETS.filter((code) => rates[code]).map((code) =>
                         t("dashboard.exchange.rateNote", {
+                          source: "RON",
                           rate: (rates[code].rateMicro / RATE_SCALE).toFixed(4).replace(".", ","),
                           target: code,
                         })

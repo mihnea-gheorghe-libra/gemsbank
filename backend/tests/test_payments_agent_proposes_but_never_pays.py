@@ -251,7 +251,7 @@ def test_the_daily_limit_counts_what_was_already_spent_today() -> None:
     ]
     result = propose(
         rows=rows,
-        ledger=FakeLedger(spent_today=49_000_00),
+        ledger=FakeLedger(spent_today=90_000_00),
         sourceAccountRef="current",
         targetAccountRef="savings",
         amountMinorUnits=19_000_00,
