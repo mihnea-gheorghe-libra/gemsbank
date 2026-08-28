@@ -2421,6 +2421,7 @@
 
     const [monthly, setMonthly] = useState(Math.min(maxMonthly, Math.max(step, suggested)));
     const [isEditingPace, setIsEditingPace] = useState(false);
+    const [editValue, setEditValue] = useState("");
 
     const chosen = Math.max(0, Math.min(monthly, maxMonthly));
     const months = chosen > 0 ? Math.ceil(remaining / chosen) : null;
@@ -2437,8 +2438,11 @@
           <div className="dash-projector-amount" style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
             <input
               type="number"
-              value={chosen / 100}
-              onChange={(event) => setMonthly(Math.round(Number(event.target.value) * 100))}
+              value={editValue}
+              onChange={(event) => {
+                setEditValue(event.target.value);
+                setMonthly(Math.round(Number(event.target.value) * 100));
+              }}
               onBlur={() => setIsEditingPace(false)}
               onKeyDown={(e) => { if (e.key === "Enter") setIsEditingPace(false); }}
               min={0}
@@ -2462,7 +2466,10 @@
         ) : (
           <div 
             className="dash-projector-amount" 
-            onClick={() => setIsEditingPace(true)}
+            onClick={() => {
+              setEditValue(chosen > 0 ? String(chosen / 100) : "");
+              setIsEditingPace(true);
+            }}
             style={{ cursor: "text" }}
           >
             {UI.formatMoney(chosen, goal.currency)}
