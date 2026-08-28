@@ -1727,12 +1727,12 @@
       if (row.amount.currency !== currency) return;
       
       const acc = accountById.get(row.accountId);
-      if (!acc || acc.kind !== "current") return;
+      if (!acc || acc.typeKey !== "current") return;
 
       const siblingRows = rowsByTx.get(row.transactionId) || [];
       const hasOtherCurrent = siblingRows.some(s => 
          s.accountId !== row.accountId && 
-         accountById.get(s.accountId)?.kind === "current"
+         accountById.get(s.accountId)?.typeKey === "current"
       );
       if (hasOtherCurrent) return;
 
