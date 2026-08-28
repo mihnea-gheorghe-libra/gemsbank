@@ -334,7 +334,8 @@ frontend/            no build step; index.html script order is the module graph
   helpers/           api.js (the only fetch caller) · i18n.js · messages.js (en + ro) ·
                      people.js (name formatting for display) ·
                      dashboard-data.js (hand-authored demo data for the dashboard mockup)
-  styles/            tokens.css (the only place a hex value may appear) · app.css · dashboard.css
+  styles/            tokens.css (the only place a hex value may appear) · app.css · dashboard.css ·
+                     motion.css (elevation, contour and interaction state; loaded last)
 
 design/              Claude Design export — source of truth for tokens
 ops/                 Mongo schema migrations

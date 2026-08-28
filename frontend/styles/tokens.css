@@ -98,6 +98,26 @@
   --shadow-lg: 0 18px 44px color-mix(in srgb, #450C3F 22%, transparent);
   --shadow-inset: inset 0 1px 3px color-mix(in srgb, #450C3F 10%, transparent);
 
+  /* ── motion ───────────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --dur-3: 320ms;
+  --dur-4: 520ms;
+
+  --lift-1: translateY(-1px);
+  --lift-2: translateY(-3px);
+
+  --ring: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
+  --ring-strong: 0 0 0 4px color-mix(in srgb, var(--color-primary) 30%, transparent);
+  --edge-soft: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 5%, transparent);
+
+  --surface-wash:
+    radial-gradient(1100px 620px at 8% -12%, color-mix(in srgb, var(--color-lime-500) 13%, transparent), transparent 68%),
+    radial-gradient(900px 560px at 96% 2%, color-mix(in srgb, var(--color-plum-500) 11%, transparent), transparent 70%);
+
   /* ── a11y ─────────────────────────────────────────────────── */
   --focus-ring: 2px solid var(--color-primary);
   --focus-offset: 2px;
