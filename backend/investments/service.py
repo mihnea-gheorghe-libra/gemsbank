@@ -192,6 +192,12 @@ class InvestmentsService:
             )
         return account
 
+    async def _to_display_amount(self, amount_minor: int, currency: str) -> int:
+        if currency == DISPLAY_CURRENCY:
+            return amount_minor
+        rate = await self._rates.fetch(currency, DISPLAY_CURRENCY)
+        return convert_minor(amount_minor, rate.rate_micro)
+
     async def _handle_buy(
         self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
     ) -> CommandResult:
@@ -205,7 +211,8 @@ class InvestmentsService:
         balance = await self._ledger.balance_of(account.id)
         account.guard_sufficient(balance, amount)
         held_before = await self._orders.holdings_for_account(account.id)
-        quantity_micro = to_quantity_micro(amount, quote.unit_price_minor)
+        display_amount = await self._to_display_amount(amount, account.currency)
+        quantity_micro = to_quantity_micro(display_amount, quote.unit_price_minor)
 
         transaction = await self._ledger.post_transaction(
             currency=account.currency,
@@ -274,7 +281,8 @@ class InvestmentsService:
         account.guard_can_receive()
         quote = await self._quote_for(command.instrument_id)
 
-        quantity_micro = to_quantity_micro(amount, quote.unit_price_minor)
+        display_amount = await self._to_display_amount(amount, account.currency)
+        quantity_micro = to_quantity_micro(display_amount, quote.unit_price_minor)
         held_before = await self._orders.holdings_for_account(account.id)
         held = held_before.get(command.instrument_id, 0)
         if quantity_micro > held:

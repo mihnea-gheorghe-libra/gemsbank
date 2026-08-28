@@ -761,64 +761,60 @@
           ))}
         </div>
 
-        <div className="dash-portfolio-cols">
-          <UI.Plate className="elev-sm" style={{ padding: 16 }}>
-            <div className="dash-kicker-row">
-              <UI.Kicker>{t("dashboard.portfolio.deposits")}</UI.Kicker>
-              <UI.Button type="button" variant="ghost" onClick={() => onOpenAccount("deposit")}>
-                {t("dashboard.deposit.new")}
-              </UI.Button>
+        <UI.Plate className="elev-sm" style={{ padding: 16 }}>
+          <div className="dash-kicker-row">
+            <UI.Kicker>{t("dashboard.portfolio.deposits")}</UI.Kicker>
+            <UI.Button type="button" variant="ghost" onClick={() => onOpenAccount("deposit")}>
+              {t("dashboard.deposit.new")}
+            </UI.Button>
+          </div>
+          {depositActionError ? (
+            <div className="dash-balance-line is-short" role="alert" style={{ marginBottom: 10 }}>
+              {depositActionError.message}
             </div>
-            {depositActionError ? (
-              <div className="dash-balance-line is-short" role="alert" style={{ marginBottom: 10 }}>
-                {depositActionError.message}
-              </div>
-            ) : null}
-            {termDeposits.length ? (
-              <div className="dash-product-list">
-                {termDeposits.map((deposit) => (
-                  <div className="dash-product-row" key={deposit.id}>
-                    <div className="dash-product-head">
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>{deposit.name}</div>
-                        <div className="text-muted" style={{ fontSize: 11 }}>
-                          {t("dashboard.deposit.metaShort", {
-                            rate: DASH.formatRate(deposit.rateBps),
-                            matures: t("dashboard.deposit.maturesOn", { date: GEMS.i18n.isoToDisplayDate(deposit.matures) }),
-                          })}
-                        </div>
-                      </div>
-                      <div style={{ fontFamily: "var(--font-heading)", fontSize: 18 }}>
-                        {formatMinor(deposit.minor)} {deposit.cur}
+          ) : null}
+          {termDeposits.length ? (
+            <div className="dash-product-list">
+              {termDeposits.map((deposit) => (
+                <div className="dash-product-row" key={deposit.id}>
+                  <div className="dash-product-head">
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>{deposit.name}</div>
+                      <div className="text-muted" style={{ fontSize: 11 }}>
+                        {t("dashboard.deposit.metaShort", {
+                          rate: DASH.formatRate(deposit.rateBps),
+                          matures: t("dashboard.deposit.maturesOn", { date: GEMS.i18n.isoToDisplayDate(deposit.matures) }),
+                        })}
                       </div>
                     </div>
-
-                    <div className="dash-product-actions">
-                      <UI.Button type="button" variant="secondary" onClick={() => onMoveDeposit(deposit, "in")}>
-                        {t("dashboard.deposit.topUp")}
-                      </UI.Button>
-                      <UI.Button type="button" variant="secondary" onClick={() => onMoveDeposit(deposit, "out")}>
-                        {t("dashboard.deposit.withdraw")}
-                      </UI.Button>
-                      <UI.Button
-                        type="button"
-                        variant="secondary"
-                        aria-label={t("dashboard.deposit.closeLabel", { name: deposit.name })}
-                        onClick={() => onCloseDeposit(deposit)}
-                      >
-                        {t("dashboard.deposit.close")}
-                      </UI.Button>
+                    <div style={{ fontFamily: "var(--font-heading)", fontSize: 18 }}>
+                      {formatMinor(deposit.minor)} {deposit.cur}
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.deposit.empty")}</div>
-            )}
-          </UI.Plate>
 
-          <GoalProgressCard accounts={accounts} goalVersion={0} />
-        </div>
+                  <div className="dash-product-actions">
+                    <UI.Button type="button" variant="secondary" onClick={() => onMoveDeposit(deposit, "in")}>
+                      {t("dashboard.deposit.topUp")}
+                    </UI.Button>
+                    <UI.Button type="button" variant="secondary" onClick={() => onMoveDeposit(deposit, "out")}>
+                      {t("dashboard.deposit.withdraw")}
+                    </UI.Button>
+                    <UI.Button
+                      type="button"
+                      variant="secondary"
+                      aria-label={t("dashboard.deposit.closeLabel", { name: deposit.name })}
+                      onClick={() => onCloseDeposit(deposit)}
+                    >
+                      {t("dashboard.deposit.close")}
+                    </UI.Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.deposit.empty")}</div>
+          )}
+        </UI.Plate>
 
         <UI.Plate className="elev-sm" style={{ padding: 16, marginTop: 20 }}>
           <div className="dash-kicker-row">

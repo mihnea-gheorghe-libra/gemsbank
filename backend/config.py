@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     demo_opening_balance_minor: int = 250000
 
-    payment_per_transaction_limit_minor: int = 2000000
+    payment_per_transaction_limit_minor: int = 5000000
     payment_daily_limit_minor: int = 5000000
     payment_step_up_threshold_minor: int = 100000
     step_up_code_ttl_seconds: int = 300
