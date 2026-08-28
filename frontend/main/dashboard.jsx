@@ -1541,7 +1541,7 @@
             onSignOut={onSignOut}
           />
 
-          <main className="dash-content" aria-label={t("dashboard.tag." + screen)}>
+          <main key={screen} className="dash-content" aria-label={t("dashboard.tag." + screen)}>
             {screen === "home" ? (
               <SCR.HomeScreen
                 accounts={accounts}

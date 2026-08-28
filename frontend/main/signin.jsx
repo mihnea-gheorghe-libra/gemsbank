@@ -146,7 +146,16 @@
     const lede = t("auth.views." + view + ".lede");
 
     return (
-      <div className="onb-shell">
+      <div className="onb-shell auth-shell">
+        <div className="auth-watermark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="0.5" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="12,2 22,11 12,22 2,11" />
+            <polyline points="7,6.5 17,6.5" />
+            <polyline points="7,6.5 12,22" />
+            <polyline points="17,6.5 12,22" />
+          </svg>
+        </div>
+
         <header className="onb-topbar">
           <UI.Logo size={20} />
           <span className="auth-screen-tag">{t("auth.screenTag")}</span>

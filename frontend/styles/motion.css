@@ -1,0 +1,523 @@
+/* GEMS motion & depth layer. Sits on top of app.css and dashboard.css and adds
+   only elevation, contour and interaction state — no layout, no new colours.
+   Tokens only (CLAUDE.md rule 10). */
+
+/* ── keyframes ───────────────────────────────────────────── */
+@keyframes gemsFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes gemsRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes gemsPop { from { opacity: 0; transform: translateY(-6px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes gemsScaleIn { from { opacity: 0; transform: translateY(14px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes gemsSheen { from { transform: translateX(-130%) skewX(-14deg); } to { transform: translateX(230%) skewX(-14deg); } }
+@keyframes gemsBarIn { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes gemsBarGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes gemsBreathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes gemsSpin { to { transform: rotate(360deg); } }
+@keyframes gemsShimmer { from { background-position: -180% 0; } to { background-position: 180% 0; } }
+@keyframes gemsDrift {
+  from { transform: translateY(-12px) rotate(-1.6deg) scale(0.985); }
+  to { transform: translateY(12px) rotate(1.6deg) scale(1.015); }
+}
+@keyframes gemsHalo {
+  0% { box-shadow: var(--shadow-md), 0 0 0 0 color-mix(in srgb, var(--color-primary) 34%, transparent); }
+  70%, 100% { box-shadow: var(--shadow-md), 0 0 0 16px transparent; }
+}
+
+/* ── ground ──────────────────────────────────────────────── */
+html { scroll-behavior: smooth; }
+
+body,
+.dash-shell,
+.onb-shell {
+  background-image: var(--surface-wash);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--color-primary) 28%, transparent) transparent; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-primary) 26%, transparent);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-primary) 48%, transparent);
+  background-clip: padding-box;
+}
+
+.hr { background: linear-gradient(90deg, transparent, var(--color-border) 12%, var(--color-border) 88%, transparent); }
+
+/* ── plates: contour and layered elevation ───────────────── */
+.plate {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--color-text) 3%, transparent), transparent 42%);
+  box-shadow: var(--shadow-sm), var(--relief-highlight), var(--edge-soft);
+  transition:
+    box-shadow var(--dur-3) var(--ease-out),
+    transform var(--dur-3) var(--ease-out),
+    border-color var(--dur-3) var(--ease-out);
+}
+.elev-sm { box-shadow: var(--shadow-sm), var(--relief-highlight), var(--edge-soft); }
+.elev-md { box-shadow: var(--shadow-md), var(--shadow-sm), var(--relief-highlight), var(--edge-soft); }
+.elev-lg { box-shadow: var(--shadow-lg), var(--shadow-md), var(--relief-highlight), var(--edge-soft); }
+
+:is(
+  .dash-account-tile,
+  .dash-template-card,
+  .dash-product-row,
+  .dash-pending-row,
+  .dash-split-card,
+  .dash-chart-plate,
+  .dash-info-card,
+  .dash-goal-card,
+  .dash-reco-plate,
+  .dash-tx-card,
+  .dash-table-card,
+  .dash-chart-card,
+  .dash-agent-note,
+  .pay-account,
+  .pay-pending,
+  .onb-agent-bubble
+) {
+  transition:
+    box-shadow var(--dur-3) var(--ease-out),
+    transform var(--dur-3) var(--ease-out),
+    border-color var(--dur-3) var(--ease-out);
+}
+:is(
+  .dash-account-tile,
+  .dash-template-card,
+  .dash-product-row,
+  .dash-pending-row,
+  .dash-split-card,
+  .dash-chart-plate,
+  .dash-info-card,
+  .dash-goal-card,
+  .dash-tx-card,
+  .dash-table-card,
+  .dash-chart-card,
+  .pay-account,
+  .pay-pending
+):hover {
+  transform: var(--lift-2);
+  border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-border));
+  box-shadow: var(--shadow-md), var(--shadow-sm), var(--relief-highlight), var(--edge-soft);
+}
+
+/* ── entrance choreography ───────────────────────────────── */
+.dash-content > * { animation: gemsFade var(--dur-3) var(--ease-out) both; }
+
+:is(
+  .dash-grid-home,
+  .dash-accounts-tiles,
+  .dash-portfolio-tiles,
+  .dash-portfolio-cols,
+  .dash-analytics-cols,
+  .dash-cards-grid,
+  .dash-goals-grid,
+  .dash-template-grid,
+  .dash-pending-grid,
+  .dash-settings-grid,
+  .dash-edu-page,
+  .dash-product-list,
+  .dash-split-list,
+  .pay-accounts,
+  .pay-pending-list
+) > * {
+  animation: gemsRise var(--dur-4) var(--ease-out) both;
+}
+:is(.dash-grid-home, .dash-accounts-tiles, .dash-portfolio-tiles, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(2) { animation-delay: 55ms; }
+:is(.dash-grid-home, .dash-accounts-tiles, .dash-portfolio-tiles, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(3) { animation-delay: 110ms; }
+:is(.dash-grid-home, .dash-accounts-tiles, .dash-portfolio-tiles, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(4) { animation-delay: 160ms; }
+:is(.dash-grid-home, .dash-accounts-tiles, .dash-portfolio-tiles, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(5) { animation-delay: 205ms; }
+:is(.dash-grid-home, .dash-accounts-tiles, .dash-portfolio-tiles, .dash-portfolio-cols, .dash-analytics-cols, .dash-cards-grid, .dash-goals-grid, .dash-template-grid, .dash-pending-grid, .dash-settings-grid, .dash-edu-page, .dash-product-list, .dash-split-list, .pay-accounts, .pay-pending-list) > :nth-child(n + 6) { animation-delay: 245ms; }
+
+.dash-table tbody tr,
+.table tbody tr { animation: gemsFade var(--dur-3) var(--ease-out) both; }
+.dash-table tbody tr:nth-child(2), .table tbody tr:nth-child(2) { animation-delay: 30ms; }
+.dash-table tbody tr:nth-child(3), .table tbody tr:nth-child(3) { animation-delay: 60ms; }
+.dash-table tbody tr:nth-child(4), .table tbody tr:nth-child(4) { animation-delay: 90ms; }
+.dash-table tbody tr:nth-child(5), .table tbody tr:nth-child(5) { animation-delay: 120ms; }
+.dash-table tbody tr:nth-child(n + 6), .table tbody tr:nth-child(n + 6) { animation-delay: 150ms; }
+
+/* ── buttons ─────────────────────────────────────────────── */
+:where(.btn) { position: relative; }
+.btn {
+  overflow: hidden;
+  isolation: isolate;
+  transition:
+    background var(--dur-2) var(--ease-out),
+    background-image var(--dur-2) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out),
+    color var(--dur-2) var(--ease-out),
+    transform var(--dur-2) var(--ease-spring);
+}
+.btn::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  pointer-events: none;
+  transform: translateX(-130%) skewX(-14deg);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-on-primary) 34%, transparent) 50%,
+    transparent 100%
+  );
+}
+.btn-secondary::after,
+.btn-ghost::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-primary) 16%, transparent) 50%,
+    transparent 100%
+  );
+}
+.btn:not(:disabled):hover::after { animation: gemsSheen 0.7s var(--ease-out); }
+.btn:not(:disabled):active { transform: translateY(0) scale(0.97); }
+.btn:disabled::after { display: none; }
+.btn:focus-visible { box-shadow: var(--shadow-sm), var(--ring-strong); }
+
+.btn-primary {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-primary) 88%, var(--color-on-primary)) 0%,
+    var(--color-primary) 62%
+  );
+}
+.btn-primary:not(:disabled):hover {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-plum-700) 84%, var(--color-on-primary)) 0%,
+    var(--color-plum-700) 62%
+  );
+}
+.btn-secondary:not(:disabled):hover { border-color: color-mix(in srgb, var(--color-primary) 38%, var(--color-border)); }
+.btn-ghost { border-radius: var(--radius-pill); }
+.btn-ghost:not(:disabled):hover { transform: none; }
+
+/* The plum hover ramp is a light-theme cue. In dark mode the button face is lime
+   and its foreground is dark plum, so a plum-700 hover would land dark on dark. */
+:root[data-theme="dark"] .btn-primary:not(:disabled):hover,
+:root[data-theme="dark"] .btn-primary:not(:disabled):active {
+  background: color-mix(in srgb, var(--color-primary) 82%, var(--color-on-primary));
+  border-color: color-mix(in srgb, var(--color-primary) 82%, var(--color-on-primary));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .btn-primary:not(:disabled):hover,
+  :root:not([data-theme="light"]) .btn-primary:not(:disabled):active {
+    background: color-mix(in srgb, var(--color-primary) 82%, var(--color-on-primary));
+    border-color: color-mix(in srgb, var(--color-primary) 82%, var(--color-on-primary));
+  }
+}
+
+/* ── inputs ──────────────────────────────────────────────── */
+.input {
+  transition:
+    border-color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out),
+    background var(--dur-2) var(--ease-out);
+}
+.input:focus,
+.input:focus-visible {
+  border-color: var(--color-primary);
+  outline-offset: 0;
+  box-shadow: var(--shadow-inset), var(--ring);
+}
+.field > label { transition: color var(--dur-2) var(--ease-out); }
+.field:focus-within > label { color: var(--color-primary); }
+.onb-otp .input {
+  transition:
+    transform var(--dur-2) var(--ease-spring),
+    border-color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out);
+}
+.onb-otp .input:focus,
+.onb-otp .input:focus-visible { transform: translateY(-2px); box-shadow: var(--shadow-md), var(--ring); }
+
+/* ── tags, chips ─────────────────────────────────────────── */
+.tag { box-shadow: var(--shadow-sm), inset 0 0 0 1px color-mix(in srgb, var(--color-text) 12%, transparent); }
+
+.chip,
+.dash-template-chip {
+  transition:
+    background var(--dur-2) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out),
+    transform var(--dur-2) var(--ease-spring);
+}
+.chip:not(:disabled):active { transform: scale(0.96); }
+.chip:focus-visible { box-shadow: var(--shadow-sm), var(--ring); }
+.dash-template-chip:hover { transform: var(--lift-1); box-shadow: var(--shadow-sm); }
+.dash-template-chip:active { transform: scale(0.97); }
+
+/* ── sidebar ─────────────────────────────────────────────── */
+.dash-sidebar { background-image: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 55%, transparent) 0%, transparent 55%); }
+.dash-nav-item {
+  position: relative;
+  transition:
+    background var(--dur-2) var(--ease-out),
+    color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out),
+    transform var(--dur-2) var(--ease-spring);
+}
+.dash-nav-item::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  translate: 0 -50%;
+  width: 3px;
+  height: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-lime-500);
+  transition: height var(--dur-3) var(--ease-spring);
+}
+.dash-nav-item.is-active::before { height: 56%; }
+.dash-nav-item.is-active { box-shadow: var(--shadow-sm), var(--relief-highlight); }
+.dash-nav-item .icon { transition: transform var(--dur-2) var(--ease-spring), opacity var(--dur-2) var(--ease-out); }
+.dash-nav-item:hover .icon { transform: scale(1.14); opacity: 1; }
+.dash-nav-item:active { transform: translateX(2px) scale(0.985); }
+.dash-nav-dot { animation: gemsBreathe 2.2s var(--ease-in-out) infinite; }
+
+/* ── topbar ──────────────────────────────────────────────── */
+.dash-topbar,
+.onb-topbar {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 52%, transparent) 0%, transparent 100%);
+  backdrop-filter: saturate(1.15) blur(6px);
+}
+.dash-avatar,
+.pay-avatar { transition: box-shadow var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-spring); }
+.dash-avatar:hover,
+.pay-avatar:hover { transform: translateY(-1px) scale(1.05); box-shadow: var(--shadow-md); }
+.dash-avatar:active { transform: scale(0.95); }
+.dash-avatar-dot { animation: gemsBreathe 2.4s var(--ease-in-out) infinite; }
+
+/* ── popovers ────────────────────────────────────────────── */
+.dash-profile-menu,
+.dash-period-menu,
+.dash-tile-menu-list {
+  animation: gemsPop var(--dur-2) var(--ease-out) both;
+  transform-origin: top right;
+}
+.dash-period-opt,
+.dash-tile-menu-item {
+  transition:
+    background var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out),
+    transform var(--dur-1) var(--ease-out);
+}
+.dash-period-opt:hover,
+.dash-tile-menu-item:hover { transform: translateX(2px); }
+.dash-tile-menu-trigger { transition: background var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-spring); }
+.dash-tile-menu-trigger:hover { transform: scale(1.1); }
+
+/* ── segmented controls ──────────────────────────────────── */
+.seg,
+.dash-seg { transition: box-shadow var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out); }
+.seg:focus-within,
+.dash-seg:focus-within {
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
+  box-shadow: var(--shadow-inset), var(--ring);
+}
+.seg-opt,
+.dash-seg-opt {
+  transition:
+    background var(--dur-2) var(--ease-out),
+    color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out);
+}
+.dash-seg-opt:not(.is-active):hover { background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
+.seg-opt[data-active="true"],
+.dash-seg-opt.is-active { box-shadow: var(--shadow-sm), var(--relief-highlight); }
+
+/* ── tables ──────────────────────────────────────────────── */
+.dash-table tbody tr,
+.table tbody tr { transition: background var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
+.dash-table tbody tr:hover,
+.table tbody tr:hover { box-shadow: inset 3px 0 0 var(--color-primary); }
+
+/* ── bank cards ──────────────────────────────────────────── */
+.dash-card-tile {
+  isolation: isolate;
+  transition:
+    box-shadow var(--dur-3) var(--ease-out),
+    transform var(--dur-3) var(--ease-out),
+    background var(--dur-3) var(--ease-out);
+}
+.dash-card-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    140deg,
+    color-mix(in srgb, var(--color-neutral-100) 42%, transparent) 0%,
+    transparent 46%,
+    color-mix(in srgb, var(--color-plum-900) 9%, transparent) 100%
+  );
+}
+.dash-card-tile:hover { transform: translateY(-4px) scale(1.012); }
+.dash-card-face-back { background-image: linear-gradient(140deg, color-mix(in srgb, var(--color-neutral-100) 34%, transparent) 0%, transparent 52%); }
+.dash-card-flip-inner { transition: transform 0.6s var(--ease-in-out); }
+
+/* ── progress, rings, bars ───────────────────────────────── */
+.dash-progress { box-shadow: var(--shadow-inset); }
+.dash-progress > span {
+  transform-origin: left center;
+  animation: gemsBarIn var(--dur-4) var(--ease-out) both;
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-lime-600) 72%, var(--color-lime-800)), var(--color-lime-400));
+  transition: width var(--dur-4) var(--ease-out);
+}
+.dash-progress-negative > span { background-image: linear-gradient(90deg, var(--color-negative), color-mix(in srgb, var(--color-negative) 62%, transparent)); }
+.dash-bar-fill {
+  transform-origin: bottom center;
+  animation: gemsBarGrow var(--dur-4) var(--ease-out) both;
+  background-image: linear-gradient(180deg, var(--color-lime-400), var(--color-lime-600));
+  transition: filter var(--dur-2) var(--ease-out);
+}
+.dash-bar-col:hover .dash-bar-fill { filter: brightness(1.08); }
+.dash-ring { transition: transform var(--dur-3) var(--ease-spring); }
+.dash-goal-card:hover .dash-ring { transform: scale(1.03); }
+
+/* ── dialogs ─────────────────────────────────────────────── */
+.dialog-backdrop,
+.dash-dialog-backdrop {
+  animation: gemsFade var(--dur-2) var(--ease-out) both;
+  backdrop-filter: blur(7px) saturate(1.1);
+}
+.dialog,
+.dash-dialog { animation: gemsScaleIn var(--dur-3) var(--ease-out) both; }
+.dialog { border-radius: var(--radius-lg); }
+
+/* ── chat & agent surfaces ───────────────────────────────── */
+.dash-msg { animation: gemsRise var(--dur-3) var(--ease-out) both; }
+.dash-msg-user { box-shadow: var(--shadow-md), var(--relief-highlight); }
+.dash-msg-ai { box-shadow: var(--shadow-sm), var(--relief-highlight); }
+.dash-msg-ai-dot { animation: gemsBreathe 1.9s var(--ease-in-out) infinite; }
+.dash-chat-input-row {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out);
+}
+.dash-chat-input-row:focus-within { border-color: var(--color-primary); box-shadow: var(--shadow-inset), var(--ring); }
+.dash-edu-input-row { border-radius: var(--radius-md); }
+.dash-msg-speak-btn { transition: background var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-spring); }
+.dash-msg-speak-btn:hover { transform: var(--lift-1); }
+
+.dash-dock { animation: gemsScaleIn var(--dur-3) var(--ease-out) both; transform-origin: bottom right; }
+.dash-dock-fab { animation: gemsHalo 3.2s var(--ease-out) infinite; }
+.dash-dock-fab:hover { animation-play-state: paused; }
+
+.dash-edu-panel::before { background-size: 220% 100%; animation: gemsShimmer 6s linear infinite; }
+.dash-edu-avatar { transition: transform var(--dur-3) var(--ease-spring); }
+.dash-edu-panel:hover .dash-edu-avatar { transform: rotate(-6deg) scale(1.06); }
+
+/* ── education ───────────────────────────────────────────── */
+.dash-lesson-toggle { transition: color var(--dur-2) var(--ease-out), padding-left var(--dur-2) var(--ease-out); }
+.dash-lesson-toggle:hover { padding-left: 6px; }
+.dash-lesson-panel { animation: gemsRise var(--dur-3) var(--ease-out) both; }
+.dash-quiz-option {
+  transition:
+    background var(--dur-2) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out),
+    transform var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out);
+}
+.dash-quiz-option:hover { transform: var(--lift-1); box-shadow: var(--shadow-sm); }
+.dash-reco-index { transition: transform var(--dur-3) var(--ease-spring), background var(--dur-2) var(--ease-out); }
+.dash-reco-item:hover .dash-reco-index { transform: scale(1.12); background: color-mix(in srgb, var(--color-primary) 26%, transparent); }
+.dash-streak-badge { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-warning) 34%, transparent); }
+
+/* ── charts ──────────────────────────────────────────────── */
+.dash-chart-line { transition: stroke-width var(--dur-2) var(--ease-out); }
+.dash-chart-svg:hover .dash-chart-line { stroke-width: 2.6; }
+.dash-chart-tip { animation: gemsFade var(--dur-1) var(--ease-out) both; }
+.dash-chart-tooltip { animation: gemsPop var(--dur-1) var(--ease-out) both; }
+.dash-chart { transition: opacity var(--dur-3) var(--ease-out); }
+
+/* ── onboarding & auth ───────────────────────────────────── */
+.onb-rail,
+.onb-panel { background-image: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 42%, transparent) 0%, transparent 46%); }
+.onb-rail-item { transition: transform var(--dur-2) var(--ease-out), opacity var(--dur-2) var(--ease-out); }
+.onb-rail-item[data-state="IN PROGRESS"] { transform: translateX(3px); }
+.onb-dropzone {
+  transition:
+    border-color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out),
+    transform var(--dur-2) var(--ease-out),
+    background var(--dur-2) var(--ease-out);
+}
+.onb-dropzone:hover { transform: var(--lift-1); box-shadow: var(--shadow-md); }
+.onb-dropzone[data-dragging="true"] { transform: scale(1.01); box-shadow: var(--shadow-lg), var(--ring); }
+.auth-shell { position: relative; overflow-x: clip; }
+.auth-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 0;
+  width: min(104vmin, 890px);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  pointer-events: none;
+  color: var(--color-primary);
+  opacity: 0.14;
+  filter: blur(10px);
+  animation: gemsDrift 18s var(--ease-in-out) infinite alternate;
+}
+.auth-watermark svg { display: block; width: 100%; height: 100%; }
+.auth-main,
+.onb-footer { position: relative; z-index: 1; }
+.onb-error { animation: gemsRise var(--dur-2) var(--ease-out) both; }
+.auth-main { animation: gemsScaleIn var(--dur-4) var(--ease-out) both; }
+.auth-notice,
+.auth-countdown { animation: gemsRise var(--dur-3) var(--ease-out) both; }
+.onb-dot { animation: gemsBreathe 1.8s var(--ease-in-out) infinite; }
+
+/* ── status & loading ────────────────────────────────────── */
+.text-muted[role="status"] { animation: gemsBreathe 1.7s var(--ease-in-out) infinite; }
+.dash-goals-loading::before {
+  content: "";
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  animation: gemsSpin 0.9s linear infinite;
+}
+.dash-market-status { transition: border-color var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease-out); }
+.dash-mic-dot { animation: gemsBreathe 1.2s var(--ease-in-out) infinite; }
+
+/* ── misc reactivity ─────────────────────────────────────── */
+.dash-balance-figure {
+  transform-origin: left center;
+  transition: transform var(--dur-3) var(--ease-spring), color var(--dur-2) var(--ease-out);
+}
+.dash-balance-figure:hover { transform: scale(1.015); }
+.dash-copy-btn { transition: opacity var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-spring); }
+.dash-copy-btn:hover { transform: scale(1.12); }
+.dash-copy-btn:active { transform: scale(0.9); }
+.dash-holding-row { transition: background var(--dur-2) var(--ease-out); }
+.dash-history-row { transition: background var(--dur-1) var(--ease-out); }
+.dash-history-row:hover { background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
+a { transition: color var(--dur-2) var(--ease-out); }
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-dock-fab,
+  .dash-edu-panel::before,
+  .text-muted[role="status"],
+  .dash-nav-dot,
+  .dash-avatar-dot,
+  .dash-msg-ai-dot,
+  .dash-mic-dot,
+  .onb-dot { animation: none; }
+  .auth-watermark { animation: none; }
+  .dash-goals-loading::before { animation: none; }
+  .btn:not(:disabled):hover::after { animation: none; }
+}
