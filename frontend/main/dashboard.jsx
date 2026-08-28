@@ -364,7 +364,7 @@
     useEffect(() => {
       let cancelled = false;
       api
-        .listInsights(username)
+        .listInsights()
         .then((response) => {
           if (!cancelled && response) {
             setInsights(response.insights || []);
@@ -431,13 +431,17 @@
     const navigate = useCallback((key) => {
       if (SCREENS.indexOf(key) >= 0) {
         if (key === "chat" && screen !== "chat") {
-          setMessages([
-            {
-              role: "ai",
-              kind: "text",
-              text: seedMessage(firstName, accounts, pending, dataLoaded),
-            },
-          ]);
+          setMessages((list) =>
+            list.some((message) => message.role === "user")
+              ? list
+              : [
+                  {
+                    role: "ai",
+                    kind: "text",
+                    text: seedMessage(firstName, accounts, pending, dataLoaded),
+                  },
+                ]
+          );
         }
         setScreen(key);
         setBalanceHidden(true);
@@ -516,16 +520,15 @@
 
     const pushExchange = useCallback((userText, reply) => {
       setMessages((list) => {
-        const base = screen === "chat" ? list : [];
-        const nextIndex = base.length + 1;
+        const nextIndex = list.length + 1;
         if (ttsOn && reply && reply.text) {
           setTimeout(() => speakMessage(reply.text, nextIndex), 50);
         }
-        return base.concat([{ role: "user", kind: "text", text: userText }, reply]);
+        return list.concat([{ role: "user", kind: "text", text: userText }, reply]);
       });
       setScreen("chat");
       setBalanceHidden(true);
-    }, [screen, ttsOn, speakMessage]);
+    }, [ttsOn, speakMessage]);
 
     const stopRecording = useCallback(() => {
       const recorder = recorderRef.current;
@@ -711,6 +714,24 @@
     );
 
     const askSuggestion = useCallback((label) => sendQuestion(label), [sendQuestion]);
+
+    const clearChat = useCallback(() => {
+      stopSpeaking();
+      audioCacheRef.current.forEach((url) => URL.revokeObjectURL(url));
+      audioCacheRef.current.clear();
+      setDraft("");
+      setLastQuestion("");
+      setLastAgents([]);
+      setHandoffSent(false);
+      setChatBusy(false);
+      setMessages([
+        {
+          role: "ai",
+          kind: "text",
+          text: seedMessage(firstName, accounts, pending, dataLoaded),
+        },
+      ]);
+    }, [stopSpeaking, firstName, accounts, pending, dataLoaded]);
 
     const confirmTx = useCallback(() => {
       setMessages((list) => list.concat([{ role: "ai", kind: "text", text: t("dashboard.chat.txConfirmedNote") }]));
@@ -1592,6 +1613,7 @@
                 ttsBusyIndex={ttsBusyIndex}
                 onSpeakMessage={speakMessage}
                 onStopSpeaking={stopSpeaking}
+                onClearChat={clearChat}
               />
             ) : null}
             {screen === "accounts" ? (

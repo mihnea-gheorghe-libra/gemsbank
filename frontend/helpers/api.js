@@ -140,6 +140,8 @@
     me: () => send("/auth/me"),
     listSessions: () => send("/auth/sessions"),
     revokeSession: (sessionId) => send("/auth/sessions/" + sessionId + "/revoke", { method: "POST" }),
+    requestUsernameChange: (newUsername) =>
+      send("/auth/username/change", { method: "POST", json: { newUsername } }),
     requestEmailChange: (newEmail) =>
       send("/auth/email/change", { method: "POST", json: { newEmail } }),
     requestPhoneChange: (newPhone) =>
@@ -209,6 +211,8 @@
       send("/cards/" + cardId + "/limits/online", { method: "POST", json: { limitMinor } }),
 
     listInsights: () => send("/insights"),
+    listGoals: () => send("/goals"),
+    getEducationLessons: () => send("/education/lessons"),
     getGoalProgress: () => send("/goals/progress"),
     getGoalPace: () => send("/goals/pace"),
     createGoal: (parentAccountId, name, targetMinorUnits, targetDate, initialDepositMinorUnits) =>

@@ -36,6 +36,7 @@ from backend.auth.service import (
     RequestPasswordReset,
     RequestPhoneChange,
     RequestPinChange,
+    RequestUsernameChange,
     ResetPassword,
     RevealPin,
     RevokeSession,
@@ -48,6 +49,7 @@ from backend.auth.service import (
     get_auth_service,
 )
 from backend.capabilities import analytics as analytics_capabilities
+from backend.capabilities.education_lessons import load_lessons
 from backend.capabilities.service import get_capabilities_service
 from backend.cards.service import (
     BlockCardPermanently,
@@ -188,6 +190,11 @@ class NewPasswordRequest(BaseModel):
         min_length=1, max_length=200, alias="passwordConfirmation"
     )
 
+    model_config = {"populate_by_name": True}
+
+
+class UsernameChangeRequest(BaseModel):
+    new_username: str = Field(min_length=3, max_length=32, alias="newUsername")
     model_config = {"populate_by_name": True}
 
 
@@ -404,6 +411,7 @@ insights_router = APIRouter(prefix="/insights", tags=["insights"])
 goals_router = APIRouter(prefix="/goals", tags=["goals"])
 deposits_router = APIRouter(prefix="/deposits", tags=["deposits"])
 credits_router = APIRouter(prefix="/credits", tags=["credits"])
+education_router = APIRouter(prefix="/education", tags=["education"])
 agents_router = APIRouter(prefix="/agents", tags=["agents"])
 
 
@@ -642,6 +650,16 @@ async def revoke_session(
     idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
     command = RevokeSession(session_id=session_id)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@auth_router.post("/username/change", status_code=201)
+async def request_username_change(
+    actor: CurrentActor,
+    payload: UsernameChangeRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = RequestUsernameChange(new_username=payload.new_username)
     return await bus.execute(command, actor, idempotency_key)
 
 
@@ -1052,13 +1070,13 @@ async def sell_instrument(
 
 @insights_router.get("")
 async def list_insights(
+    actor: CurrentActor,
     service: VendorInsightsDep,
     fx: FxInsightsDep,
-    username: str | None = None,
     limit: int | None = None,
 ) -> dict[str, Any]:
-    board = await service.board_for_username(username, limit)
-    fx_board = await fx.board_for_username(username, limit)
+    board = await service.board_for_user(actor.id, limit)
+    fx_board = await fx.board_for_user(actor.id, limit)
     return {**board.model_dump(), "fx": fx_board.model_dump()}
 @agents_router.post("/support/ask")
 async def ask_support(
@@ -1170,6 +1188,39 @@ async def create_goal(
     return await bus.execute(command, actor, idempotency_key)
 
 
+@goals_router.get("")
+async def list_goals(actor: CurrentActor) -> dict[str, Any]:
+    progress = await get_goals_service().list_active_progress_for_user(actor.subject_id())
+    capability = get_capabilities_service().get("analytics.goal_gap.get")
+    goals = []
+    for item in progress:
+        gap = await capability.resolve(
+            actor, analytics_capabilities.GoalGapInput(goalId=item.goal.id)
+        )
+        projection = gap.model_dump(by_alias=True)
+        goals.append(
+            {
+                "goalId": item.goal.id,
+                "name": item.goal.name,
+                "accountId": item.goal.account_id,
+                "parentAccountId": item.goal.parent_account_id,
+                "targetMinorUnits": item.goal.target_minor,
+                "currency": item.goal.currency,
+                "targetDate": item.goal.target_date.isoformat(),
+                "createdAt": item.goal.created_at.isoformat(),
+                "progressMinorUnits": item.progress_minor,
+                "streakWeeks": item.streak_weeks,
+                "streakLastWeek": item.streak_last_week,
+                "sharedParentAccount": item.goal.uses_shared_parent_account(),
+                "requiredMinorUnitsPerMonth": projection.get("requiredMinorUnitsPerMonth"),
+                "actualMinorUnitsPerMonth": projection.get("actualMinorUnitsPerMonth"),
+                "gapMinorUnitsPerMonth": projection.get("gapMinorUnitsPerMonth"),
+                "projectedCompletionDate": projection.get("projectedCompletionDate"),
+            }
+        )
+    return {"goals": goals}
+
+
 @goals_router.get("/progress")
 async def goal_progress(actor: CurrentActor) -> dict[str, Any]:
     capability = get_capabilities_service().get("analytics.goal_gap.get")
@@ -1258,6 +1309,41 @@ async def resume_standing_order(
 ) -> dict[str, Any]:
     command = ResumeStandingOrder(standing_order_id=standing_order_id)
     return await bus.execute(command, actor, idempotency_key)
+
+
+@education_router.get("/lessons")
+async def list_lessons() -> dict[str, Any]:
+    return {
+        "lessons": [
+            {
+                "id": lesson.id,
+                "titleEn": lesson.title_en,
+                "titleRo": lesson.title_ro,
+                "bodyEn": lesson.body_en,
+                "bodyRo": lesson.body_ro,
+                "questions": [
+                    {
+                        "id": question.id,
+                        "promptEn": question.prompt_en,
+                        "promptRo": question.prompt_ro,
+                        "options": [
+                            {
+                                "id": option.id,
+                                "labelEn": option.label_en,
+                                "labelRo": option.label_ro,
+                            }
+                            for option in question.options
+                        ],
+                        "correctOptionId": question.correct_option_id,
+                        "explanationEn": question.explanation_en,
+                        "explanationRo": question.explanation_ro,
+                    }
+                    for question in lesson.questions
+                ],
+            }
+            for lesson in load_lessons()
+        ]
+    }
 
 
 @goals_router.post("/standing-order/{standing_order_id}/cancel")
@@ -1362,5 +1448,6 @@ api_router.include_router(insights_router)
 api_router.include_router(goals_router)
 api_router.include_router(deposits_router)
 api_router.include_router(credits_router)
+api_router.include_router(education_router)
 api_router.include_router(agents_router)
 api_router.include_router(exchange_router)

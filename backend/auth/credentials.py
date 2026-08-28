@@ -25,6 +25,7 @@ class RecoveryStatus(StrEnum):
 class RecoveryKind(StrEnum):
     PASSWORD_RESET = "password_reset"
     PASSWORD_CHANGE = "password_change"
+    USERNAME_CHANGE = "username_change"
     EMAIL_CHANGE = "email_change"
     PHONE_CHANGE = "phone_change"
     PIN_CHANGE = "pin_change"
@@ -172,6 +173,9 @@ class AuthUser(BaseModel):
     @property
     def display_name(self) -> str:
         return self.identity.full_name if self.identity else self.username.upper()
+    def change_username(self, new_username: str) -> None:
+        self.username = new_username
+
     def change_email(self, new_email: str) -> None:
         self.email = new_email
 

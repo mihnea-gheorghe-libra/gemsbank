@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from backend.database.mongo import (
@@ -11,6 +11,20 @@ from backend.helpers.errors import ConflictError
 from motor.motor_asyncio import AsyncIOMotorClientSession
 from pydantic import BaseModel, Field
 from pymongo.errors import DuplicateKeyError
+
+
+def _sanitize_for_mongo(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: _sanitize_for_mongo(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_for_mongo(v) for v in value]
+    if isinstance(value, tuple):
+        return [_sanitize_for_mongo(v) for v in value]
+    if isinstance(value, set):
+        return [_sanitize_for_mongo(v) for v in value]
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value.isoformat()
+    return value
 
 
 class AuditRecord(BaseModel):
@@ -46,8 +60,8 @@ async def write_audit(
         "action": record.action,
         "entityType": record.entity_type,
         "entityId": record.entity_id,
-        "before": record.before,
-        "after": record.after,
+        "before": _sanitize_for_mongo(record.before),
+        "after": _sanitize_for_mongo(record.after),
         "correlationId": correlation_id,
     }
     await audit_log_collection().insert_one(document, session=session)

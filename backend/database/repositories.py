@@ -276,6 +276,7 @@ class MongoAuthUserRepository:
                 {"_id": user.id},
                 {
                     "$set": {
+                        "username": user.username,
                         "email": user.email,
                         "phone": user.phone,
                         "passwordHash": user.password_hash,
@@ -294,6 +295,10 @@ class MongoAuthUserRepository:
                 session=session,
             )
         except DuplicateKeyError as exc:
+            if "uq_username" in str(exc):
+                raise ConflictError(
+                    "That username is taken.", details={"field": "username"}
+                ) from exc
             raise ConflictError(
                 "That email is already registered.", details={"field": "email"}
             ) from exc
@@ -498,6 +503,9 @@ def _goal_to_bson(goal: Goal) -> dict[str, Any]:
         "status": goal.status,
         "createdAt": goal.created_at,
         "closedAt": goal.closed_at,
+        "streakWeeks": goal.streak_weeks,
+        "streakLastWeek": goal.streak_last_week,
+        "streakComputedAt": goal.streak_computed_at,
     }
 
 
@@ -514,6 +522,9 @@ def _goal_from_bson(raw: dict[str, Any]) -> Goal:
         status=raw.get("status", "active"),
         created_at=raw["createdAt"],
         closed_at=raw.get("closedAt"),
+        streak_weeks=raw.get("streakWeeks", 0),
+        streak_last_week=raw.get("streakLastWeek"),
+        streak_computed_at=raw.get("streakComputedAt"),
     )
 
 
@@ -523,7 +534,7 @@ class MongoGoalRepository:
             await goals_collection().insert_one(_goal_to_bson(goal), session=session)
         except DuplicateKeyError as exc:
             raise ConflictError(
-                "You already have a goal. GEMS supports one active goal per user for now.",
+                "That goal could not be saved. Try again in a moment.",
                 details={"field": "goalId"},
             ) from exc
 
@@ -531,11 +542,35 @@ class MongoGoalRepository:
         raw = await goals_collection().find_one({"_id": goal_id})
         return _goal_from_bson(raw) if raw else None
 
-    async def get_for_user(self, user_id: str) -> Goal | None:
-        raw = await goals_collection().find_one(
-            {"userId": user_id, "status": {"$ne": "closed"}}
+    async def list_active_for_user(self, user_id: str) -> list[Goal]:
+        found = goals_collection().find({"userId": user_id, "status": "active"}).sort(
+            "createdAt", ASCENDING
         )
-        return _goal_from_bson(raw) if raw else None
+        return [_goal_from_bson(raw) async for raw in found]
+
+    async def get_for_user(self, user_id: str) -> Goal | None:
+        active = await self.list_active_for_user(user_id)
+        return active[0] if active else None
+
+    async def set_streak(
+        self,
+        goal_id: str,
+        streak_weeks: int,
+        streak_last_week: str | None,
+        computed_at: datetime,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> None:
+        await goals_collection().update_one(
+            {"_id": goal_id},
+            {
+                "$set": {
+                    "streakWeeks": streak_weeks,
+                    "streakLastWeek": streak_last_week,
+                    "streakComputedAt": computed_at,
+                }
+            },
+            session=session,
+        )
 
     async def close(
         self,

@@ -14,6 +14,15 @@ logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 4
 
+REPLY_STYLE = (
+    "Format every reply for fast reading. Keep each paragraph to two or three short "
+    "sentences and leave a blank line between paragraphs. Whenever you give more than one "
+    "figure, option or step, write them as a '- ' bullet list rather than one long "
+    "sentence. Use plain, everyday words instead of banking jargon, and explain any term "
+    "you cannot avoid in a few words. Do not restate the question back or add a closing "
+    "pleasantry — answer and stop."
+)
+
 AuditSink = Callable[[AuditRecord, Actor, str], Awaitable[None]]
 
 
@@ -36,7 +45,7 @@ class ToolCallingAgent:
         proposal_tool_names: frozenset[str] = frozenset(),
     ) -> None:
         self._name = name
-        self._system_prompt = system_prompt
+        self._system_prompt = f"{system_prompt}\n{REPLY_STYLE}"
         self._chat = chat
         self._capabilities = capabilities
         self._tool_names = tool_names
@@ -191,7 +200,7 @@ class ToolCallingAgent:
                 used.append(capability.name)
                 is_proposal = capability.name in self._proposal_tool_names
                 if is_proposal:
-                    proposals.append(output.model_dump(by_alias=True))
+                    proposals.append(output.model_dump(by_alias=True, mode="json"))
                 await self._audit(
                     AuditRecord(
                         action=f"capability.{capability.name}",

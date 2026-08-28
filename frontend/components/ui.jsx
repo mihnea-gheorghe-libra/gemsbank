@@ -99,7 +99,9 @@
           </div>
         ) : null}
         {error ? (
-          <div style={{ fontSize: 11, marginTop: 4, color: "var(--color-negative)" }}>{error}</div>
+          <div style={{ fontSize: 11, marginTop: 4, color: "var(--color-negative)" }}>
+            {typeof error === "string" ? GEMS.i18n.tError(error) : error}
+          </div>
         ) : null}
       </div>
     );

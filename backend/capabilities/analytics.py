@@ -19,13 +19,15 @@ _RECURRING_MAX_GAP_DAYS = 40
 _RECURRING_AMOUNT_TOLERANCE = 0.15
 
 _GOAL_RATE_LOOKBACK_MONTHS = 3
-_GOAL_STREAK_LOOKBACK_WEEKS = 26
 _GOAL_WEEKLY_LOOKBACK_WEEKS = 8
 _GOAL_MIN_MOVEMENTS = 3
 _GOAL_MAX_PROJECTION_YEARS = 5
 
 _SIGNIFICANT_PCT_THRESHOLD = 15.0
 _SIGNIFICANT_ABSOLUTE_FLOOR_MINOR = 5000
+
+_DISCRETIONARY_CATEGORIES = ("entertainment", "other", "transport")
+_SPENDING_CAP_TRIM_PCT = 15
 
 _HOME_CURRENCY = "RON"
 
@@ -36,25 +38,6 @@ def _add_months(base: date, months: int) -> date:
     month = month_index % 12 + 1
     day = min(base.day, calendar.monthrange(year, month)[1])
     return date(year, month, day)
-
-
-def _streak_weeks(rows: list[dict], account_id: str, now: datetime) -> int:
-    buckets: dict[int, int] = defaultdict(int)
-    for row in rows:
-        if row["accountId"] != account_id:
-            continue
-        posted_at = datetime.fromisoformat(row["postedAt"])
-        age_days = (now - posted_at).days
-        if age_days < 0:
-            continue
-        buckets[age_days // 7] += row["amount"]["minorUnits"]
-
-    streak = 0
-    week = 0
-    while buckets.get(week, 0) > 0:
-        streak += 1
-        week += 1
-    return streak
 
 
 async def _transactions_in_range(
@@ -235,7 +218,12 @@ class GoalGapOutput(BaseModel):
 async def resolve_goal_gap(actor: Actor, payload: BaseModel) -> BaseModel:
     assert isinstance(payload, GoalGapInput)
     user_id = actor.subject_id()
-    progress = await get_goals_service().get_progress_for_user(user_id)
+    goals = get_goals_service()
+    progress = (
+        await goals.get_progress_for_goal(payload.goal_id, user_id)
+        if payload.goal_id
+        else await goals.get_progress_for_user(user_id)
+    )
     if progress is None:
         return GoalGapOutput(status="no_goal_found")
 
@@ -269,9 +257,7 @@ async def resolve_goal_gap(actor: Actor, payload: BaseModel) -> BaseModel:
             candidate = _add_months(today, months_needed)
             projected_completion_date = candidate.isoformat() if candidate <= cap_date else None
 
-    streak_lookback_start = now - timedelta(weeks=_GOAL_STREAK_LOOKBACK_WEEKS)
-    streak_rows = await _transactions_in_range(payments, user_id, streak_lookback_start, now)
-    streak = _streak_weeks(streak_rows, goal.account_id, now)
+    streak = progress.streak_weeks
 
     return GoalGapOutput(
         status="ok",
@@ -319,7 +305,12 @@ class GoalPaceOutput(BaseModel):
 async def resolve_goal_pace(actor: Actor, payload: BaseModel) -> BaseModel:
     assert isinstance(payload, GoalPaceInput)
     user_id = actor.subject_id()
-    progress = await get_goals_service().get_progress_for_user(user_id)
+    goals = get_goals_service()
+    progress = (
+        await goals.get_progress_for_goal(payload.goal_id, user_id)
+        if payload.goal_id
+        else await goals.get_progress_for_user(user_id)
+    )
     if progress is None:
         return GoalPaceOutput(status="no_goal_found")
 
@@ -329,9 +320,7 @@ async def resolve_goal_pace(actor: Actor, payload: BaseModel) -> BaseModel:
     remaining_minor = goal.target_minor - progress.progress_minor
 
     payments = get_payments_service()
-    streak_lookback_start = now - timedelta(weeks=_GOAL_STREAK_LOOKBACK_WEEKS)
-    streak_rows = await _transactions_in_range(payments, user_id, streak_lookback_start, now)
-    streak = _streak_weeks(streak_rows, goal.account_id, now)
+    streak = progress.streak_weeks
 
     if remaining_minor <= 0:
         return GoalPaceOutput(
