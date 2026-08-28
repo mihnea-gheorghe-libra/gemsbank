@@ -371,6 +371,8 @@
       },
       accounts: {
         title: "Portfolio",
+        empty: "No current or investment accounts yet.",
+        generateStatement: "Generate account statement",
         moreActions: "More actions",
         statementMenuItem: "Account statement",
         deleteMenuItem: "Delete account",
@@ -385,9 +387,12 @@
         quickTransferNoTarget: "You need a second account to transfer into.",
         quickTransferSubmit: "Transfer",
         quickTransferRef: "Between my accounts",
+        topUpTitle: "Top up {name}",
+        withdrawTitle: "Withdraw from {name}",
       },
       statement: {
         title: "Account statement",
+        account: "Account",
         format: "Format",
         formatCsv: "CSV",
         formatPdf: "PDF",
@@ -406,6 +411,8 @@
       portfolio: {
         title: "Investments",
         openAccount: "Open new account",
+        cashAccounts: "CURRENT & INVESTMENT ACCOUNTS",
+        openCashAccount: "Open current or investment account",
         deposits: "DEPOSITS & SAVINGS",
         product: "Product",
         rate: "Rate",
@@ -453,7 +460,7 @@
         },
       },
       deposit: {
-        new: "New term deposit",
+        new: "Open deposit or savings account",
         subtitle: "Money moves out of the funding account and starts earning at the rate below.",
         name: "Name",
         namePh: "Holiday fund, 12M deposit…",
@@ -1506,6 +1513,8 @@
       },
       accounts: {
         title: "Portofoliu",
+        empty: "Niciun cont curent sau de investiții deocamdată.",
+        generateStatement: "Generare extras de cont",
         moreActions: "Mai multe acțiuni",
         statementMenuItem: "Extras de cont",
         deleteMenuItem: "Șterge contul",
@@ -1520,9 +1529,12 @@
         quickTransferNoTarget: "Ai nevoie de un al doilea cont pentru a transfera.",
         quickTransferSubmit: "Transferă",
         quickTransferRef: "Între conturile mele",
+        topUpTitle: "Alimentează {name}",
+        withdrawTitle: "Retrage din {name}",
       },
       statement: {
         title: "Extras de cont",
+        account: "Cont",
         format: "Format",
         formatCsv: "CSV",
         formatPdf: "PDF",
@@ -1541,6 +1553,8 @@
       portfolio: {
         title: "Investiții",
         openAccount: "Deschide un cont nou",
+        cashAccounts: "CONTURI CURENTE & DE INVESTIȚII",
+        openCashAccount: "Deschide cont curent sau de investiții",
         deposits: "DEPOZITE & ECONOMII",
         product: "Produs",
         rate: "Dobândă",
@@ -1588,7 +1602,7 @@
         },
       },
       deposit: {
-        new: "Depozit nou la termen",
+        new: "Deschide cont de depozit sau economii",
         subtitle: "Banii ies din contul sursă și încep să producă dobânda de mai jos.",
         name: "Nume",
         namePh: "Fond de vacanță, depozit 12M…",

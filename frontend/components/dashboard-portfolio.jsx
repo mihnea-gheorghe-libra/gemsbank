@@ -621,12 +621,52 @@
   DASH.MoveDepositDialog = function MoveDepositDialog({ deposit, accounts, direction, busy, error, onClose, onSubmit }) {
     const [amount, setAmount] = useState("");
     const parent = accounts.find((item) => item.id === deposit.parentAccountId) || null;
+    const topUp = direction === "in";
+
+    const sourceOptions = topUp
+      ? sameCurrencyFirst(accounts.filter((item) => item.id !== deposit.accountId), parent && parent.cur)
+      : [];
+    const [sourceId, setSourceId] = useState(parent ? parent.id : (sourceOptions[0] ? sourceOptions[0].id : ""));
+    const pickedSource = topUp ? (sourceOptions.find((item) => item.id === sourceId) || parent) : null;
+
+    const crossCurrency = Boolean(topUp && pickedSource && pickedSource.cur !== deposit.cur);
+    const [rate, setRate] = useState(null);
+    const [rateLoading, setRateLoading] = useState(false);
+    const [rateError, setRateError] = useState(null);
+
+    useEffect(() => {
+      if (!crossCurrency) {
+        setRate(null);
+        setRateError(null);
+        return;
+      }
+      let cancelled = false;
+      setRateLoading(true);
+      setRateError(null);
+      api
+        .exchangeRate(pickedSource.cur, deposit.cur)
+        .then((result) => {
+          if (!cancelled) setRate(result);
+        })
+        .catch((err) => {
+          if (!cancelled) setRateError(err);
+        })
+        .finally(() => {
+          if (!cancelled) setRateLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [crossCurrency, pickedSource && pickedSource.cur, deposit.cur]);
 
     const amountMinor = DASH.parseMinor(amount);
-    const topUp = direction === "in";
-    const source = topUp ? parent : { minor: deposit.minor, cur: deposit.cur };
+    const source = topUp ? pickedSource : { minor: deposit.minor, cur: deposit.cur };
     const shortfall = source && amountMinor != null && amountMinor > source.minor ? amountMinor - source.minor : null;
-    const ready = Boolean(parent) && amountMinor > 0 && shortfall == null && !busy;
+    const targetAmountMinor = crossCurrency && rate && amountMinor > 0
+      ? Math.round((amountMinor * rate.rateMicro) / RATE_SCALE)
+      : null;
+    const ready = Boolean(topUp ? pickedSource : parent) && amountMinor > 0 && shortfall == null
+      && (!crossCurrency || Boolean(rate)) && !busy;
 
     return (
       <Dialog
@@ -636,16 +676,55 @@
         onClose={onClose}
         action={busy ? t("dashboard.payDialog.sending") : (topUp ? t("dashboard.deposit.topUp") : t("dashboard.deposit.withdraw"))}
         actionDisabled={!ready}
-        onAction={() => onSubmit({ depositId: deposit.id, amountMinor, direction })}
+        onAction={() => onSubmit({
+          depositId: deposit.id,
+          amountMinor,
+          direction,
+          sourceAccountId: topUp && pickedSource ? pickedSource.id : undefined,
+        })}
       >
+        {topUp && sourceOptions.length ? (
+          <UI.Field id="move-source" label={t("dashboard.deposit.fundFrom")}>
+            <UI.Select id="move-source" value={sourceId} onChange={(event) => setSourceId(event.target.value)}>
+              {sourceOptions.map((account) => (
+                <option key={account.id} value={account.id}>{DASH.accountLabel(account)}</option>
+              ))}
+            </UI.Select>
+          </UI.Field>
+        ) : null}
+
         <AmountField
           id="move-amount"
           label={t("dashboard.payDialog.amount")}
           value={amount}
           onChange={setAmount}
-          account={topUp ? parent : { minor: deposit.minor, cur: deposit.cur }}
+          account={source}
           shortfall={shortfall}
         />
+
+        {crossCurrency ? (
+          <div className="dash-balance-line" role="status">
+            {rateLoading
+              ? t("dashboard.exchange.rateLoading")
+              : rateError
+                ? t("dashboard.exchange.rateUnavailable")
+                : rate
+                  ? t("dashboard.exchange.rateNote", {
+                      source: pickedSource.cur,
+                      rate: (rate.rateMicro / RATE_SCALE).toFixed(4).replace(".", ","),
+                      target: deposit.cur,
+                    })
+                  : null}
+          </div>
+        ) : null}
+
+        {targetAmountMinor != null ? (
+          <div className="dash-balance-line" role="status">
+            {t("dashboard.exchange.youReceive", {
+              amount: DASH.formatMinor(targetAmountMinor) + " " + deposit.cur,
+            })}
+          </div>
+        ) : null}
 
         {error ? (
           <div className="dash-balance-line is-short" role="alert">{error.message}</div>
@@ -848,14 +927,23 @@
     );
   };
 
-  DASH.QuickTransferDialog = function QuickTransferDialog({ accounts, busy, error, onClose, onSubmit }) {
-    const [sourceId, setSourceId] = useState(accounts[0] ? accounts[0].id : "");
+  DASH.QuickTransferDialog = function QuickTransferDialog({ accounts, fixedAccountId, fixedSide, busy, error, onClose, onSubmit }) {
+    const fixedAccount = fixedAccountId ? accounts.find((account) => account.id === fixedAccountId) || null : null;
+    const sourcePool = fixedSide === "target" ? accounts.filter((account) => account.id !== fixedAccountId) : accounts;
+
+    const [sourceId, setSourceId] = useState(
+      fixedSide === "source" ? fixedAccountId : (sourcePool[0] ? sourcePool[0].id : "")
+    );
     const [amount, setAmount] = useState("");
 
-    const source = accounts.find((account) => account.id === sourceId) || null;
-    const targets = sameCurrencyFirst(accounts.filter((account) => account.id !== sourceId), source && source.cur);
-    const [targetId, setTargetId] = useState(targets[0] ? targets[0].id : "");
-    const target = targets.find((account) => account.id === targetId) || null;
+    const source = fixedSide === "source" ? fixedAccount : (accounts.find((account) => account.id === sourceId) || null);
+    const targetPool = fixedSide === "target"
+      ? (fixedAccount ? [fixedAccount] : [])
+      : sameCurrencyFirst(accounts.filter((account) => account.id !== sourceId), source && source.cur);
+    const [targetId, setTargetId] = useState(
+      fixedSide === "target" ? fixedAccountId : (targetPool[0] ? targetPool[0].id : "")
+    );
+    const target = fixedSide === "target" ? fixedAccount : (targetPool.find((account) => account.id === targetId) || null);
 
     const crossCurrency = Boolean(source && target && source.cur !== target.cur);
 
@@ -905,28 +993,49 @@
       setTargetId(nextTargets[0] ? nextTargets[0].id : "");
     };
 
+    const title = fixedSide === "target"
+      ? t("dashboard.accounts.topUpTitle", { name: DASH.accountLabel(fixedAccount) })
+      : fixedSide === "source"
+        ? t("dashboard.accounts.withdrawTitle", { name: DASH.accountLabel(fixedAccount) })
+        : t("dashboard.accounts.quickTransferTitle");
+    const submitLabel = fixedSide === "target"
+      ? t("dashboard.deposit.topUp")
+      : fixedSide === "source"
+        ? t("dashboard.deposit.withdraw")
+        : t("dashboard.accounts.quickTransferSubmit");
+
     return (
       <Dialog
         labelledBy="quick-transfer-title"
-        title={t("dashboard.accounts.quickTransferTitle")}
+        title={title}
         subtitle={t("dashboard.accounts.quickTransferSubtitle")}
         onClose={onClose}
-        action={busy ? t("dashboard.payDialog.sending") : t("dashboard.accounts.quickTransferSubmit")}
+        action={busy ? t("dashboard.payDialog.sending") : submitLabel}
         actionDisabled={!ready}
         onAction={() => onSubmit({ sourceAccountId: source.id, targetAccountId: target.id, amountMinor })}
       >
-        <UI.Field id="quick-transfer-source" label={t("dashboard.accounts.quickTransferFrom")}>
-          <UI.Select id="quick-transfer-source" value={sourceId} onChange={(event) => selectSource(event.target.value)}>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>{DASH.accountLabel(account)}</option>
-            ))}
-          </UI.Select>
-        </UI.Field>
+        {fixedSide === "source" ? (
+          <div className="dash-balance-line" role="status">
+            {t("dashboard.accounts.quickTransferFrom")}: {DASH.accountLabel(source)}
+          </div>
+        ) : (
+          <UI.Field id="quick-transfer-source" label={t("dashboard.accounts.quickTransferFrom")}>
+            <UI.Select id="quick-transfer-source" value={sourceId} onChange={(event) => selectSource(event.target.value)}>
+              {sourcePool.map((account) => (
+                <option key={account.id} value={account.id}>{DASH.accountLabel(account)}</option>
+              ))}
+            </UI.Select>
+          </UI.Field>
+        )}
 
-        {targets.length ? (
+        {fixedSide === "target" ? (
+          <div className="dash-balance-line" role="status">
+            {t("dashboard.accounts.quickTransferTo")}: {DASH.accountLabel(target)}
+          </div>
+        ) : targetPool.length ? (
           <UI.Field id="quick-transfer-target" label={t("dashboard.accounts.quickTransferTo")}>
             <UI.Select id="quick-transfer-target" value={targetId} onChange={(event) => setTargetId(event.target.value)}>
-              {targets.map((account) => (
+              {targetPool.map((account) => (
                 <option key={account.id} value={account.id}>{DASH.accountLabel(account)}</option>
               ))}
             </UI.Select>

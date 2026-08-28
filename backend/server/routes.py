@@ -348,6 +348,9 @@ class TermDepositRequest(BaseModel):
 
 class TermDepositMovementRequest(BaseModel):
     amount_minor: int = Field(alias="amountMinorUnits", gt=0)
+    source_account_id: str | None = Field(
+        default=None, alias="sourceAccountId", min_length=1, max_length=64
+    )
     model_config = {"populate_by_name": True}
 
 
@@ -1383,7 +1386,11 @@ async def topup_term_deposit(
     payload: TermDepositMovementRequest,
     idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
-    command = TopUpTermDeposit(deposit_id=deposit_id, amount_minor=payload.amount_minor)
+    command = TopUpTermDeposit(
+        deposit_id=deposit_id,
+        amount_minor=payload.amount_minor,
+        source_account_id=payload.source_account_id,
+    )
     return await bus.execute(command, actor, idempotency_key)
 
 

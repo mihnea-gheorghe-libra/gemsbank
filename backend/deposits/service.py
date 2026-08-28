@@ -9,6 +9,7 @@ from backend.database.records import AuditRecord, DomainEvent
 from backend.database.repositories import MongoTermDepositRepository
 from backend.deposits import validation
 from backend.deposits.deposit import TermDeposit
+from backend.exchange.service import ExchangeService, get_exchange_service
 from backend.helpers.context import ActorContext
 from backend.helpers.errors import IllegalTransitionError, NotFoundError
 from backend.ledger.service import LedgerService, get_ledger_service
@@ -69,6 +70,7 @@ class TopUpTermDeposit(Command):
 
     deposit_id: str
     amount_minor: int
+    source_account_id: str | None = None
 
 
 class WithdrawFromTermDeposit(Command):
@@ -90,11 +92,13 @@ class TermDepositsService:
         deposits: TermDepositRepository,
         accounts: AccountsService,
         ledger: LedgerService,
+        exchange: ExchangeService,
         clock: Clock,
     ) -> None:
         self._deposits = deposits
         self._accounts = accounts
         self._ledger = ledger
+        self._exchange = exchange
         self._clock = clock
 
     def register(self, command_bus: CommandBus) -> None:
@@ -201,30 +205,49 @@ class TermDepositsService:
         deposit = await self._load_active_owned(command.deposit_id, user_id)
         amount = validation.normalise_movement_minor(command.amount_minor, "amountMinorUnits")
 
-        parent = await self._accounts.get_owned(deposit.parent_account_id, user_id)
-        parent.guard_can_send()
+        source = await self._accounts.get_owned(
+            command.source_account_id or deposit.parent_account_id, user_id
+        )
+        source.guard_can_send()
         pot = await self._accounts.get_owned(deposit.account_id, user_id)
         pot.guard_can_receive()
 
-        parent_balance = await self._ledger.balance_of(parent.id)
-        parent.guard_sufficient(parent_balance, amount)
+        source_balance = await self._ledger.balance_of(source.id)
+        source.guard_sufficient(source_balance, amount)
         pot_balance = await self._ledger.balance_of(pot.id)
 
-        transaction = await self._ledger.transfer(
-            source_account_id=parent.id,
-            target_account_id=pot.id,
-            amount_minor=amount,
-            currency=deposit.currency,
-            reference="Term deposit top-up",
-            counterparty=deposit.name,
-            category="savings",
-            correlation_id=context.correlation_id,
-            actor=context.actor.label(),
-            session=session,
-        )
+        if source.currency == deposit.currency:
+            transaction = await self._ledger.transfer(
+                source_account_id=source.id,
+                target_account_id=pot.id,
+                amount_minor=amount,
+                currency=deposit.currency,
+                reference="Term deposit top-up",
+                counterparty=deposit.name,
+                category="savings",
+                correlation_id=context.correlation_id,
+                actor=context.actor.label(),
+                session=session,
+            )
+            credited_minor = amount
+        else:
+            result = await self._exchange.bridge(
+                session=session,
+                context=context,
+                source_account_id=source.id,
+                target_account_id=pot.id,
+                amount_minor=amount,
+                source_currency=source.currency,
+                target_currency=deposit.currency,
+                reference="Term deposit top-up",
+                counterparty=deposit.name,
+                category="savings",
+            )
+            transaction = result.source_transaction
+            credited_minor = result.target_amount_minor
 
         after = {
-            "balance": {"minorUnits": pot_balance + amount},
+            "balance": {"minorUnits": pot_balance + credited_minor},
             "journalTransactionId": transaction.id,
         }
         return CommandResult(
@@ -346,6 +369,7 @@ def get_term_deposits_service() -> TermDepositsService:
         deposits=MongoTermDepositRepository(),
         accounts=get_accounts_service(),
         ledger=get_ledger_service(),
+        exchange=get_exchange_service(),
         clock=SystemClock(),
     )
     service.register(bus)
