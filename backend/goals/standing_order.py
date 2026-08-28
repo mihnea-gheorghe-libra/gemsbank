@@ -31,6 +31,7 @@ class StandingOrder(BaseModel):
         return {
             "standingOrderId": self.id,
             "goalId": self.goal_id,
+            "sourceAccountId": self.source_account_id,
             "amount": {"minorUnits": self.amount_minor, "currency": self.currency},
             "frequency": self.frequency,
             "nextRunAt": self.next_run_at.isoformat(),

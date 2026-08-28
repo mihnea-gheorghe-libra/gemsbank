@@ -240,10 +240,15 @@
       }),
     getStandingOrder: (goalId) =>
       send("/goals/" + encodeURIComponent(goalId) + "/standing-order"),
-    createStandingOrder: (goalId, amountMinorUnits, frequency, createdVia) =>
+    createStandingOrder: (goalId, sourceAccountId, amountMinorUnits, frequency, createdVia) =>
       send("/goals/" + encodeURIComponent(goalId) + "/standing-order", {
         method: "POST",
-        json: { amountMinorUnits, frequency, createdVia: createdVia || "user" },
+        json: { sourceAccountId, amountMinorUnits, frequency, createdVia: createdVia || "user" },
+      }),
+    updateStandingOrderAmount: (standingOrderId, amountMinorUnits) =>
+      send("/goals/standing-order/" + encodeURIComponent(standingOrderId) + "/amount", {
+        method: "POST",
+        json: { amountMinorUnits },
       }),
     pauseStandingOrder: (standingOrderId) =>
       send("/goals/standing-order/" + encodeURIComponent(standingOrderId) + "/pause", {

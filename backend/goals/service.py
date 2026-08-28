@@ -21,7 +21,12 @@ from backend.goals.goal import Goal
 from backend.goals.standing_order import StandingOrder
 from backend.goals.streak import STREAK_LOOKBACK_WEEKS, streak_from_movements
 from backend.helpers.context import Actor, ActorContext
-from backend.helpers.errors import ConflictError, IllegalTransitionError, NotFoundError
+from backend.helpers.errors import (
+    ConflictError,
+    IllegalTransitionError,
+    NotFoundError,
+    ValidationError,
+)
 from backend.ledger.service import LedgerService, get_ledger_service
 
 __all__ = ["Goal", "GoalProgress", "GoalsService", "StandingOrder", "get_goals_service"]
@@ -74,6 +79,14 @@ class StandingOrderRepository(Protocol):
         order_id: str,
         user_id: str,
         status: str,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool: ...
+
+    async def set_amount(
+        self,
+        order_id: str,
+        user_id: str,
+        amount_minor: int,
         session: AsyncIOMotorClientSession | None = None,
     ) -> bool: ...
 
@@ -162,7 +175,15 @@ class CreateStandingOrder(Command):
     goal_id: str
     amount_minor: int
     frequency: str
+    source_account_id: str | None = None
     created_via: Literal["user", "agent-suggestion-confirmed"] = "user"
+
+
+class UpdateStandingOrderAmount(Command):
+    command_name: ClassVar[str] = "goals.standing_order.update_amount"
+
+    standing_order_id: str
+    amount_minor: int
 
 
 class PauseStandingOrder(Command):
@@ -210,6 +231,7 @@ class GoalsService:
         command_bus.register(DepositToGoal, self._handle_deposit)
         command_bus.register(WithdrawFromGoal, self._handle_withdraw)
         command_bus.register(CreateStandingOrder, self._handle_create_standing_order)
+        command_bus.register(UpdateStandingOrderAmount, self._handle_update_standing_order_amount)
         command_bus.register(PauseStandingOrder, self._handle_pause_standing_order)
         command_bus.register(ResumeStandingOrder, self._handle_resume_standing_order)
         command_bus.register(CancelStandingOrder, self._handle_cancel_standing_order)
@@ -564,12 +586,20 @@ class GoalsService:
 
         amount = validation.normalise_movement_minor(command.amount_minor, "amountMinorUnits")
         frequency = validation.normalise_frequency(command.frequency)
-        parent = await self._accounts.get_owned(goal.parent_account_id, user_id)
+        source = await self._accounts.get_owned(
+            command.source_account_id or goal.parent_account_id, user_id
+        )
+        source.guard_can_send()
+        if source.currency != goal.currency:
+            raise ValidationError(
+                "The funding account must be in the same currency as the goal.",
+                details={"field": "sourceAccountId"},
+            )
 
         order = StandingOrder(
             goal_id=goal.id,
             user_id=user_id,
-            source_account_id=parent.id,
+            source_account_id=source.id,
             target_account_id=goal.account_id,
             amount_minor=amount,
             currency=goal.currency,
@@ -594,6 +624,39 @@ class GoalsService:
                     aggregate_id=order.id,
                 )
             ],
+        )
+
+    async def _handle_update_standing_order_amount(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, UpdateStandingOrderAmount)
+        user_id = context.actor.subject_id()
+        order = await self._standing_orders.get(command.standing_order_id)
+        if order is None or order.user_id != user_id:
+            raise NotFoundError(
+                "That standing order does not belong to you.",
+                details={"field": "standingOrderId"},
+            )
+        amount = validation.normalise_movement_minor(command.amount_minor, "amountMinorUnits")
+        changed = await self._standing_orders.set_amount(
+            order.id, user_id, amount, session=session
+        )
+        if not changed:
+            raise IllegalTransitionError(
+                "That standing order can no longer be changed.",
+                details={"field": "standingOrderId", "status": order.status},
+            )
+        before = order.public_view()
+        after = before | {"amount": {"minorUnits": amount, "currency": order.currency}}
+        return CommandResult(
+            data=after,
+            audit=AuditRecord(
+                action="goals.standing_order.amount_updated",
+                entity_type="standingOrder",
+                entity_id=order.id,
+                before=before,
+                after=after,
+            ),
         )
 
     async def _transition_standing_order(

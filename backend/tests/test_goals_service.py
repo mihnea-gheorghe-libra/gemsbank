@@ -12,6 +12,7 @@ from backend.goals.service import (
     DepositToGoal,
     GoalsService,
     RunStandingOrder,
+    UpdateStandingOrderAmount,
     WithdrawFromGoal,
 )
 from backend.helpers.context import Actor, ActorContext
@@ -168,6 +169,13 @@ class _FakeStandingOrderRepository:
         if order is None or order.user_id != user_id or order.status == "cancelled":
             return False
         self._orders[order_id] = order.model_copy(update={"status": status})
+        return True
+
+    async def set_amount(self, order_id: str, user_id: str, amount_minor: int, session=None) -> bool:
+        order = self._orders.get(order_id)
+        if order is None or order.user_id != user_id or order.status == "cancelled":
+            return False
+        self._orders[order_id] = order.model_copy(update={"amount_minor": amount_minor})
         return True
 
     async def record_run(self, order_id: str, next_run_at, ran_at, session=None) -> None:
@@ -520,15 +528,116 @@ async def test_standing_order_cannot_be_duplicated_for_the_same_goal() -> None:
     )
     goal_id = created.data["goalId"]
     await service._handle_create_standing_order(
-        CreateStandingOrder(goal_id=goal_id, amount_minor=50_000, frequency="weekly"),
+        CreateStandingOrder(
+            goal_id=goal_id, source_account_id=account.id, amount_minor=50_000, frequency="weekly"
+        ),
         context,
         session=None,
     )
 
     with pytest.raises(ConflictError):
         await service._handle_create_standing_order(
-            CreateStandingOrder(goal_id=goal_id, amount_minor=10_000, frequency="monthly"),
+            CreateStandingOrder(
+                goal_id=goal_id,
+                source_account_id=account.id,
+                amount_minor=10_000,
+                frequency="monthly",
+            ),
             context,
+            session=None,
+        )
+
+
+async def test_standing_order_requires_source_account_to_match_the_goal_currency() -> None:
+    account = _account()
+    service, _, account_repo = _build_service(account, balance_minor=1_000_000)
+    context = _context()
+    eur_account = Account(
+        user_id="user-1",
+        iban="RO00TESTBANK0000000099",
+        holder_name="Test User",
+        currency="EUR",
+        kind=AccountKind.CURRENT,
+        label="EUR account",
+    )
+    await account_repo.add(eur_account)
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id, name="Apartment", target_minor=5_000_000, target_date=date(2028, 1, 1)
+        ),
+        context,
+        session=None,
+    )
+    goal_id = created.data["goalId"]
+
+    with pytest.raises(ValidationError):
+        await service._handle_create_standing_order(
+            CreateStandingOrder(
+                goal_id=goal_id,
+                source_account_id=eur_account.id,
+                amount_minor=50_000,
+                frequency="weekly",
+            ),
+            context,
+            session=None,
+        )
+
+
+async def test_standing_order_amount_can_be_updated() -> None:
+    account = _account()
+    service, _, _ = _build_service(account, balance_minor=1_000_000)
+    context = _context()
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id, name="Apartment", target_minor=5_000_000, target_date=date(2028, 1, 1)
+        ),
+        context,
+        session=None,
+    )
+    goal_id = created.data["goalId"]
+    order_result = await service._handle_create_standing_order(
+        CreateStandingOrder(
+            goal_id=goal_id, source_account_id=account.id, amount_minor=50_000, frequency="weekly"
+        ),
+        context,
+        session=None,
+    )
+    standing_order_id = order_result.data["standingOrderId"]
+
+    updated = await service._handle_update_standing_order_amount(
+        UpdateStandingOrderAmount(standing_order_id=standing_order_id, amount_minor=75_000),
+        context,
+        session=None,
+    )
+
+    assert updated.data["amount"]["minorUnits"] == 75_000
+
+
+async def test_standing_order_amount_cannot_be_updated_by_another_user() -> None:
+    account = _account()
+    service, _, _ = _build_service(account, balance_minor=1_000_000)
+    context = _context()
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id, name="Apartment", target_minor=5_000_000, target_date=date(2028, 1, 1)
+        ),
+        context,
+        session=None,
+    )
+    goal_id = created.data["goalId"]
+    order_result = await service._handle_create_standing_order(
+        CreateStandingOrder(
+            goal_id=goal_id, source_account_id=account.id, amount_minor=50_000, frequency="weekly"
+        ),
+        context,
+        session=None,
+    )
+    standing_order_id = order_result.data["standingOrderId"]
+
+    with pytest.raises(NotFoundError):
+        await service._handle_update_standing_order_amount(
+            UpdateStandingOrderAmount(standing_order_id=standing_order_id, amount_minor=75_000),
+            _context(user_id="user-2"),
             session=None,
         )
 
@@ -545,7 +654,12 @@ async def test_run_due_standing_orders_skips_insufficient_funds_without_raising(
         session=None,
     )
     order_result = await service._handle_create_standing_order(
-        CreateStandingOrder(goal_id=created.data["goalId"], amount_minor=50_000, frequency="weekly"),
+        CreateStandingOrder(
+            goal_id=created.data["goalId"],
+            source_account_id=account.id,
+            amount_minor=50_000,
+            frequency="weekly",
+        ),
         context,
         session=None,
     )
