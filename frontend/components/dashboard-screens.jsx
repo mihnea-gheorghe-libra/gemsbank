@@ -850,15 +850,17 @@
             </UI.Button>
           </div>
           {cashAccounts.length ? (
-            <div className="dash-product-list dash-scroll-accounts">
-              {cashAccounts.map((account) => (
-                <AccountRow
-                  key={account.id}
-                  account={account}
-                  onStatement={() => onOpenStatement(account)}
-                  onDelete={() => onDeleteAccount(account)}
-                />
-              ))}
+            <div style={{ flex: 1, position: "relative", minHeight: 100 }}>
+              <div className="dash-product-list dash-scroll-accounts">
+                {cashAccounts.map((account) => (
+                  <AccountRow
+                    key={account.id}
+                    account={account}
+                    onStatement={() => onOpenStatement(account)}
+                    onDelete={() => onDeleteAccount(account)}
+                  />
+                ))}
+              </div>
             </div>
           ) : (
             <div className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.accounts.empty")}</div>
