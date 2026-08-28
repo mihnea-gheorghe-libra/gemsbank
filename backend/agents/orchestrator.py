@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from backend.agents.adapters import ChatCompleter
-from backend.agents.base import AgentAnswer, AuditSink, ToolCallingAgent
+from backend.agents.base import REPLY_STYLE, AgentAnswer, AuditSink, ToolCallingAgent
 from backend.database.records import AuditRecord
 from backend.helpers.context import Actor, get_correlation_id, log_event, new_id
 
@@ -302,7 +302,7 @@ class Orchestrator:
                     "never add a number of your own. If they disagree or one could not answer, "
                     "say so plainly rather than smoothing it over. Do not mention the "
                     "specialists, the tools or this process. Answer in the language the "
-                    "customer used."
+                    "customer used.\n" + REPLY_STYLE
                 ),
             },
             *prior,
