@@ -9,7 +9,8 @@
   const { useState, useEffect, useRef, useMemo } = React;
 
   function accountLabel(account) {
-    return t("dashboard.accountType." + account.typeKey) + " · " + account.cur + " · " + account.ibanShort;
+    const name = account.label || t("dashboard.accountType." + account.typeKey);
+    return name + " · " + account.cur + " · " + account.ibanShort;
   }
 
   const NAV_ICONS = {
@@ -105,7 +106,7 @@
 
           {menuOpen ? (
             <div className="dash-profile-menu elev-md plate" role="menu">
-              <div className="dash-profile-name">{me ? GEMS.people.firstName((me.identity && me.identity.fullName) || me.fullName) : ""}</div>
+              <div className="dash-profile-name">{me ? GEMS.people.fullName((me.identity && me.identity.fullName) || me.fullName) : ""}</div>
               <div className="hr" />
               <UI.Button
                 type="button"

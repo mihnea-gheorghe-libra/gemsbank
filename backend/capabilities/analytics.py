@@ -4,14 +4,13 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
 from backend.accounts.service import get_accounts_service
 from backend.capabilities.payments import format_minor
 from backend.config import settings
 from backend.goals.service import get_goals_service
 from backend.helpers.context import Actor
 from backend.payments.service import PaymentsService, get_payments_service
+from pydantic import BaseModel, Field
 
 _RECURRING_LOOKBACK_DAYS = 182
 _RECURRING_MIN_OCCURRENCES = 3
@@ -20,13 +19,18 @@ _RECURRING_MAX_GAP_DAYS = 40
 _RECURRING_AMOUNT_TOLERANCE = 0.15
 
 _GOAL_RATE_LOOKBACK_MONTHS = 3
-_GOAL_STREAK_LOOKBACK_WEEKS = 26
 _GOAL_WEEKLY_LOOKBACK_WEEKS = 8
 _GOAL_MIN_MOVEMENTS = 3
 _GOAL_MAX_PROJECTION_YEARS = 5
 
 _SIGNIFICANT_PCT_THRESHOLD = 15.0
 _SIGNIFICANT_ABSOLUTE_FLOOR_MINOR = 5000
+
+_DISCRETIONARY_CATEGORIES = ("entertainment", "other", "transport")
+_SPENDING_CAP_TRIM_PCT = 15
+_MAX_CATEGORY_ALERTS = 3
+_TARGET_SAVINGS_RATE_PCT = 20
+_NON_SPEND_CATEGORIES = ("transfer", "income")
 
 _HOME_CURRENCY = "RON"
 
@@ -37,25 +41,6 @@ def _add_months(base: date, months: int) -> date:
     month = month_index % 12 + 1
     day = min(base.day, calendar.monthrange(year, month)[1])
     return date(year, month, day)
-
-
-def _streak_weeks(rows: list[dict], account_id: str, now: datetime) -> int:
-    buckets: dict[int, int] = defaultdict(int)
-    for row in rows:
-        if row["accountId"] != account_id:
-            continue
-        posted_at = datetime.fromisoformat(row["postedAt"])
-        age_days = (now - posted_at).days
-        if age_days < 0:
-            continue
-        buckets[age_days // 7] += row["amount"]["minorUnits"]
-
-    streak = 0
-    week = 0
-    while buckets.get(week, 0) > 0:
-        streak += 1
-        week += 1
-    return streak
 
 
 async def _transactions_in_range(
@@ -236,7 +221,12 @@ class GoalGapOutput(BaseModel):
 async def resolve_goal_gap(actor: Actor, payload: BaseModel) -> BaseModel:
     assert isinstance(payload, GoalGapInput)
     user_id = actor.subject_id()
-    progress = await get_goals_service().get_progress_for_user(user_id)
+    goals = get_goals_service()
+    progress = (
+        await goals.get_progress_for_goal(payload.goal_id, user_id)
+        if payload.goal_id
+        else await goals.get_progress_for_user(user_id)
+    )
     if progress is None:
         return GoalGapOutput(status="no_goal_found")
 
@@ -270,9 +260,7 @@ async def resolve_goal_gap(actor: Actor, payload: BaseModel) -> BaseModel:
             candidate = _add_months(today, months_needed)
             projected_completion_date = candidate.isoformat() if candidate <= cap_date else None
 
-    streak_lookback_start = now - timedelta(weeks=_GOAL_STREAK_LOOKBACK_WEEKS)
-    streak_rows = await _transactions_in_range(payments, user_id, streak_lookback_start, now)
-    streak = _streak_weeks(streak_rows, goal.account_id, now)
+    streak = progress.streak_weeks
 
     return GoalGapOutput(
         status="ok",
@@ -320,7 +308,12 @@ class GoalPaceOutput(BaseModel):
 async def resolve_goal_pace(actor: Actor, payload: BaseModel) -> BaseModel:
     assert isinstance(payload, GoalPaceInput)
     user_id = actor.subject_id()
-    progress = await get_goals_service().get_progress_for_user(user_id)
+    goals = get_goals_service()
+    progress = (
+        await goals.get_progress_for_goal(payload.goal_id, user_id)
+        if payload.goal_id
+        else await goals.get_progress_for_user(user_id)
+    )
     if progress is None:
         return GoalPaceOutput(status="no_goal_found")
 
@@ -330,9 +323,7 @@ async def resolve_goal_pace(actor: Actor, payload: BaseModel) -> BaseModel:
     remaining_minor = goal.target_minor - progress.progress_minor
 
     payments = get_payments_service()
-    streak_lookback_start = now - timedelta(weeks=_GOAL_STREAK_LOOKBACK_WEEKS)
-    streak_rows = await _transactions_in_range(payments, user_id, streak_lookback_start, now)
-    streak = _streak_weeks(streak_rows, goal.account_id, now)
+    streak = progress.streak_weeks
 
     if remaining_minor <= 0:
         return GoalPaceOutput(
@@ -650,7 +641,13 @@ class RecommendationsInput(BaseModel):
 
 
 class Recommendation(BaseModel):
-    kind: Literal["savings_rate", "spending_cap", "category_alert", "goal_projection"]
+    kind: Literal[
+        "savings_rate",
+        "spending_cap",
+        "category_alert",
+        "goal_projection",
+        "recurring_spend",
+    ]
     category: str | None = None
     current_value_minor: int | None = Field(default=None, alias="currentValueMinorUnits")
     suggested_value_minor: int | None = Field(default=None, alias="suggestedValueMinorUnits")
@@ -713,6 +710,7 @@ async def resolve_recommendations(actor: Actor, payload: BaseModel) -> BaseModel
     )
     start_prior, end_prior = _month_bounds(prior_year, prior_month)
     start_last, end_last = _month_bounds(last_year, last_month)
+    month_label = f"{last_year:04d}-{last_month:02d}"
 
     rows_prior = [
         row
@@ -727,9 +725,7 @@ async def resolve_recommendations(actor: Actor, payload: BaseModel) -> BaseModel
     totals_prior = _spend_by_category(rows_prior)
     totals_last = _spend_by_category(rows_last)
 
-    best_category: str | None = None
-    best_delta = 0
-    best_pct = 0.0
+    grown: list[tuple[int, float, str]] = []
     for category, spent_last in totals_last.items():
         spent_prior = totals_prior.get(category, 0)
         delta = spent_last - spent_prior
@@ -738,26 +734,116 @@ async def resolve_recommendations(actor: Actor, payload: BaseModel) -> BaseModel
         pct = (delta / spent_prior * 100) if spent_prior else 100.0
         if spent_prior and pct < _SIGNIFICANT_PCT_THRESHOLD:
             continue
-        if delta > best_delta:
-            best_delta = delta
-            best_category = category
-            best_pct = pct
+        grown.append((delta, pct, category))
+    grown.sort(reverse=True)
 
-    if best_category is not None:
+    for _, pct, category in grown[:_MAX_CATEGORY_ALERTS]:
         recommendations.append(
             Recommendation(
                 kind="category_alert",
-                category=best_category,
-                currentValueMinorUnits=totals_last[best_category],
-                suggestedValueMinorUnits=totals_prior.get(best_category, 0),
+                category=category,
+                currentValueMinorUnits=totals_last[category],
+                suggestedValueMinorUnits=totals_prior.get(category, 0),
                 messageData={
                     "currency": _HOME_CURRENCY,
-                    "currentValueFormatted": format_minor(totals_last[best_category], _HOME_CURRENCY),
+                    "currentValueFormatted": format_minor(totals_last[category], _HOME_CURRENCY),
                     "suggestedValueFormatted": format_minor(
-                        totals_prior.get(best_category, 0), _HOME_CURRENCY
+                        totals_prior.get(category, 0), _HOME_CURRENCY
                     ),
-                    "growthPct": round(best_pct, 1),
-                    "month": f"{last_year:04d}-{last_month:02d}",
+                    "growthPct": round(pct, 1),
+                    "month": month_label,
+                },
+            )
+        )
+
+    discretionary = [
+        (totals_last[category], category)
+        for category in _DISCRETIONARY_CATEGORIES
+        if totals_last.get(category, 0) >= _SIGNIFICANT_ABSOLUTE_FLOOR_MINOR
+    ]
+    if discretionary:
+        spent, category = max(discretionary)
+        cap = round(spent * (100 - _SPENDING_CAP_TRIM_PCT) / 100)
+        recommendations.append(
+            Recommendation(
+                kind="spending_cap",
+                category=category,
+                currentValueMinorUnits=spent,
+                suggestedValueMinorUnits=cap,
+                messageData={
+                    "currency": _HOME_CURRENCY,
+                    "currentValueFormatted": format_minor(spent, _HOME_CURRENCY),
+                    "suggestedValueFormatted": format_minor(cap, _HOME_CURRENCY),
+                    "freedUpFormatted": format_minor(spent - cap, _HOME_CURRENCY),
+                    "trimPct": _SPENDING_CAP_TRIM_PCT,
+                    "month": month_label,
+                },
+            )
+        )
+
+    income_last = sum(
+        row["amount"]["minorUnits"] for row in rows_last if row["amount"]["minorUnits"] > 0
+    )
+    spend_last = sum(
+        amount
+        for category, amount in totals_last.items()
+        if category not in _NON_SPEND_CATEGORIES
+    )
+    if goal_gap.status != "ok" and income_last > 0:
+        kept = income_last - spend_last
+        target = round(income_last * _TARGET_SAVINGS_RATE_PCT / 100)
+        recommendations.append(
+            Recommendation(
+                kind="savings_rate",
+                currentValueMinorUnits=kept,
+                suggestedValueMinorUnits=target,
+                messageData={
+                    "currency": _HOME_CURRENCY,
+                    "currentValueFormatted": format_minor(kept, _HOME_CURRENCY),
+                    "suggestedValueFormatted": format_minor(target, _HOME_CURRENCY),
+                    "incomeFormatted": format_minor(income_last, _HOME_CURRENCY),
+                    "spendFormatted": format_minor(spend_last, _HOME_CURRENCY),
+                    "keptPct": round(kept / income_last * 100, 1),
+                    "targetPct": _TARGET_SAVINGS_RATE_PCT,
+                    "month": month_label,
+                    "hasGoal": False,
+                },
+            )
+        )
+
+    recurring_rows = [
+        row
+        for row in await _transactions_in_range(
+            payments, user_id, now - timedelta(days=_RECURRING_LOOKBACK_DAYS), now
+        )
+        if row["amount"]["currency"] == _HOME_CURRENCY and row["amount"]["minorUnits"] < 0
+    ]
+    recurring = [
+        group
+        for group in _detect_recurring_groups(recurring_rows)
+        if group["category"] not in _NON_SPEND_CATEGORIES
+    ]
+    if recurring:
+        recurring.sort(key=lambda group: group["amount_minor"])
+        monthly_total = sum(-group["amount_minor"] for group in recurring)
+        recommendations.append(
+            Recommendation(
+                kind="recurring_spend",
+                currentValueMinorUnits=monthly_total,
+                messageData={
+                    "currency": _HOME_CURRENCY,
+                    "currentValueFormatted": format_minor(monthly_total, _HOME_CURRENCY),
+                    "count": len(recurring),
+                    "items": [
+                        {
+                            "counterparty": group["counterparty"],
+                            "category": group["category"],
+                            "amountFormatted": format_minor(
+                                -group["amount_minor"], _HOME_CURRENCY
+                            ),
+                        }
+                        for group in recurring[:_MAX_CATEGORY_ALERTS]
+                    ],
                 },
             )
         )

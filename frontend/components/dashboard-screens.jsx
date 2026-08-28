@@ -127,6 +127,8 @@
   // One vendor story and one exchange-rate story. Everything else lives behind "view all".
   const INSIGHT_CARD_LIMIT = 1;
 
+  const HOME_ACCOUNT_PREVIEW_LIMIT = 3;
+
   function hostOf(url) {
     if (!url) return "";
     const match = /^https?:\/\/([^/?#]+)/i.exec(url);
@@ -290,7 +292,7 @@
       <div className="dash-grid-home">
         <UI.Plate className="dash-balance-card elev-sm">
           <div className="dash-kicker-row">
-            <UI.Kicker>{t("dashboard.home.totalBalance")}</UI.Kicker>
+            <UI.Kicker>{t("dashboard.home.totalBalance", { count: accounts.length })}</UI.Kicker>
             <UI.Button type="button" variant="ghost" style={{ gap: 6 }} onClick={onToggleBalance}>
               <UI.Icon name={balanceHidden ? "Eye" : "EyeOff"} size={15} />
               {balanceHidden ? t("dashboard.home.reveal") : t("dashboard.home.hide")}
@@ -333,16 +335,25 @@
             <a href="#" onClick={(event) => { event.preventDefault(); onOpenAccount(); }}>{t("dashboard.home.openAccount")}</a>
           </div>
           <div className="dash-accounts-tiles">
-            {accounts.map((account, index) => (
-              <UI.Plate key={index} className="dash-account-tile">
+            {accounts.slice(0, HOME_ACCOUNT_PREVIEW_LIMIT).map((account) => (
+              <UI.Plate key={account.id} className="dash-account-tile">
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
-                  {account.cur} · {t("dashboard.accountType." + account.typeKey)}
+                  {account.cur} · {account.label || t("dashboard.accountType." + account.typeKey)}
                 </div>
                 <div className="dash-account-amount">{balanceHidden ? "••••••" : formatMinor(account.minor)}</div>
                 <div className="text-muted" style={{ fontSize: 11 }}>{account.ibanShort}</div>
               </UI.Plate>
             ))}
           </div>
+          {accounts.length > HOME_ACCOUNT_PREVIEW_LIMIT ? (
+            <a
+              href="#"
+              style={{ display: "inline-block", marginTop: 10, fontSize: 13 }}
+              onClick={(event) => { event.preventDefault(); onNavigate("accounts"); }}
+            >
+              {t("dashboard.home.seeAllAccounts", { count: accounts.length })}
+            </a>
+          ) : null}
         </UI.Plate>
 
         {/* Moved below the accounts frame, same footprint (grid-column: span 2) per request. */}
@@ -645,7 +656,7 @@
       </div>
     );
   };
-  function AccountTileMenu({ onStatement }) {
+  function AccountTileMenu({ onStatement, onDelete }) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef(null);
 
@@ -688,6 +699,15 @@
               <UI.Icon name="FileText" size={14} />
               {t("dashboard.accounts.statementMenuItem")}
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="dash-tile-menu-item is-danger"
+              onClick={() => { setOpen(false); onDelete(); }}
+            >
+              <UI.Icon name="Trash2" size={14} />
+              {t("dashboard.accounts.deleteMenuItem")}
+            </button>
           </div>
         ) : null}
       </div>
@@ -696,31 +716,44 @@
 
   SCR.AccountsScreen = function AccountsScreen({
     accounts,
-    deposits,
-    credits,
+    termDeposits,
+    depositActionError,
     creditApplications,
+    creditActionError,
     onOpenAccount,
     onMoveDeposit,
     onCloseDeposit,
     onApplyCredit,
     onWithdrawApplication,
     onOpenStatement,
+    onDeleteAccount,
+    onOpenQuickTransfer,
   }) {
+    const activeApplications = creditApplications.filter((application) => application.status === "review");
+
     return (
       <div>
         <div className="dash-screen-head">
           <h3 style={{ margin: 0 }}>{t("dashboard.accounts.title")}</h3>
-          <UI.Button type="button" variant="primary" onClick={() => onOpenAccount()}>{t("dashboard.portfolio.openAccount")}</UI.Button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <UI.Button type="button" variant="secondary" disabled={accounts.length < 2} onClick={onOpenQuickTransfer}>
+              {t("dashboard.accounts.quickTransfer")}
+            </UI.Button>
+            <UI.Button type="button" variant="primary" onClick={() => onOpenAccount()}>{t("dashboard.portfolio.openAccount")}</UI.Button>
+          </div>
         </div>
 
         <div className="dash-portfolio-tiles">
           {accounts.map((account) => (
             <UI.Plate key={account.id} className="elev-sm" style={{ padding: 14, position: "relative" }}>
               <div className="dash-account-tile-head">
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
-                  {account.cur} &middot; {t("dashboard.accountType." + account.typeKey)}
+                <div style={{ fontFamily: "var(--font-heading)", fontSize: 14 }}>
+                  {account.label || t("dashboard.accountType." + account.typeKey)}
                 </div>
-                <AccountTileMenu onStatement={() => onOpenStatement(account)} />
+                <AccountTileMenu onStatement={() => onOpenStatement(account)} onDelete={() => onDeleteAccount(account)} />
+              </div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55, marginTop: 2 }}>
+                {account.cur} &middot; {t("dashboard.accountType." + account.typeKey)}
               </div>
               <div className="dash-account-amount">{formatMinor(account.minor)}</div>
               <div className="text-muted" style={{ fontSize: 11 }}>{account.iban}</div>
@@ -732,21 +765,26 @@
           <UI.Plate className="elev-sm" style={{ padding: 16 }}>
             <div className="dash-kicker-row">
               <UI.Kicker>{t("dashboard.portfolio.deposits")}</UI.Kicker>
+              <UI.Button type="button" variant="ghost" onClick={() => onOpenAccount("deposit")}>
+                {t("dashboard.deposit.new")}
+              </UI.Button>
             </div>
-            {deposits.length ? (
+            {depositActionError ? (
+              <div className="dash-balance-line is-short" role="alert" style={{ marginBottom: 10 }}>
+                {depositActionError.message}
+              </div>
+            ) : null}
+            {termDeposits.length ? (
               <div className="dash-product-list">
-                {deposits.map((deposit) => (
+                {termDeposits.map((deposit) => (
                   <div className="dash-product-row" key={deposit.id}>
                     <div className="dash-product-head">
                       <div style={{ flex: 1 }}>
                         <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>{deposit.name}</div>
                         <div className="text-muted" style={{ fontSize: 11 }}>
-                          {t("dashboard.deposit.meta", {
-                            kind: t("dashboard.deposit.kind." + deposit.kind),
+                          {t("dashboard.deposit.metaShort", {
                             rate: DASH.formatRate(deposit.rateBps),
-                            matures: deposit.matures
-                              ? t("dashboard.deposit.maturesOn", { date: GEMS.i18n.isoToDisplayDate(deposit.matures) })
-                              : t("dashboard.deposit.noMaturity"),
+                            matures: t("dashboard.deposit.maturesOn", { date: GEMS.i18n.isoToDisplayDate(deposit.matures) }),
                           })}
                         </div>
                       </div>
@@ -754,21 +792,6 @@
                         {formatMinor(deposit.minor)} {deposit.cur}
                       </div>
                     </div>
-
-                    {deposit.targetMinor ? (
-                      <div style={{ marginTop: 8 }}>
-                        <div className="text-muted" style={{ fontSize: 11, marginBottom: 4 }}>
-                          {t("dashboard.deposit.goalProgress", {
-                            saved: formatMinor(deposit.minor) + " " + deposit.cur,
-                            target: formatMinor(deposit.targetMinor) + " " + deposit.cur,
-                          })}
-                        </div>
-                        <DASH.ProgressBar
-                          pct={Math.min(100, Math.round((deposit.minor / deposit.targetMinor) * 100))}
-                          label={deposit.name}
-                        />
-                      </div>
-                    ) : null}
 
                     <div className="dash-product-actions">
                       <UI.Button type="button" variant="secondary" onClick={() => onMoveDeposit(deposit, "in")}>
@@ -794,47 +817,30 @@
             )}
           </UI.Plate>
 
-          <UI.Plate className="elev-sm" style={{ padding: 16 }}>
-            <div className="dash-kicker-row">
-              <UI.Kicker>{t("dashboard.portfolio.credits")}</UI.Kicker>
-              <UI.Button type="button" variant="secondary" onClick={onApplyCredit}>{t("dashboard.portfolio.applyCredit")}</UI.Button>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {credits.map((credit) => {
-                const loan = credit.kind === "loan";
-                const pct = loan
-                  ? Math.round((credit.paidMonths / credit.termMonths) * 100)
-                  : Math.round((credit.usedMinor / credit.limitMinor) * 100);
-                const name = loan
-                  ? t("dashboard.credit.loanName", {
-                      name: t("dashboard.credit.name." + credit.nameKey),
-                      paid: credit.paidMonths,
-                      term: credit.termMonths,
-                    })
-                  : t("dashboard.credit.name." + credit.nameKey);
-                const right = loan
-                  ? t("dashboard.credit.left", { amount: formatMinor(credit.outstandingMinor) + " " + credit.cur })
-                  : t("dashboard.credit.used", {
-                      used: formatMinor(credit.usedMinor),
-                      limit: formatMinor(credit.limitMinor) + " " + credit.cur,
-                    });
-                return (
-                  <div key={credit.id}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6, gap: 12 }}>
-                      <span>{name}</span>
-                      <span className="text-muted">{right}</span>
-                    </div>
-                    <DASH.ProgressBar pct={pct} label={name} />
-                  </div>
-                );
-              })}
-            </div>
+          <GoalProgressCard accounts={accounts} goalVersion={0} />
+        </div>
 
-            {creditApplications.length ? (
+        <UI.Plate className="elev-sm" style={{ padding: 16, marginTop: 20 }}>
+          <div className="dash-kicker-row">
+            <UI.Kicker>{t("dashboard.portfolio.credits")}</UI.Kicker>
+            <UI.Button type="button" variant="secondary" onClick={onApplyCredit}>{t("dashboard.portfolio.applyCredit")}</UI.Button>
+          </div>
+
+            {creditActionError ? (
+              <div className="dash-balance-line is-short" role="alert" style={{ marginBottom: 10 }}>
+                {creditActionError.message}
+              </div>
+            ) : null}
+
+            {!activeApplications.length ? (
+              <div className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.credit.empty")}</div>
+            ) : null}
+
+            {activeApplications.length ? (
               <div style={{ marginTop: 18 }}>
                 <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.credit.applicationsTitle")}</UI.Kicker>
                 <div className="dash-product-list">
-                  {creditApplications.map((application) => (
+                  {activeApplications.map((application) => (
                     <div className="dash-product-row" key={application.id}>
                       <div className="dash-product-head">
                         <div style={{ flex: 1 }}>
@@ -874,8 +880,7 @@
                 </div>
               </div>
             ) : null}
-          </UI.Plate>
-        </div>
+        </UI.Plate>
       </div>
     );
   };
@@ -883,6 +888,7 @@
   SCR.PortfolioScreen = function PortfolioScreen({
     holdings,
     investCashMinor,
+    hasInvestAccount,
     market,
     marketLoading,
     marketError,
@@ -932,9 +938,20 @@
                     months: DASH.seriesMonths(totalSeries),
                   })}
             </UI.Kicker>
-            <UI.Button type="button" variant="secondary" onClick={() => onTrade(null, "buy")}>
-              {t("dashboard.invest.new")}
-            </UI.Button>
+            {hasInvestAccount ? (
+              <UI.Button
+                type="button"
+                variant="secondary"
+                disabled={!holdings.length}
+                onClick={() => onTrade(null, "buy")}
+              >
+                {t("dashboard.invest.new")}
+              </UI.Button>
+            ) : (
+              <UI.Button type="button" variant="secondary" onClick={() => onOpenAccount("invest")}>
+                {t("dashboard.invest.openInvestAccount")}
+              </UI.Button>
+            )}
           </div>
 
           <DASH.MarketStatus
@@ -1060,13 +1077,18 @@
                       )}
                     </td>
                     <td className="amount-col dash-trade-cell">
-                      <UI.Button type="button" variant="secondary" onClick={() => onTrade(holding.id, "buy")}>
+                      <UI.Button
+                        type="button"
+                        variant="secondary"
+                        disabled={!hasInvestAccount}
+                        onClick={() => onTrade(holding.id, "buy")}
+                      >
                         {t("dashboard.invest.buy")}
                       </UI.Button>
                       <UI.Button
                         type="button"
                         variant="secondary"
-                        disabled={DASH.holdingValue(holding) <= 0}
+                        disabled={!hasInvestAccount || DASH.holdingValue(holding) <= 0}
                         onClick={() => onTrade(holding.id, "sell")}
                       >
                         {t("dashboard.invest.sell")}
@@ -1642,20 +1664,36 @@
     );
   }
 
+  function EduSection({ title, hint, action, children }) {
+    return (
+      <section className="dash-edu-section">
+        <div className="dash-edu-section-head">
+          <div>
+            <h4 className="dash-edu-section-title">{title}</h4>
+            {hint ? <p className="dash-edu-section-hint">{hint}</p> : null}
+          </div>
+          {action}
+        </div>
+        {children}
+      </section>
+    );
+  }
+
   SCR.EducationScreen = function EducationScreen({ accounts }) {
     const [goalVersion, setGoalVersion] = useState(0);
     return (
-      <div>
+      <div className="dash-edu-page">
         <div className="dash-screen-head">
           <h3 style={{ margin: 0 }}>{t("dashboard.education.title")}</h3>
         </div>
 
         <EducationChatPanel onGoalCreated={() => setGoalVersion((value) => value + 1)} />
 
-        <div className="dash-edu-cols" style={{ marginTop: 20 }}>
-          <RecommendationsCard />
-          <GoalProgressCard accounts={accounts} goalVersion={goalVersion} />
-        </div>
+        <GoalsPanel accounts={accounts} goalVersion={goalVersion} />
+
+        <RecommendationsCard />
+
+        <LessonsPanel />
       </div>
     );
   };
@@ -1721,7 +1759,6 @@
 
     function transcriptOf(list) {
       return list
-        .filter((message) => message.kind === "text")
         .filter((message) => typeof message.text === "string" && message.text.trim() !== "")
         .slice(-10)
         .map((message) => ({ role: message.role === "user" ? "user" : "assistant", content: message.text }));
@@ -1868,7 +1905,7 @@
           <span className="text-muted">{t("dashboard.education.chat.goalAccount")}</span>
           <span>{proposal.accountLabel}</span>
         </div>
-        <p className="dash-proposal-note">{t("dashboard.chat.proposalNotSent")}</p>
+        <p className="dash-proposal-note">{t("dashboard.education.chat.goalProposalNote")}</p>
         {state.done ? (
           <p className="dash-proposal-note">{t("dashboard.education.chat.goalSuccess")}</p>
         ) : (
@@ -1937,8 +1974,15 @@
       let cancelled = false;
       const prompt =
         GEMS.i18n.locale === "ro"
-          ? "Dă-mi recomandări personalizate de economisire și buget, pe baza tranzacțiilor mele reale."
-          : "Give me personalized savings and budgeting recommendations based on my real transactions.";
+          ? "Dă-mi recomandările concrete de economisire și buget care reies din tranzacțiile mele: cel " +
+            "mult trei, câte un rând pentru fiecare acțiune diferită. Dacă ai o singură recomandare, " +
+            "scrie un singur rând; nu completa până la trei reformulând aceeași acțiune. Fiecare rând " +
+            "începe cu '- ' și spune suma exactă, categoria sau obiectivul și, pe scurt, de ce. Fără " +
+            "introducere, fără concluzie, fără titluri."
+          : "Give me the concrete savings and budgeting actions that follow from my transactions: at most " +
+            "three, one line per distinct action. If only one follows, write only one line; do not pad to " +
+            "three by rephrasing the same action. Start each line with '- ' and name the exact amount, " +
+            "the category or goal, and briefly why. No introduction, no conclusion, no headings.";
       api
         .askAnalytics(prompt)
         .then((result) => {
@@ -1959,27 +2003,49 @@
       ? t("dashboard.analytics.recommendations.error")
       : state.answer || t("dashboard.analytics.recommendations.empty");
 
+    const ready = !state.loading && !state.error && Boolean(state.answer);
+    const actions = ready ? splitRecommendations(state.answer) : [];
+
     return (
-      <UI.Plate className="dash-agent-note elev-sm">
-        <span className="dash-agent-dot" aria-hidden="true" style={{ marginTop: 6, flex: "none" }} />
-        <div style={{ fontSize: 14, lineHeight: 1.6, flex: 1 }}>
-          <div className="dash-edu-title" style={{ marginBottom: 8 }}>
-            {t("dashboard.analytics.recommendations.title")}
-          </div>
-          {renderStructuredText(body)}
-          {!state.loading && !state.error && state.answer ? (
+      <EduSection
+        title={t("dashboard.analytics.recommendations.title")}
+        hint={t("dashboard.analytics.recommendations.hint")}
+      >
+        <UI.Plate className="elev-sm dash-reco-plate">
+          {ready && actions.length ? (
+            <ol className="dash-reco-list">
+              {actions.map((action, index) => (
+                <li className="dash-reco-item" key={index}>
+                  <span className="dash-reco-index" aria-hidden="true">{index + 1}</span>
+                  <div className="dash-reco-body">{renderInlineText(action, "reco-" + index)}</div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="dash-reco-plain">{renderStructuredText(body)}</div>
+          )}
+          {ready ? (
             <div className="dash-ai-disclaimer">
               <UI.Icon name="Sparkles" size={13} />
               {t("dashboard.analytics.aiDisclaimer")}
             </div>
           ) : null}
-        </div>
-      </UI.Plate>
+        </UI.Plate>
+      </EduSection>
     );
   }
 
+  function splitRecommendations(text) {
+    return (text || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => /^[-*•]\s+/.test(line))
+      .map((line) => line.replace(/^[-*•]\s+/, ""))
+      .filter(Boolean);
+  }
+
   function accountPickerLabel(account) {
-    return t("dashboard.accountType." + account.typeKey) + " · " + account.cur + " · " + account.ibanShort;
+    return DASH.accountLabel(account);
   }
 
   function SetGoalDialog({ accounts, busy, error, onSubmit, onDismiss }) {
@@ -2116,7 +2182,9 @@
                 checked={confirmedBelowThreshold}
                 onChange={(event) => setConfirmedBelowThreshold(event.target.checked)}
               />
-              {t("dashboard.analytics.goal.withdrawDialog.belowThresholdWarning", { pct: progressPct })}
+              {t("dashboard.analytics.goal.withdrawDialog.belowThresholdWarning", {
+                pct: formatGoalPct(progressPct),
+              })}
             </label>
           ) : null}
           <div className="dialog-actions">
@@ -2172,136 +2240,91 @@
     );
   }
 
-  function buildGoalProjection(data) {
-    const target = new Date(data.targetDate);
+  function addMonthsIso(months) {
     const now = new Date();
-    const rawMonths =
-      (target.getFullYear() - now.getFullYear()) * 12 + (target.getMonth() - now.getMonth());
-    const monthsRemaining = Math.max(1, Math.min(24, rawMonths));
-    const actualPerMonth = data.actualMinorUnitsPerMonth || 0;
-    const requiredPerMonth = data.requiredMinorUnitsPerMonth || 0;
-    const points = [];
-    for (let i = 0; i <= monthsRemaining; i++) {
-      points.push({
-        month: i === 0 ? t("dashboard.analytics.goal.projectionNow") : "+" + i,
-        current: Math.max(0, data.progressMinorUnits + actualPerMonth * i),
-        needed: Math.max(0, data.progressMinorUnits + requiredPerMonth * i),
-      });
-    }
-    return points;
+    const target = new Date(now.getFullYear(), now.getMonth() + months, now.getDate());
+    return (
+      target.getFullYear() +
+      "-" +
+      String(target.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(target.getDate()).padStart(2, "0")
+    );
   }
 
-  function GoalProgressCard({ accounts, goalVersion }) {
-    const RC = window.Recharts;
-    const [state, setState] = useState({ loading: true, data: null, error: null });
-    const [pace, setPace] = useState(null);
+  function monthsBetweenNowAnd(isoDate) {
+    const target = new Date(isoDate);
+    const now = new Date();
+    return (
+      (target.getFullYear() - now.getFullYear()) * 12 + (target.getMonth() - now.getMonth())
+    );
+  }
+
+  function formatGoalPct(pct) {
+    const value = pct > 0 && pct < 10 ? Math.round(pct * 10) / 10 : Math.round(pct);
+    const text = Number.isInteger(value) ? String(value) : value.toFixed(1);
+    return GEMS.i18n.locale === "ro" ? text.replace(".", ",") : text;
+  }
+
+  function GoalRing({ pct, size = 148, stroke = 14, children }) {
+    const radius = (size - stroke) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const share = Math.max(0, Math.min(100, pct)) / 100;
+    const filled = share > 0 ? Math.max(circumference * 0.02, share * circumference) : 0;
+    return (
+      <div className="dash-ring" style={{ width: size, height: size }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="var(--color-border)"
+            strokeWidth={stroke}
+          />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="var(--color-primary)"
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={`${filled} ${circumference - filled}`}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            style={{ transition: "stroke-dasharray 0.35s ease" }}
+          />
+        </svg>
+        <div className="dash-ring-centre">{children}</div>
+      </div>
+    );
+  }
+
+  function GoalsPanel({ accounts, goalVersion }) {
+    const [state, setState] = useState({ loading: true, goals: [], error: null });
     const [refreshKey, setRefreshKey] = useState(0);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [creating, setCreating] = useState(false);
     const [createError, setCreateError] = useState(null);
-    const [closeDialogOpen, setCloseDialogOpen] = useState(false);
-    const [closing, setClosing] = useState(false);
-    const [closeError, setCloseError] = useState(null);
-    const [movementDialog, setMovementDialog] = useState(null);
-    const [movementBusy, setMovementBusy] = useState(false);
-    const [movementError, setMovementError] = useState(null);
-    const [standingOrder, setStandingOrder] = useState(null);
-    const [standingOrderDialogOpen, setStandingOrderDialogOpen] = useState(false);
-    const [standingOrderBusy, setStandingOrderBusy] = useState(false);
-    const [standingOrderError, setStandingOrderError] = useState(null);
 
     useEffect(() => {
       let cancelled = false;
-      setState((previous) => ({ loading: true, data: previous.data, error: null }));
+      setState((previous) => ({ loading: true, goals: previous.goals, error: null }));
       api
-        .getGoalProgress()
+        .listGoals()
         .then((result) => {
-          if (!cancelled) setState({ loading: false, data: result, error: null });
+          if (!cancelled) setState({ loading: false, goals: result.goals || [], error: null });
         })
         .catch((err) => {
-          if (!cancelled) setState({ loading: false, data: null, error: err });
-        });
-      api
-        .getGoalPace()
-        .then((result) => {
-          if (!cancelled) setPace(result);
-        })
-        .catch(() => {
-          if (!cancelled) setPace(null);
+          if (!cancelled) setState({ loading: false, goals: [], error: err });
         });
       return () => {
         cancelled = true;
       };
     }, [refreshKey, goalVersion]);
 
-    const goalId = state.data && state.data.goalId;
-
-    useEffect(() => {
-      if (!goalId) {
-        setStandingOrder(null);
-        return undefined;
-      }
-      let cancelled = false;
-      api
-        .getStandingOrder(goalId)
-        .then((result) => {
-          if (!cancelled) setStandingOrder(result.standingOrder);
-        })
-        .catch(() => {
-          if (!cancelled) setStandingOrder(null);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }, [goalId, refreshKey]);
-
-    function submitMovement(amountMinor) {
-      if (!goalId) return;
-      setMovementBusy(true);
-      setMovementError(null);
-      const call = movementDialog === "withdraw" ? api.withdrawFromGoal : api.depositToGoal;
-      call(goalId, amountMinor)
-        .then(() => {
-          setMovementBusy(false);
-          setMovementDialog(null);
-          setRefreshKey((value) => value + 1);
-        })
-        .catch((err) => {
-          setMovementBusy(false);
-          setMovementError(err);
-        });
-    }
-
-    function submitStandingOrder(amountMinor, frequency) {
-      if (!goalId) return;
-      setStandingOrderBusy(true);
-      setStandingOrderError(null);
-      api
-        .createStandingOrder(goalId, amountMinor, frequency, "user")
-        .then(() => {
-          setStandingOrderBusy(false);
-          setStandingOrderDialogOpen(false);
-          setRefreshKey((value) => value + 1);
-        })
-        .catch((err) => {
-          setStandingOrderBusy(false);
-          setStandingOrderError(err);
-        });
-    }
-
-    function transitionStandingOrder(action) {
-      if (!standingOrder) return;
-      setStandingOrderBusy(true);
-      setStandingOrderError(null);
-      action(standingOrder.standingOrderId)
-        .then(() => {
-          setStandingOrderBusy(false);
-          setRefreshKey((value) => value + 1);
-        })
-        .catch((err) => {
-          setStandingOrderBusy(false);
-          setStandingOrderError(err);
-        });
+    function refresh() {
+      setRefreshKey((value) => value + 1);
     }
 
     function submitGoal(payload) {
@@ -2318,7 +2341,7 @@
         .then(() => {
           setCreating(false);
           setDialogOpen(false);
-          setRefreshKey((value) => value + 1);
+          refresh();
         })
         .catch((err) => {
           setCreating(false);
@@ -2326,209 +2349,56 @@
         });
     }
 
-    function closeGoal() {
-      if (!state.data || !state.data.goalId) return;
-      setClosing(true);
-      setCloseError(null);
-      api
-        .closeGoal(state.data.goalId)
-        .then(() => {
-          setClosing(false);
-          setCloseDialogOpen(false);
-          setRefreshKey((value) => value + 1);
-        })
-        .catch((err) => {
-          setClosing(false);
-          setCloseError(err);
-        });
-    }
-
-    const data = state.data;
-    const hasGoal = Boolean(data) && data.status === "ok";
-    const reached = hasGoal && data.progressMinorUnits >= data.targetMinorUnits;
-    const pct = hasGoal
-      ? Math.max(0, Math.min(100, Math.round((data.progressMinorUnits / data.targetMinorUnits) * 100)))
-      : 0;
-    const showStreak = hasGoal && data.streakWeeks >= 3;
     const eligibleAccounts = (accounts || []).filter((account) => account.typeKey !== "invest");
+    const goals = state.goals;
+
+    const addButton = goals.length ? (
+      <UI.Button
+        type="button"
+        variant="secondary"
+        disabled={!eligibleAccounts.length}
+        onClick={() => setDialogOpen(true)}
+      >
+        {t("dashboard.analytics.goal.addGoal")}
+      </UI.Button>
+    ) : null;
 
     return (
-      <UI.Plate className="elev-sm" style={{ padding: 18, display: "flex", flexDirection: "column" }}>
-        <div className="dash-edu-title" style={{ marginBottom: 14 }}>{t("dashboard.analytics.goal.title")}</div>
+      <EduSection
+        title={t("dashboard.analytics.goal.title")}
+        hint={
+          goals.length
+            ? t("dashboard.analytics.goal.activeCount", { count: goals.length })
+            : t("dashboard.analytics.goal.sectionHint")
+        }
+        action={addButton}
+      >
         {state.loading ? (
-          <div className="dash-chart-empty" style={{ flex: 1 }}>{t("dashboard.analytics.loading")}</div>
-        ) : !hasGoal ? (
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "center",
-              alignItems: "center",
-              textAlign: "center",
-              gap: 10,
-            }}
-          >
-            <div className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.analytics.goal.noGoal")}</div>
+          <UI.Plate className="elev-sm dash-goals-loading">
+            {t("dashboard.analytics.loading")}
+          </UI.Plate>
+        ) : !goals.length ? (
+          <UI.Plate className="elev-sm dash-goals-empty">
+            <div className="text-muted" style={{ fontSize: 13 }}>
+              {t("dashboard.analytics.goal.noGoal")}
+            </div>
             <UI.Button
               type="button"
-              variant="secondary"
+              variant="primary"
               disabled={!eligibleAccounts.length}
               onClick={() => setDialogOpen(true)}
             >
               {t("dashboard.analytics.goal.setGoal")}
             </UI.Button>
-          </div>
+          </UI.Plate>
         ) : (
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
-              <span>{data.name}</span>
-              <span className="text-muted">
-                {t("dashboard.analytics.goal.progressOf", {
-                  progress: UI.formatMoney(data.progressMinorUnits, data.currency),
-                  target: UI.formatMoney(data.targetMinorUnits, data.currency),
-                })}
-              </span>
-            </div>
-            <DASH.ProgressBar pct={pct} label={t("dashboard.analytics.goal.title")} />
-            <p className="text-muted" style={{ fontSize: 13, marginTop: 10 }}>
-              {reached
-                ? t("dashboard.analytics.goal.reached")
-                : data.projectedCompletionDate
-                ? t("dashboard.analytics.goal.projected", {
-                    date: GEMS.i18n.isoToDisplayDate(data.projectedCompletionDate),
-                  })
-                : t("dashboard.analytics.goal.projectedUnknown")}
-            </p>
-            {!reached && pace && pace.status === "insufficient-data" ? (
-              <p className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>
-                {t("dashboard.analytics.goal.pace.insufficientData")}
-              </p>
-            ) : null}
-            {!reached && pace && pace.status === "at-risk" ? (
-              <p className="dash-proposal-note" style={{ marginTop: 2 }}>
-                {t("dashboard.analytics.goal.pace.atRisk")}
-              </p>
-            ) : null}
-            {!reached ? (
-              <div style={{ marginTop: 12 }}>
-                <div className="text-muted" style={{ fontSize: 12, marginBottom: 6 }}>
-                  {t("dashboard.analytics.goal.projectionTitle")}
-                </div>
-                <RC.ResponsiveContainer width="100%" height={140}>
-                  <RC.LineChart data={buildGoalProjection(data)}>
-                    <RC.CartesianGrid stroke="var(--color-border)" vertical={false} />
-                    <RC.XAxis dataKey="month" tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={{ stroke: "var(--color-border)" }} tickLine={false} />
-                    <RC.YAxis tick={{ fill: "var(--color-muted)", fontSize: 10 }} axisLine={false} tickLine={false} width={34} tickFormatter={(value) => Math.round(value / 100)} />
-                    <RC.Tooltip content={<ChartTooltip currency={data.currency} />} />
-                    <RC.Legend
-                      formatter={(value) => t(CHART_SERIES_LABEL[value] || value)}
-                      wrapperStyle={{ fontSize: 11, color: "var(--color-muted)" }}
-                    />
-                    <RC.ReferenceLine y={data.targetMinorUnits} stroke="var(--color-primary)" strokeDasharray="4 4" />
-                    <RC.Line type="monotone" dataKey="current" name="current" stroke="var(--color-plum-400)" strokeWidth={2} dot={false} />
-                    <RC.Line type="monotone" dataKey="needed" name="needed" stroke="var(--color-lime-600)" strokeWidth={2} dot={false} />
-                  </RC.LineChart>
-                </RC.ResponsiveContainer>
-              </div>
-            ) : null}
-            {showStreak ? (
-              <div className="dash-streak-badge" title={t("dashboard.analytics.goal.streakHint")}>
-                <UI.Icon name="Flame" size={14} />
-                {t("dashboard.analytics.goal.streak", { count: data.streakWeeks })}
-              </div>
-            ) : (
-              <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
-                {t("dashboard.analytics.goal.streakStart")}
-              </p>
-            )}
-            {!reached ? (
-              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <UI.Button type="button" variant="secondary" onClick={() => setMovementDialog("deposit")}>
-                  {t("dashboard.analytics.goal.addMoney")}
-                </UI.Button>
-                <UI.Button type="button" variant="secondary" onClick={() => setMovementDialog("withdraw")}>
-                  {t("dashboard.analytics.goal.withdraw")}
-                </UI.Button>
-              </div>
-            ) : null}
-            <div style={{ marginTop: 14 }}>
-              <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>
-                {t("dashboard.analytics.goal.standingOrder.title")}
-              </div>
-              {standingOrder ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <span style={{ fontSize: 13 }}>
-                    {t(
-                      standingOrder.status === "paused"
-                        ? "dashboard.analytics.goal.standingOrder.paused"
-                        : "dashboard.analytics.goal.standingOrder.active",
-                      {
-                        amount: UI.formatMoney(standingOrder.amount.minorUnits, standingOrder.amount.currency),
-                        frequency: t(
-                          standingOrder.frequency === "weekly"
-                            ? "dashboard.analytics.goal.standingOrder.frequencyWeekly"
-                            : "dashboard.analytics.goal.standingOrder.frequencyMonthly"
-                        ),
-                        date: GEMS.i18n.isoToDisplayDate((standingOrder.nextRunAt || "").slice(0, 10)),
-                      }
-                    )}
-                  </span>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {standingOrder.status === "active" ? (
-                      <UI.Button
-                        type="button"
-                        variant="secondary"
-                        disabled={standingOrderBusy}
-                        onClick={() => transitionStandingOrder(api.pauseStandingOrder)}
-                      >
-                        {standingOrderBusy ? t("dashboard.analytics.goal.standingOrder.working") : t("dashboard.analytics.goal.standingOrder.pause")}
-                      </UI.Button>
-                    ) : (
-                      <UI.Button
-                        type="button"
-                        variant="secondary"
-                        disabled={standingOrderBusy}
-                        onClick={() => transitionStandingOrder(api.resumeStandingOrder)}
-                      >
-                        {standingOrderBusy ? t("dashboard.analytics.goal.standingOrder.working") : t("dashboard.analytics.goal.standingOrder.resume")}
-                      </UI.Button>
-                    )}
-                    <button
-                      type="button"
-                      className="dash-handoff-link"
-                      style={{ padding: 0 }}
-                      disabled={standingOrderBusy}
-                      onClick={() => transitionStandingOrder(api.cancelStandingOrder)}
-                    >
-                      {t("dashboard.analytics.goal.standingOrder.cancel")}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
-                  <span className="text-muted" style={{ fontSize: 12 }}>
-                    {t("dashboard.analytics.goal.standingOrder.none")}
-                  </span>
-                  <UI.Button type="button" variant="secondary" onClick={() => setStandingOrderDialogOpen(true)}>
-                    {t("dashboard.analytics.goal.standingOrder.set")}
-                  </UI.Button>
-                </div>
-              )}
-              {standingOrderError ? (
-                <p className="dash-proposal-note">{t("dashboard.analytics.goal.standingOrder.error")}</p>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              className="dash-handoff-link"
-              style={{ marginTop: 12, padding: 0 }}
-              onClick={() => setCloseDialogOpen(true)}
-            >
-              {t("dashboard.analytics.goal.closeGoal")}
-            </button>
+          <div className="dash-goals-grid">
+            {goals.map((goal) => (
+              <GoalCard key={goal.goalId} goal={goal} onChanged={refresh} />
+            ))}
           </div>
         )}
+
         {dialogOpen ? (
           <SetGoalDialog
             accounts={eligibleAccounts}
@@ -2541,9 +2411,336 @@
             }}
           />
         ) : null}
+      </EduSection>
+    );
+  }
+
+  function GoalProjector({ goal }) {
+    const remaining = Math.max(0, goal.targetMinorUnits - goal.progressMinorUnits);
+    const required = Math.max(0, goal.requiredMinorUnitsPerMonth || 0);
+    const actual = Math.max(0, goal.actualMinorUnitsPerMonth || 0);
+    const suggested = actual > 0 ? actual : required > 0 ? required : Math.ceil(remaining / 12);
+    const maxMonthly = Math.max(remaining, suggested * 2, 10000);
+    const step = Math.max(1000, Math.round(maxMonthly / 100 / 1000) * 1000);
+
+    const [monthly, setMonthly] = useState(Math.min(maxMonthly, Math.max(step, suggested)));
+
+    const chosen = Math.max(0, Math.min(monthly, maxMonthly));
+    const months = chosen > 0 ? Math.ceil(remaining / chosen) : null;
+    const projectedIso = months !== null && months <= 600 ? addMonthsIso(months) : null;
+    const monthsToTarget = monthsBetweenNowAnd(goal.targetDate);
+    const onTrack = months !== null && months <= Math.max(1, monthsToTarget);
+
+    return (
+      <div className="dash-projector">
+        <label className="dash-projector-label" htmlFor={"pace-" + goal.goalId}>
+          {t("dashboard.analytics.goal.projector.label")}
+        </label>
+        <div className="dash-projector-amount">{UI.formatMoney(chosen, goal.currency)}</div>
+        <input
+          id={"pace-" + goal.goalId}
+          className="dash-projector-slider"
+          type="range"
+          min={0}
+          max={maxMonthly}
+          step={step}
+          value={chosen}
+          onChange={(event) => setMonthly(Number(event.target.value))}
+        />
+        <div className="dash-projector-scale">
+          <span>{UI.formatMoney(0, goal.currency)}</span>
+          <span>{UI.formatMoney(maxMonthly, goal.currency)}</span>
+        </div>
+
+        <div className={"dash-projector-result" + (onTrack ? " is-on-track" : " is-behind")}>
+          {chosen <= 0 ? (
+            <span>{t("dashboard.analytics.goal.projector.nothing")}</span>
+          ) : projectedIso ? (
+            <span>
+              {t("dashboard.analytics.goal.projector.reachOn", {
+                date: GEMS.i18n.isoToDisplayDate(projectedIso),
+                months: GEMS.i18n.countFor(months),
+              })}
+            </span>
+          ) : (
+            <span>{t("dashboard.analytics.goal.projector.tooSlow")}</span>
+          )}
+        </div>
+
+        {required > 0 ? (
+          <button
+            type="button"
+            className="dash-projector-hint"
+            onClick={() => setMonthly(Math.min(maxMonthly, required))}
+          >
+            {t("dashboard.analytics.goal.projector.required", {
+              amount: UI.formatMoney(required, goal.currency),
+              date: GEMS.i18n.isoToDisplayDate(goal.targetDate),
+            })}
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  function GoalCard({ goal, onChanged }) {
+    const [standingOrder, setStandingOrder] = useState(null);
+    const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+    const [closing, setClosing] = useState(false);
+    const [closeError, setCloseError] = useState(null);
+    const [movementDialog, setMovementDialog] = useState(null);
+    const [movementBusy, setMovementBusy] = useState(false);
+    const [movementError, setMovementError] = useState(null);
+    const [standingOrderDialogOpen, setStandingOrderDialogOpen] = useState(false);
+    const [standingOrderBusy, setStandingOrderBusy] = useState(false);
+    const [standingOrderError, setStandingOrderError] = useState(null);
+
+    const goalId = goal.goalId;
+
+    useEffect(() => {
+      let cancelled = false;
+      api
+        .getStandingOrder(goalId)
+        .then((result) => {
+          if (!cancelled) setStandingOrder(result.standingOrder);
+        })
+        .catch(() => {
+          if (!cancelled) setStandingOrder(null);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [goalId, goal.progressMinorUnits]);
+
+    function submitMovement(amountMinor) {
+      setMovementBusy(true);
+      setMovementError(null);
+      const call = movementDialog === "withdraw" ? api.withdrawFromGoal : api.depositToGoal;
+      call(goalId, amountMinor)
+        .then(() => {
+          setMovementBusy(false);
+          setMovementDialog(null);
+          onChanged();
+        })
+        .catch((err) => {
+          setMovementBusy(false);
+          setMovementError(err);
+        });
+    }
+
+    function submitStandingOrder(amountMinor, frequency) {
+      setStandingOrderBusy(true);
+      setStandingOrderError(null);
+      api
+        .createStandingOrder(goalId, amountMinor, frequency, "user")
+        .then(() => {
+          setStandingOrderBusy(false);
+          setStandingOrderDialogOpen(false);
+          onChanged();
+        })
+        .catch((err) => {
+          setStandingOrderBusy(false);
+          setStandingOrderError(err);
+        });
+    }
+
+    function transitionStandingOrder(action) {
+      if (!standingOrder) return;
+      setStandingOrderBusy(true);
+      setStandingOrderError(null);
+      action(standingOrder.standingOrderId)
+        .then(() => {
+          setStandingOrderBusy(false);
+          onChanged();
+        })
+        .catch((err) => {
+          setStandingOrderBusy(false);
+          setStandingOrderError(err);
+        });
+    }
+
+    function closeGoal() {
+      setClosing(true);
+      setCloseError(null);
+      api
+        .closeGoal(goalId)
+        .then(() => {
+          setClosing(false);
+          setCloseDialogOpen(false);
+          onChanged();
+        })
+        .catch((err) => {
+          setClosing(false);
+          setCloseError(err);
+        });
+    }
+
+    const reached = goal.progressMinorUnits >= goal.targetMinorUnits;
+    const pct =
+      goal.targetMinorUnits > 0
+        ? Math.max(0, Math.min(100, (goal.progressMinorUnits / goal.targetMinorUnits) * 100))
+        : 0;
+    const streakWeeks = goal.streakWeeks || 0;
+
+    return (
+      <UI.Plate className="elev-sm dash-goal-card">
+        <div className="dash-goal-card-head">
+          <div>
+            <div className="dash-goal-name">{goal.name}</div>
+            <div className="text-muted" style={{ fontSize: 12 }}>
+              {t("dashboard.analytics.goal.by", {
+                date: GEMS.i18n.isoToDisplayDate(goal.targetDate),
+              })}
+            </div>
+          </div>
+          {streakWeeks > 0 ? (
+            <span className="dash-streak-badge" title={t("dashboard.analytics.goal.streakHint")}>
+              <UI.Icon name="Flame" size={14} />
+              {t("dashboard.analytics.goal.streak", { count: streakWeeks })}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="dash-goal-body">
+          <div className="dash-goal-pane dash-goal-pane-ring">
+            <GoalRing pct={pct}>
+              <div className="dash-ring-pct">{formatGoalPct(pct)}%</div>
+              <div className="dash-ring-amount">
+                {UI.formatMoney(goal.progressMinorUnits, goal.currency)}
+              </div>
+              <div className="dash-ring-target">
+                {t("dashboard.analytics.goal.ofTarget", {
+                  target: UI.formatMoney(goal.targetMinorUnits, goal.currency),
+                })}
+              </div>
+            </GoalRing>
+
+            {reached ? (
+              <div className="dash-goal-reached">
+                <UI.Icon name="CircleCheck" size={16} />
+                {t("dashboard.analytics.goal.reached")}
+              </div>
+            ) : (
+              <div className="dash-goal-actions">
+                <UI.Button type="button" variant="primary" onClick={() => setMovementDialog("deposit")}>
+                  {t("dashboard.analytics.goal.addMoney")}
+                </UI.Button>
+                <UI.Button type="button" variant="secondary" onClick={() => setMovementDialog("withdraw")}>
+                  {t("dashboard.analytics.goal.withdraw")}
+                </UI.Button>
+              </div>
+            )}
+          </div>
+
+          {reached ? null : (
+            <div className="dash-goal-pane">
+              <GoalProjector goal={goal} />
+            </div>
+          )}
+
+          <div className="dash-goal-pane dash-goal-so">
+            <div className="text-muted" style={{ fontSize: 12, marginBottom: 6 }}>
+              {t("dashboard.analytics.goal.standingOrder.title")}
+            </div>
+            {standingOrder ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <span style={{ fontSize: 13 }}>
+                  {t(
+                    standingOrder.status === "paused"
+                      ? "dashboard.analytics.goal.standingOrder.paused"
+                      : "dashboard.analytics.goal.standingOrder.active",
+                    {
+                      amount: UI.formatMoney(
+                        standingOrder.amount.minorUnits,
+                        standingOrder.amount.currency
+                      ),
+                      frequency: t(
+                        standingOrder.frequency === "weekly"
+                          ? "dashboard.analytics.goal.standingOrder.frequencyWeekly"
+                          : "dashboard.analytics.goal.standingOrder.frequencyMonthly"
+                      ),
+                      date: GEMS.i18n.isoToDisplayDate((standingOrder.nextRunAt || "").slice(0, 10)),
+                    }
+                  )}
+                </span>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  {standingOrder.status === "active" ? (
+                    <UI.Button
+                      type="button"
+                      variant="secondary"
+                      disabled={standingOrderBusy}
+                      onClick={() => transitionStandingOrder(api.pauseStandingOrder)}
+                    >
+                      {standingOrderBusy
+                        ? t("dashboard.analytics.goal.standingOrder.working")
+                        : t("dashboard.analytics.goal.standingOrder.pause")}
+                    </UI.Button>
+                  ) : (
+                    <UI.Button
+                      type="button"
+                      variant="secondary"
+                      disabled={standingOrderBusy}
+                      onClick={() => transitionStandingOrder(api.resumeStandingOrder)}
+                    >
+                      {standingOrderBusy
+                        ? t("dashboard.analytics.goal.standingOrder.working")
+                        : t("dashboard.analytics.goal.standingOrder.resume")}
+                    </UI.Button>
+                  )}
+                  <button
+                    type="button"
+                    className="dash-handoff-link"
+                    style={{ padding: 0 }}
+                    disabled={standingOrderBusy}
+                    onClick={() => transitionStandingOrder(api.cancelStandingOrder)}
+                  >
+                    {t("dashboard.analytics.goal.standingOrder.cancel")}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
+                <span className="text-muted" style={{ fontSize: 12 }}>
+                  {t("dashboard.analytics.goal.standingOrder.none")}
+                </span>
+                <UI.Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setStandingOrderDialogOpen(true)}
+                >
+                  {t("dashboard.analytics.goal.standingOrder.set")}
+                </UI.Button>
+              </div>
+            )}
+            {standingOrderError ? (
+              <p className="dash-proposal-note">{t("dashboard.analytics.goal.standingOrder.error")}</p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="dash-goal-foot">
+          {streakWeeks === 0 && !reached ? (
+            <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>
+              {t("dashboard.analytics.goal.streakStart")}
+            </p>
+          ) : null}
+
+          {goal.sharedParentAccount ? (
+            <p className="dash-proposal-note">{t("dashboard.analytics.goal.legacyAccountNote")}</p>
+          ) : null}
+
+          <button
+            type="button"
+            className="dash-handoff-link dash-goal-close"
+            onClick={() => setCloseDialogOpen(true)}
+          >
+            {t("dashboard.analytics.goal.closeGoal")}
+          </button>
+        </div>
+
         {closeDialogOpen ? (
           <CloseGoalDialog
-            name={data ? data.name : ""}
+            name={goal.name}
             busy={closing}
             error={closeError}
             onConfirm={closeGoal}
@@ -2556,7 +2753,7 @@
         {movementDialog ? (
           <GoalMovementDialog
             mode={movementDialog}
-            goalName={data ? data.name : ""}
+            goalName={goal.name}
             progressPct={pct}
             busy={movementBusy}
             error={movementError}
@@ -2579,6 +2776,228 @@
           />
         ) : null}
       </UI.Plate>
+    );
+  }
+
+  function LessonsPanel() {
+    const [state, setState] = useState({ loading: true, lessons: [], error: null });
+    const [quizLesson, setQuizLesson] = useState(null);
+    const [openLessonId, setOpenLessonId] = useState(null);
+
+    useEffect(() => {
+      let cancelled = false;
+      api
+        .getEducationLessons()
+        .then((result) => {
+          if (cancelled) return;
+          setState({ loading: false, lessons: result.lessons || [], error: null });
+        })
+        .catch((err) => {
+          if (!cancelled) setState({ loading: false, lessons: [], error: err });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []);
+
+    const ro = GEMS.i18n.locale === "ro";
+
+    return (
+      <EduSection
+        title={t("dashboard.education.lessons.title")}
+        hint={t("dashboard.education.lessons.subtitle")}
+      >
+        {state.loading ? (
+          <UI.Plate className="elev-sm dash-goals-loading">
+            {t("dashboard.analytics.loading")}
+          </UI.Plate>
+        ) : state.error || !state.lessons.length ? (
+          <UI.Plate className="elev-sm dash-goals-loading">
+            {t("dashboard.education.lessons.error")}
+          </UI.Plate>
+        ) : (
+          <UI.Plate className="elev-sm dash-lesson-list">
+            {state.lessons.map((lesson) => {
+              const open = openLessonId === lesson.id;
+              return (
+                <div className={"dash-lesson-item" + (open ? " is-open" : "")} key={lesson.id}>
+                  <button
+                    type="button"
+                    className="dash-lesson-toggle"
+                    aria-expanded={open}
+                    aria-controls={"lesson-panel-" + lesson.id}
+                    onClick={() => setOpenLessonId(open ? null : lesson.id)}
+                  >
+                    <span className="dash-lesson-title">{ro ? lesson.titleRo : lesson.titleEn}</span>
+                    <span className="dash-lesson-meta">
+                      <span className="text-muted" style={{ fontSize: 12 }}>
+                        {t("dashboard.education.quiz.questionCount", {
+                          count: lesson.questions.length,
+                        })}
+                      </span>
+                      <UI.Icon className="dash-lesson-chevron" name="ChevronDown" size={16} />
+                    </span>
+                  </button>
+                  {open ? (
+                    <div className="dash-lesson-panel" id={"lesson-panel-" + lesson.id}>
+                      <p className="dash-lesson-body">{ro ? lesson.bodyRo : lesson.bodyEn}</p>
+                      <UI.Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => setQuizLesson(lesson)}
+                      >
+                        {t("dashboard.education.quiz.start")}
+                      </UI.Button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </UI.Plate>
+        )}
+
+        {quizLesson ? (
+          <QuizDialog lesson={quizLesson} ro={ro} onDismiss={() => setQuizLesson(null)} />
+        ) : null}
+      </EduSection>
+    );
+  }
+
+  function QuizDialog({ lesson, ro, onDismiss }) {
+    const [answers, setAnswers] = useState({});
+    const [submitted, setSubmitted] = useState(false);
+
+    const questions = lesson.questions;
+    const answeredCount = questions.filter((question) => answers[question.id]).length;
+    const score = questions.filter(
+      (question) => answers[question.id] === question.correctOptionId
+    ).length;
+    const title = ro ? lesson.titleRo : lesson.titleEn;
+
+    function restart() {
+      setAnswers({});
+      setSubmitted(false);
+    }
+
+    return (
+      <UI.Dialog labelledBy="quiz-dialog-title" onDismiss={onDismiss}>
+        <div className="dash-quiz-dialog">
+          <h2 id="quiz-dialog-title" className="dialog-title">
+            {title}
+          </h2>
+          <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
+            {submitted
+              ? t("dashboard.education.quiz.resultsSubtitle")
+              : t("dashboard.education.quiz.subtitle", { count: questions.length })}
+          </p>
+
+          {submitted ? (
+            <div
+              className={
+                "dash-quiz-score" +
+                (score === questions.length ? " is-perfect" : score * 2 >= questions.length ? " is-ok" : " is-low")
+              }
+            >
+              <div className="dash-quiz-score-value">
+                {score} / {questions.length}
+              </div>
+              <div className="dash-quiz-score-label">
+                {score === questions.length
+                  ? t("dashboard.education.quiz.scorePerfect")
+                  : t("dashboard.education.quiz.scoreLabel")}
+              </div>
+            </div>
+          ) : (
+            <div className="dash-quiz-progress">
+              {t("dashboard.education.quiz.answered", {
+                answered: answeredCount,
+                total: questions.length,
+              })}
+            </div>
+          )}
+
+          <div className="dash-quiz-list">
+            {questions.map((question, index) => {
+              const chosen = answers[question.id];
+              const gotItRight = chosen === question.correctOptionId;
+              return (
+                <div className="dash-quiz-question" key={question.id}>
+                  <div className="dash-quiz-prompt">
+                    <span className="dash-quiz-number">{index + 1}</span>
+                    {ro ? question.promptRo : question.promptEn}
+                  </div>
+                  <div className="dash-quiz-options">
+                    {question.options.map((option) => {
+                      const selected = chosen === option.id;
+                      const isCorrect = option.id === question.correctOptionId;
+                      let tone = "";
+                      if (submitted && isCorrect) tone = " is-correct";
+                      else if (submitted && selected) tone = " is-wrong";
+                      else if (selected) tone = " is-selected";
+                      return (
+                        <label className={"dash-quiz-option" + tone} key={option.id}>
+                          <input
+                            type="radio"
+                            name={question.id}
+                            checked={selected || false}
+                            disabled={submitted}
+                            onChange={() =>
+                              setAnswers((current) => ({ ...current, [question.id]: option.id }))
+                            }
+                          />
+                          <span>{ro ? option.labelRo : option.labelEn}</span>
+                          {submitted && isCorrect ? (
+                            <span className="dash-quiz-tag">
+                              {t("dashboard.education.quiz.correctAnswer")}
+                            </span>
+                          ) : null}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {submitted ? (
+                    <p className="dash-quiz-explanation">
+                      <strong>
+                        {gotItRight
+                          ? t("dashboard.education.quiz.correct")
+                          : t("dashboard.education.quiz.incorrect")}
+                      </strong>{" "}
+                      {ro ? question.explanationRo : question.explanationEn}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="dialog-actions">
+            {submitted ? (
+              <React.Fragment>
+                <UI.Button type="button" variant="secondary" onClick={restart}>
+                  {t("dashboard.education.quiz.retry")}
+                </UI.Button>
+                <UI.Button type="button" variant="primary" onClick={onDismiss}>
+                  {t("dashboard.education.quiz.done")}
+                </UI.Button>
+              </React.Fragment>
+            ) : (
+              <React.Fragment>
+                <UI.Button type="button" variant="secondary" onClick={onDismiss}>
+                  {t("dashboard.education.quiz.cancel")}
+                </UI.Button>
+                <UI.Button
+                  type="button"
+                  variant="primary"
+                  disabled={answeredCount < questions.length}
+                  onClick={() => setSubmitted(true)}
+                >
+                  {t("dashboard.education.quiz.submit")}
+                </UI.Button>
+              </React.Fragment>
+            )}
+          </div>
+        </div>
+      </UI.Dialog>
     );
   }
 

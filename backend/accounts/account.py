@@ -2,10 +2,9 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
-
 from backend.helpers.context import new_id
 from backend.helpers.errors import IllegalTransitionError, ValidationError
+from pydantic import BaseModel, Field
 
 
 class AccountKind(StrEnum):

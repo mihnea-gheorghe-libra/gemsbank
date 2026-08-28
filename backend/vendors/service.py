@@ -10,7 +10,6 @@ from backend.database.mongo import get_db
 from backend.vendors.decision_engine import NOTIFICATIONS_COLLECTION
 from backend.vendors.detector import CONFIRMED
 
-USERS_COLLECTION = "users"
 NOTIFICATION_SCAN_LIMIT = 50
 
 
@@ -129,21 +128,7 @@ class VendorInsightsService:
     def __init__(self, config: Settings) -> None:
         self._config = config
 
-    async def resolve_user_id(self, username: str | None) -> str | None:
-        if not username or not username.strip():
-            return None
-        user = await get_db()[USERS_COLLECTION].find_one(
-            {"username": username.strip()}
-        )
-        if not user or not user.get("_id"):
-            return None
-        return str(user["_id"])
-
-    async def _fetch(self, username: str | None) -> list[dict[str, Any]]:
-        user_id = await self.resolve_user_id(username)
-        if user_id is None:
-            return []
-
+    async def _fetch(self, user_id: str) -> list[dict[str, Any]]:
         query: dict[str, Any] = {"userId": user_id}
         if self._config.vendor_insights_source:
             query["source"] = self._config.vendor_insights_source
@@ -155,20 +140,20 @@ class VendorInsightsService:
             .to_list(length=NOTIFICATION_SCAN_LIMIT)
         )
 
-    async def list_for_username(
-        self, username: str | None, limit: int | None = None
+    async def list_for_user(
+        self, user_id: str, limit: int | None = None
     ) -> list[VendorInsight]:
-        documents = await self._fetch(username)
+        documents = await self._fetch(user_id)
         capped = limit if limit is not None else self._config.vendor_insights_limit
         return [
             to_insight(document)
             for document in newest_per_vendor(documents, max(capped, 0))
         ]
 
-    async def board_for_username(
-        self, username: str | None, limit: int | None = None
+    async def board_for_user(
+        self, user_id: str, limit: int | None = None
     ) -> InsightsBoard:
-        documents = await self._fetch(username)
+        documents = await self._fetch(user_id)
         capped = limit if limit is not None else self._config.vendor_insights_limit
         return InsightsBoard(
             insights=[

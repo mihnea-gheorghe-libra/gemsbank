@@ -1,22 +1,11 @@
 from datetime import date, datetime, time, timezone
 from typing import Annotated, Any
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    File,
-    Form,
-    Header,
-    Query,
-    Request,
-    Response,
-    UploadFile,
-)
-from pydantic import BaseModel, Field
-
+from backend.accounts.account import AccountStatus
 from backend.accounts.service import (
     AccountKind,
     AccountsService,
+    CloseAccount,
     OpenAccount,
     get_accounts_service,
 )
@@ -60,6 +49,7 @@ from backend.auth.service import (
     get_auth_service,
 )
 from backend.capabilities import analytics as analytics_capabilities
+from backend.capabilities.education_lessons import load_lessons
 from backend.capabilities.service import get_capabilities_service
 from backend.cards.service import (
     BlockCardPermanently,
@@ -75,7 +65,21 @@ from backend.cards.service import (
     get_cards_service,
 )
 from backend.command_bus import bus
+from backend.credits.service import (
+    CreditsService,
+    SubmitCreditApplication,
+    WithdrawCreditApplication,
+    get_credits_service,
+)
 from backend.database.mongo import get_db
+from backend.deposits.service import (
+    CloseTermDeposit,
+    CreateTermDeposit,
+    TermDepositsService,
+    TopUpTermDeposit,
+    WithdrawFromTermDeposit,
+    get_term_deposits_service,
+)
 from backend.escalations.service import (
     EscalationsService,
     RequestHandoff,
@@ -99,8 +103,13 @@ from backend.goals.service import (
     get_goals_service,
 )
 from backend.helpers.context import Actor
-from backend.helpers.errors import AuthenticationError
-from backend.investments.service import InvestmentsService, get_investments_service
+from backend.helpers.errors import AuthenticationError, NotFoundError
+from backend.investments.service import (
+    BuyInstrument,
+    InvestmentsService,
+    SellInstrument,
+    get_investments_service,
+)
 from backend.onboarding.service import (
     CompleteOnboarding,
     OnboardingService,
@@ -127,6 +136,18 @@ from backend.vendors.service import (
     VendorInsightsService,
     get_vendor_insights_service,
 )
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
+from pydantic import BaseModel, Field
 
 
 class ContactRequest(BaseModel):
@@ -212,11 +233,19 @@ class AccountClosureRequest(BaseModel):
 class OpenAccountRequest(BaseModel):
     currency: str = Field(min_length=3, max_length=3)
     kind: AccountKind
+    label: str | None = Field(default=None, max_length=40)
 
 
 class ConvertCurrencyRequest(BaseModel):
     source_account_id: str = Field(alias="sourceAccountId", min_length=1, max_length=64)
     target_currency: str = Field(alias="targetCurrency", min_length=3, max_length=3)
+    amount_minor: int = Field(alias="amountMinorUnits", gt=0)
+    model_config = {"populate_by_name": True}
+
+
+class TradeInstrumentRequest(BaseModel):
+    account_id: str = Field(alias="accountId", min_length=1, max_length=64)
+    instrument_id: str = Field(alias="instrumentId", min_length=1, max_length=64)
     amount_minor: int = Field(alias="amountMinorUnits", gt=0)
     model_config = {"populate_by_name": True}
 
@@ -309,6 +338,28 @@ class GoalMovementRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class TermDepositRequest(BaseModel):
+    parent_account_id: str = Field(alias="parentAccountId", min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=80)
+    term_months: int = Field(alias="termMonths", ge=1, le=360)
+    initial_deposit_minor: int = Field(alias="initialDepositMinorUnits", gt=0)
+    model_config = {"populate_by_name": True}
+
+
+class TermDepositMovementRequest(BaseModel):
+    amount_minor: int = Field(alias="amountMinorUnits", gt=0)
+    model_config = {"populate_by_name": True}
+
+
+class CreditApplicationRequest(BaseModel):
+    product_id: str = Field(alias="productId", min_length=1, max_length=32)
+    amount_minor: int = Field(alias="amountMinorUnits", gt=0)
+    term_months: int | None = Field(default=None, alias="termMonths", ge=1, le=360)
+    purpose: str = Field(default="", max_length=140)
+    payout_account_id: str = Field(alias="payoutAccountId", min_length=1, max_length=64)
+    model_config = {"populate_by_name": True}
+
+
 class StandingOrderRequest(BaseModel):
     amount_minor: int = Field(alias="amountMinorUnits", gt=0)
     frequency: str
@@ -325,6 +376,8 @@ class SynthesizeRequest(BaseModel):
 ServiceDep = Annotated[OnboardingService, Depends(get_onboarding_service)]
 AuthDep = Annotated[AuthService, Depends(get_auth_service)]
 AccountsDep = Annotated[AccountsService, Depends(get_accounts_service)]
+TermDepositsDep = Annotated[TermDepositsService, Depends(get_term_deposits_service)]
+CreditsDep = Annotated[CreditsService, Depends(get_credits_service)]
 PaymentsDep = Annotated[PaymentsService, Depends(get_payments_service)]
 CardsServiceDep = Annotated[CardsService, Depends(get_cards_service)]
 InvestmentsDep = Annotated[InvestmentsService, Depends(get_investments_service)]
@@ -356,6 +409,9 @@ exchange_router = APIRouter(prefix="/exchange", tags=["exchange"])
 investments_router = APIRouter(prefix="/investments", tags=["investments"])
 insights_router = APIRouter(prefix="/insights", tags=["insights"])
 goals_router = APIRouter(prefix="/goals", tags=["goals"])
+deposits_router = APIRouter(prefix="/deposits", tags=["deposits"])
+credits_router = APIRouter(prefix="/credits", tags=["credits"])
+education_router = APIRouter(prefix="/education", tags=["education"])
 agents_router = APIRouter(prefix="/agents", tags=["agents"])
 
 
@@ -395,6 +451,21 @@ CurrentActor = Annotated[Actor, Depends(current_actor)]
 SessionToken = Annotated[str, Depends(bearer_token)]
 ClientIp = Annotated[str | None, Depends(client_ip)]
 ClientUserAgent = Annotated[str | None, Depends(client_user_agent)]
+
+
+async def require_investment_account(actor: CurrentActor, accounts: AccountsDep) -> None:
+    owned = await accounts.owned_accounts(actor.id)
+    has_investment_account = any(
+        account.kind is AccountKind.INVEST and account.status is AccountStatus.ACTIVE
+        for account in owned
+    )
+    if not has_investment_account:
+        raise NotFoundError(
+            "Open an investment account first.", details={"field": "accountId"}
+        )
+
+
+InvestmentAccountRequired = Annotated[None, Depends(require_investment_account)]
 @api_router.get("/health", tags=["platform"])
 async def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -679,8 +750,17 @@ async def open_account(
     payload: OpenAccountRequest,
     idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
-    command = OpenAccount(currency=payload.currency, kind=payload.kind)
+    command = OpenAccount(currency=payload.currency, kind=payload.kind, label=payload.label)
     return await bus.execute(command, actor, idempotency_key)
+
+
+@accounts_router.post("/{account_id}/close")
+async def close_account(
+    actor: CurrentActor,
+    account_id: str,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    return await bus.execute(CloseAccount(account_id=account_id), actor, idempotency_key)
 
 
 @exchange_router.get("/rate")
@@ -951,15 +1031,52 @@ async def market_snapshot(
     return await service.market(range, force=refresh)
 
 
+@investments_router.get("/portfolio")
+async def investments_portfolio(
+    actor: CurrentActor, service: InvestmentsDep, _: InvestmentAccountRequired
+) -> dict[str, Any]:
+    return await service.portfolio(actor.id)
+
+
+@investments_router.post("/buy", status_code=201)
+async def buy_instrument(
+    actor: CurrentActor,
+    payload: TradeInstrumentRequest,
+    _: InvestmentAccountRequired,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = BuyInstrument(
+        account_id=payload.account_id,
+        instrument_id=payload.instrument_id,
+        amount_minor=payload.amount_minor,
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@investments_router.post("/sell", status_code=201)
+async def sell_instrument(
+    actor: CurrentActor,
+    payload: TradeInstrumentRequest,
+    _: InvestmentAccountRequired,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = SellInstrument(
+        account_id=payload.account_id,
+        instrument_id=payload.instrument_id,
+        amount_minor=payload.amount_minor,
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
 @insights_router.get("")
 async def list_insights(
+    actor: CurrentActor,
     service: VendorInsightsDep,
     fx: FxInsightsDep,
-    username: str | None = None,
     limit: int | None = None,
 ) -> dict[str, Any]:
-    board = await service.board_for_username(username, limit)
-    fx_board = await fx.board_for_username(username, limit)
+    board = await service.board_for_user(actor.id, limit)
+    fx_board = await fx.board_for_user(actor.id, limit)
     return {**board.model_dump(), "fx": fx_board.model_dump()}
 @agents_router.post("/support/ask")
 async def ask_support(
@@ -1071,6 +1188,39 @@ async def create_goal(
     return await bus.execute(command, actor, idempotency_key)
 
 
+@goals_router.get("")
+async def list_goals(actor: CurrentActor) -> dict[str, Any]:
+    progress = await get_goals_service().list_active_progress_for_user(actor.subject_id())
+    capability = get_capabilities_service().get("analytics.goal_gap.get")
+    goals = []
+    for item in progress:
+        gap = await capability.resolve(
+            actor, analytics_capabilities.GoalGapInput(goalId=item.goal.id)
+        )
+        projection = gap.model_dump(by_alias=True)
+        goals.append(
+            {
+                "goalId": item.goal.id,
+                "name": item.goal.name,
+                "accountId": item.goal.account_id,
+                "parentAccountId": item.goal.parent_account_id,
+                "targetMinorUnits": item.goal.target_minor,
+                "currency": item.goal.currency,
+                "targetDate": item.goal.target_date.isoformat(),
+                "createdAt": item.goal.created_at.isoformat(),
+                "progressMinorUnits": item.progress_minor,
+                "streakWeeks": item.streak_weeks,
+                "streakLastWeek": item.streak_last_week,
+                "sharedParentAccount": item.goal.uses_shared_parent_account(),
+                "requiredMinorUnitsPerMonth": projection.get("requiredMinorUnitsPerMonth"),
+                "actualMinorUnitsPerMonth": projection.get("actualMinorUnitsPerMonth"),
+                "gapMinorUnitsPerMonth": projection.get("gapMinorUnitsPerMonth"),
+                "projectedCompletionDate": projection.get("projectedCompletionDate"),
+            }
+        )
+    return {"goals": goals}
+
+
 @goals_router.get("/progress")
 async def goal_progress(actor: CurrentActor) -> dict[str, Any]:
     capability = get_capabilities_service().get("analytics.goal_gap.get")
@@ -1161,6 +1311,41 @@ async def resume_standing_order(
     return await bus.execute(command, actor, idempotency_key)
 
 
+@education_router.get("/lessons")
+async def list_lessons() -> dict[str, Any]:
+    return {
+        "lessons": [
+            {
+                "id": lesson.id,
+                "titleEn": lesson.title_en,
+                "titleRo": lesson.title_ro,
+                "bodyEn": lesson.body_en,
+                "bodyRo": lesson.body_ro,
+                "questions": [
+                    {
+                        "id": question.id,
+                        "promptEn": question.prompt_en,
+                        "promptRo": question.prompt_ro,
+                        "options": [
+                            {
+                                "id": option.id,
+                                "labelEn": option.label_en,
+                                "labelRo": option.label_ro,
+                            }
+                            for option in question.options
+                        ],
+                        "correctOptionId": question.correct_option_id,
+                        "explanationEn": question.explanation_en,
+                        "explanationRo": question.explanation_ro,
+                    }
+                    for question in lesson.questions
+                ],
+            }
+            for lesson in load_lessons()
+        ]
+    }
+
+
 @goals_router.post("/standing-order/{standing_order_id}/cancel")
 async def cancel_standing_order(
     actor: CurrentActor,
@@ -1168,6 +1353,88 @@ async def cancel_standing_order(
     idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
     command = CancelStandingOrder(standing_order_id=standing_order_id)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@deposits_router.get("")
+async def list_term_deposits(actor: CurrentActor, deposits: TermDepositsDep) -> dict[str, Any]:
+    return {"deposits": await deposits.list_for_user(actor.subject_id())}
+
+
+@deposits_router.post("", status_code=201)
+async def create_term_deposit(
+    actor: CurrentActor,
+    payload: TermDepositRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = CreateTermDeposit(
+        parent_account_id=payload.parent_account_id,
+        name=payload.name,
+        term_months=payload.term_months,
+        initial_deposit_minor=payload.initial_deposit_minor,
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@deposits_router.post("/{deposit_id}/topup")
+async def topup_term_deposit(
+    actor: CurrentActor,
+    deposit_id: str,
+    payload: TermDepositMovementRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = TopUpTermDeposit(deposit_id=deposit_id, amount_minor=payload.amount_minor)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@deposits_router.post("/{deposit_id}/withdraw")
+async def withdraw_from_term_deposit(
+    actor: CurrentActor,
+    deposit_id: str,
+    payload: TermDepositMovementRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = WithdrawFromTermDeposit(deposit_id=deposit_id, amount_minor=payload.amount_minor)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@deposits_router.post("/{deposit_id}/close")
+async def close_term_deposit(
+    actor: CurrentActor,
+    deposit_id: str,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    return await bus.execute(CloseTermDeposit(deposit_id=deposit_id), actor, idempotency_key)
+
+
+@credits_router.get("/applications")
+async def list_credit_applications(actor: CurrentActor, credits: CreditsDep) -> dict[str, Any]:
+    return {"applications": await credits.list_for_user(actor.subject_id())}
+
+
+@credits_router.post("/applications", status_code=201)
+async def submit_credit_application(
+    actor: CurrentActor,
+    payload: CreditApplicationRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = SubmitCreditApplication(
+        product_id=payload.product_id,
+        amount_minor=payload.amount_minor,
+        term_months=payload.term_months,
+        purpose=payload.purpose,
+        payout_account_id=payload.payout_account_id,
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@credits_router.post("/applications/{application_id}/withdraw")
+async def withdraw_credit_application(
+    actor: CurrentActor,
+    application_id: str,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = WithdrawCreditApplication(application_id=application_id)
     return await bus.execute(command, actor, idempotency_key)
 
 
@@ -1179,5 +1446,8 @@ api_router.include_router(cards_router)
 api_router.include_router(investments_router)
 api_router.include_router(insights_router)
 api_router.include_router(goals_router)
+api_router.include_router(deposits_router)
+api_router.include_router(credits_router)
+api_router.include_router(education_router)
 api_router.include_router(agents_router)
 api_router.include_router(exchange_router)

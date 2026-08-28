@@ -35,8 +35,8 @@ Cards screen itself still renders from `dashboard-data.js`, not from these endpo
 "Cards — a backend without a session" below before wiring it up.
 
 The **Investments** widget on the Portfolio screen is the other: its prices, history and FX are
-real, fetched live through `backend/investments/`. See "Investments — real prices, demo trades"
-below.
+real, fetched live through `backend/investments/`, and so are Buy and Sell — see
+"Investments — real prices, real trades" below.
 
 The mockup's **Payments** screen now moves real money for its core flow, through the same
 `backend/payments/` module as the (currently unrendered) standalone `PaymentsPage`:
@@ -61,35 +61,61 @@ The mockup's **Payments** screen now moves real money for its core flow, through
   movements table. `Cards` selects card-channel movements; the filter box matches counterparty,
   reference or IBAN.
 
-The **Portfolio** screen mixes the same way:
+The **Portfolio** screen (nav key `accounts`, i18n-labeled "Portfolio") is now real end to end —
+accounts, term deposits, savings goals and credit applications all read from and write to MongoDB
+through the one write path. It used to mix real accounts with React-state-only deposit and credit
+mocks; that mock data is gone, replaced by two small new feature folders (`backend/deposits/` and
+`backend/credits/`) shaped exactly like `backend/goals/` below:
 
-- **Open new account** picks a type and currency. For **Current** and **Savings** — and now
-  **Invest** — it posts `OpenAccount` to `/accounts`, which mints a real GEMS IBAN and writes the
-  account to MongoDB; an optional funding amount is a second, real internal transfer through the
-  same payments path above (and can itself land in `awaiting_signature`). The new account shows up
-  everywhere accounts are listed, including the payment dropdowns. **Term deposit** and **Savings
-  goal** still create React-state-only products, since deposits are not a v0 concept on the ledger.
-- **New deposit** opens a term deposit or a savings goal with a target — React state only. Term
-  rates come from `depositTerms`; the money leaves the funding account (a real account, debited
-  only in local state) and the maturity date is computed from the term. Every product can be
-  topped up, withdrawn from, or closed — closing returns the balance to an account in the same
-  currency, again only in local state.
-- **Investments** buy and sell holdings at the stored unit price, spending *cash to invest* before
-  touching an account, exactly as `PROMPT.md` requires — no command, no journal entry, no outbox
-  event for a trade. *Cash to invest* itself is real, though: it is the balance of the customer's
-  `invest`-kind account, read the same way as any other account. A customer with no investment
-  account sees an **"Open an investment account"** button in its place instead of an invented
-  number. Position value is derived from units times price, so the INVESTMENTS header always
-  equals the sum of what is listed under it.
-- **Apply for credit** records an application against a product from `creditProducts` (with its
-  rate and maximum) and leaves it in `review`. **Nothing is approved here.** The eligibility
-  decision is the seam left for a future agent that reads accounts and income; until that agent
-  exists, applications sit in review and say so on screen. React state only.
+- **Open new account** picks a type, a currency, and an optional **name** — a plain `label` on the
+  `Account` aggregate (it already existed for the auto-generated default; the dialog just lets the
+  customer override it now). For **Current**, **Savings** and **Invest** it posts `OpenAccount` to
+  `/accounts`, which mints a real GEMS IBAN and writes the account to MongoDB; an optional funding
+  amount is a second, real internal transfer through the same payments path above (and can itself
+  land in `awaiting_signature`). The new account shows up everywhere accounts are listed, including
+  the payment dropdowns. **Term deposit** now opens a real account too (see below); **Savings
+  goal** is created from its own card rather than this dialog (see below).
+- **Term deposits** (`backend/deposits/`) open a real `savings`-kind pot account — same shape as a
+  goal's pot — funded by a real transfer from a chosen account of the customer's, at a rate looked
+  up server-side from `products.catalogue.DEPOSIT_PRODUCTS["term"]` by the term in months (the
+  client cannot submit a rate). Top-up and withdraw are real transfers between the pot and its
+  parent account (`LedgerService.transfer`, the same door `payments` and `goals` already use — not
+  a new caller of `post_transaction`). Closing sweeps any balance back to the parent and closes the
+  pot account, same as a goal. Unlike goals, a customer can hold **several** term deposits at once,
+  and a deposit can be **closed anytime** — no early-withdrawal penalty is modeled, a deliberate
+  demo simplification.
+- **Savings goal** is unchanged and was already real (see "Agents" below for `backend/goals/`) —
+  the Portfolio screen now simply surfaces the same `GoalProgressCard` component the Analytics and
+  Education screens already used, instead of duplicating goal creation in the Open Account dialog.
+  GEMS still supports one *active* goal per customer at a time.
+- **Investments** buy and sell holdings for real, at the live unit price. Every trade runs
+  `BuyInstrument` / `SellInstrument` through `bus.execute` — idempotent, audited, one outbox event
+  — exactly like every other write in this system. A customer with no `invest`-kind account cannot
+  reach the screen's trading actions at all: they see an **"Open an investment account"** button
+  instead, and the API refuses the trade regardless (`require_investment_account` at the route,
+  the command handler's own ownership-and-kind check underneath it — the real enforcement
+  boundary). Position value is derived from units times price, so the INVESTMENTS header always
+  equals the sum of what is listed under it. See "Investments — real prices, real trades" below
+  for the money mechanics.
+- **Apply for credit** (`backend/credits/`) records a real `CreditApplication` against a product
+  from `products.catalogue.CREDIT_PRODUCTS` (amount and term validated against it server-side) and
+  leaves it in `review`, persisted in MongoDB — it survives a refresh, unlike the old mock.
+  **Nothing is approved here.** The eligibility decision is still the seam left for a future agent
+  that reads accounts and income; until that agent exists, applications sit in `review` and say so
+  on screen. Withdrawing an application is a real status transition to `withdrawn`, never a delete
+  — consistent with the rest of the app never hard-deleting state. The Credits card shows only real
+  applications; there is no fake "active loan" placeholder any more.
+- **Transfer between my accounts** is a quick-access button on the Portfolio screen's accounts
+  section. It calls the exact same `/payments/transfers` endpoint the "Between my accounts" tab of
+  New Payment already uses — a second, more convenient front door onto the one existing money door,
+  not a new pathway.
 
 The Dashboard home screen's quick actions split the same way. **Add funds** is a mock top-up —
 React state only, chosen deliberately over a real house-treasury deposit so it stays an obvious
 sandbox action, not something that reads as a real funding rail. **Exchange** is real: see
-"Exchange — real currency conversion" below.
+"Exchange — real currency conversion" below. The home screen's account list is now a preview of the
+first three accounts with a "see all" link to Portfolio, rather than the full list duplicated in
+both places.
 
 Balances and amounts in the mockup are integer minor units, formatted for display, so the
 arithmetic above matches rule 1 even though no money is real. Interest rates are integer basis
@@ -171,6 +197,20 @@ backend/
     service.py       open, resolve by IBAN, list with balances derived from the ledger
     validation.py    IBAN mod-97 check and generation
     adapters.py      clock, the starter-account list
+  goals/             savings goals — a real pot account plus a target, funded/topped up/withdrawn
+                     via LedgerService.transfer; one active goal per user; standing orders
+    goal.py          the Goal aggregate
+    standing_order.py the StandingOrder aggregate
+    service.py       create/close/deposit/withdraw, standing-order create/pause/resume/cancel/run
+    validation.py    name, target amount/date, movement amount, frequency
+  deposits/          term deposits — shaped exactly like goals/, minus the one-per-user limit
+    deposit.py       the TermDeposit aggregate
+    service.py       create/top-up/withdraw/close, rate looked up from products.catalogue by term
+    validation.py    name, term-months whitelist, movement amount
+  credits/           credit applications — a record only, no money movement, no approval
+    application.py   the CreditApplication aggregate
+    service.py       submit/withdraw, amount and term validated against products.catalogue
+    validation.py    amount/term/purpose bounds
   investments/       market data only — read-only, no money movement
     instrument.py    Instrument, Quote, HistoryPoint, ExchangeRate, MarketSnapshot
     service.py       catalogue reads, TTL cache, last-known-good fallback, FX conversion
@@ -448,11 +488,11 @@ Other tradeoffs worth knowing:
     self-service recovery, by design. A correct password at any stage before that resets the
     track to zero.
 
-## Investments — real prices, demo trades
+## Investments — real prices, real trades
 
-`backend/investments/` is the only feature that reaches outside the system. It is **read-only**:
-no command, no journal entry, no outbox event. Buy and Sell on the Portfolio screen still move
-React state only, exactly as before — the money door is untouched.
+`backend/investments/` is the only feature that reaches outside the system for prices, and (like
+`backend/exchange/`) one of the two feature folders approved to call `LedgerService.post_transaction`
+directly for a trade — see rule 5 in `CLAUDE.md`.
 
 Two public providers, neither needing a key or an account:
 
@@ -485,8 +525,58 @@ says so, with the timestamp of the data it is actually showing. Retries back off
 The cache is per-process and in memory: a restart loses the last-known-good and falls back to the
 baked-in prices until the first successful fetch.
 
-`Instrument.id` values (`h-msci`, `h-tlv`, `h-btc`) match the holding ids in `dashboard-data.js`;
-that join is what lets the mockup's unit counts meet real prices.
+The Portfolio screen no longer keeps its own holding list in `dashboard-data.js`: it builds the
+row set straight from `market.quotes` (the full catalogue) and overlays each customer's real
+`quantityMicro` from `GET /investments/portfolio` by `Instrument.id`, so a newly-listed instrument
+in `CATALOGUE` appears with zero units automatically, with nothing to keep in sync by hand.
+
+### Trading — gated by an investment account, real money
+
+- `GET /investments/portfolio` — the caller's `invest`-kind accounts, each with its RON cash
+  balance and its holdings, valued at the current live quote
+- `POST /investments/buy` / `POST /investments/sell` — `{ accountId, instrumentId, amountMinorUnits }`,
+  run through `bus.execute` like every other write: idempotent (`Idempotency-Key`), audited, one
+  outbox event (`investments.bought` / `investments.sold`)
+
+All three routes carry a `require_investment_account` dependency that 404s upfront if the caller
+holds no active `invest`-kind account — the fast, UX-facing rejection. The actual security
+boundary is inside the command handler itself, same as every other feature: it re-resolves the
+account through `AccountsService.get_owned` (refuses one that isn't the caller's) and checks
+`account.kind is AccountKind.INVEST` before doing anything else. A route-level check alone would
+not be enough — nothing stops a handler from being called another way in the future — so the
+guard lives in both places, exactly the pattern `exchange` and `payments` already use for
+ownership checks.
+
+A trade posts **one** `investment_buy` / `investment_sell` journal transaction, quantity computed
+server-side from the *live* quote (never trusted from the client):
+
+- **Buy**: `-amount` from the `invest` account, `+amount` into `house:invest_suspense:{currency}`.
+- **Sell**: `-amount` from `house:invest_suspense:{currency}`, `+amount` into the account.
+
+`house:invest_suspense` is a demo treasury exactly like `house:fx` and `house:settlement` — not a
+real `Account` document, never balance-checked. Each trade also appends one row to the
+append-only `investmentOrders` collection (`userId`, `accountId`, `instrumentId`, `side`,
+`quantityMicro`, `unitPriceMinor`, `amountMinor`, `journalTransactionId`) — units are scaled by
+1e6 (`quantityMicro`) the same way FX rates are scaled by 1e6, so fractional shares and crypto
+never need a float. **Holdings are never stored as a mutable number**: a position is the signed
+sum of that account's orders, computed on read —
+
+```python
+[
+    {"$match": {"accountId": account_id}},
+    {"$group": {
+        "_id": "$instrumentId",
+        "quantity": {"$sum": {
+            "$cond": [{"$eq": ["$side", "buy"]}, "$quantityMicro", {"$multiply": ["$quantityMicro", -1]}]
+        }},
+    }},
+]
+```
+
+against `investmentOrders` — the same "derive from an append-only log, never mutate a balance"
+discipline rule 4 requires of the ledger itself. `MongoInvestmentOrderRepository.holdings_for_account`
+(`backend/database/repositories.py`) runs exactly this pipeline; `InvestmentsService.portfolio`
+joins its result with the live market snapshot to price each position.
 
 ## Exchange — real currency conversion
 
@@ -1073,14 +1163,29 @@ orchestrator worker, `EducationAgent` (`backend/agents/education.py`). This is t
 deliberate, explicitly-approved deviation past `PROMPT.md` §4 as the rest of the agent layer — a new
 caller of the existing seams, not a new pathway.
 
-`EducationAgent` reads from four capabilities, all `SideEffect.READ`:
+`EducationAgent` reads from seven capabilities, all `SideEffect.READ`:
 `education.docs.search` (a small hand-authored corpus — emergency funds, budgeting, compound
 interest, inflation, term deposits, debt payoff order, diversification, the deposit guarantee
 scheme, APR — in `backend/capabilities/education_docs.py`, scored by the same bag-of-words matcher
 `support_docs.py` already uses, so it degrades to "here's the whole corpus" rather than inventing
-an answer when nothing scores), plus `analytics.goal_gap.get`, `analytics.cashflow_forecast.get`
-and `payments.balances.get` reused as-is for personalised advice grounded in the customer's own
-numbers.
+an answer when nothing scores), plus `analytics.goal_gap.get`, `analytics.cashflow_forecast.get`,
+`analytics.month_recap.get`, `analytics.what_changed.get`, `analytics.recommendations.get` and
+`payments.balances.get` reused as-is for personalised advice grounded in the customer's own
+numbers. The three transaction-reading analytics tools are the difference between advice about the
+customer's *money* and advice about their one savings goal: without them the agent could only ever
+personalise around a goal, and had nothing to say to a customer who has not set one.
+
+`analytics.recommendations.get` is the same widening on the capability side. It used to lead with
+two goal-derived entries (`goal_projection`, `savings_rate`) and add at most one `category_alert`;
+it now also returns a `spending_cap` on the largest discretionary category
+(`_DISCRETIONARY_CATEGORIES`, trimmed by `_SPENDING_CAP_TRIM_PCT` — both constants had been sitting
+unused), every category that grew past the significance thresholds rather than only the worst one
+(`_MAX_CATEGORY_ALERTS`), a `recurring_spend` roll-up of the subscriptions `_detect_recurring_groups`
+already finds for the cashflow forecast, and — when there is no goal — a `savings_rate` computed
+from last month's income against last month's spend. Every entry still carries its own pre-formatted
+strings; the agents are still forbidden from doing arithmetic. This is what the "Personalized
+recommendations" card on the Education screen renders, so that card no longer degrades to goal talk
+for a customer without a goal.
 
 **Setting a goal from the conversation** is the one new write-shaped capability,
 `goals.create.propose` (`backend/capabilities/education.py::resolve_goal_proposal`), built the same
@@ -1090,6 +1195,14 @@ target amount, target date) and **returns a proposal, never persists one** — n
 goal" proof, the same shape as `test_payments_agent_proposes_but_never_pays.py`. The customer
 confirms it as a card in the chat panel, which calls the existing `POST /goals` — the same command
 `SetGoalDialog` already uses — so a goal is still only ever created through one path.
+
+`GoalProposalInput` also takes an optional `currency`, the ISO code of the currency the customer
+named the amount in. A customer holding both "Cont curent" (RON) and "Cont curent USD" made
+`accountRef: "curent"` tie on `_match_score`, so the proposal came back `needs_clarification` and no
+card ever appeared — the customer asked for a goal and got a question instead. The currency only
+breaks a tie: it narrows an already-ambiguous match set, and if none of the tied accounts hold it
+the proposal still asks. `_match_score` and `_resolve_ref` in `backend/capabilities/payments.py` are
+untouched, so the money-moving transfer proposal keeps its stricter behaviour.
 
 The one piece of shared infrastructure this needed: `ToolCallingAgent`'s proposal path
 (`backend/agents/base.py`) only recognised `SideEffect.MONEY_MOVING` as proposable. `goals.create`
@@ -1174,6 +1287,95 @@ and toggling Read Aloud in Settings or the chat header automatically reads incom
 aloud with seamless in-memory audio caching and client-side `window.speechSynthesis` fallback.
 >>>>>>> f246952780604fd79494ff16c6ba4db93b0d52b8
 
+## Savings goals: many at once, with a real streak
+
+> The conflict block immediately above this section is an **unresolved merge conflict committed to
+> `main`** in `af2f062` ("fixed app"). Both of its sides describe the superseded "one active goal
+> per user" model. It needs the goals track's owner to resolve it; this section documents what the
+> code actually does now.
+
+**One active goal per user is gone.** A user may hold any number of active goals in parallel, each
+with its own savings pot, target, projection and streak.
+
+The single-goal rule was never enforced in one place, which is what made it fail. It lived in three:
+a `ConflictError` in `GoalsService._handle_create`, a `get_for_user` query, and a unique Mongo index.
+`ops/011_goals_status.js` was supposed to replace the plain unique index `uq_user`
+(`ops/008_goals_schema.js`) with a partial one, but **on any database where 011 was never applied by
+hand, `uq_user` survived** — and a plain unique index on `userId` rejects a second goal whether the
+first is active or closed. Closing worked correctly; creating the replacement then failed on a
+`DuplicateKeyError` that `MongoGoalRepository.add` relabelled as "You already have a goal", naming a
+constraint that was not the one firing. That is the whole bug.
+
+Both indexes are now gone, replaced by a non-unique `ix_user_status` on `{userId, status}`.
+Because the original failure was a migration that never ran, `ensure_indexes`
+(`backend/database/mongo.py`) **drops every unique index on `goals` except `_id_`** before creating
+the new index, so neither an unapplied migration nor a legacy index under some other name can
+resurrect the bug. `ops/013_goals_multi_and_streak.js` records the same change for databases rebuilt
+from the migration set.
+
+The shared demo database is written by several API instances at once, and one still running
+pre-fix code re-creates `uq_user_active` at its own startup. Dropping the index once therefore does
+not hold. `_index_reassert_loop` in `backend/main.py` re-runs `ensure_indexes` every
+`INDEX_REASSERT_SECONDS` (default 300) so that drift is corrected without waiting for a restart;
+`create_index` is a no-op when the index already matches, so the loop only ever removes the legacy
+unique index. It is a guard for a shared demo database, not a substitute for every instance running
+current code.
+
+**Closing a goal is still a status transition, never a delete** — the history is needed for streaks
+and reporting. Closing now also refuses to touch the funding account when a goal's `accountId`
+equals its `parentAccountId` (`Goal.uses_shared_parent_account`); see the risk note below.
+
+**The streak is derived and persisted.** `backend/goals/streak.py` counts consecutive ISO calendar
+weeks with at least one credit into the goal's pot, reading the pot's own journal movements — the
+ledger stays the source of truth, and the count is a rebuildable read model stored on the goal as
+`streakWeeks` / `streakLastWeek` / `streakComputedAt`. It is refreshed inside the command-bus
+handlers that can change it (deposit, withdraw, standing-order run), so the write still goes through
+the one write path. Read paths derive it fresh, so a streak that lapses is shown as lapsed
+immediately rather than waiting for the next contribution.
+
+`analytics.goal_gap.get` and `analytics.goal_pace.get` no longer compute a second, different streak
+from the payments list; they report the goals service's number, so the agent's narration and the
+card on screen can never disagree. Both capabilities now honour the `goalId` they already accepted,
+so each goal can be projected independently.
+
+`GET /goals` returns every active goal with its progress, streak and projection.
+`GET /goals/progress` and `GET /goals/pace` still answer for a single goal, unchanged, so the
+existing agent tools keep working.
+
+**Financial education content.** `backend/capabilities/education_lessons.py` holds eight
+micro-lessons, **each carrying its own five-question quiz** (40 questions in total), as frozen
+dataclasses in EN and RO, following `education_docs.py` — static seed content, no CMS, no
+collection, no generation flow. `GET /education/lessons` serves each lesson with its questions
+nested inside it. Each lesson card has a "Start quiz" button that opens the quiz as a modal
+(`QuizDialog`); on submit it shows the score, marks the correct answer on every question, and
+explains each one. Grading happens in the browser and nothing about an attempt is persisted, so the
+quiz adds no write path and no new collection.
+
+**Reading the goal.** The projection is a **progress ring**, not a line chart: percentage, amount
+saved and target in the centre, with a slider beside it for "if I put aside this much each month".
+Moving it recomputes the completion date live, entirely client-side from figures the API already
+returned, and the result is tinted by whether that pace still meets the target date. A one-tap hint
+sets the slider to the rate the goal actually needs. The earlier two-series line chart was replaced
+because it was hard to read at a glance and never answered the question the user was actually
+asking.
+
+### Known risk: legacy goals whose pot is the account that funds them
+
+`ops/012_savings.js` backfilled `parentAccountId = "$accountId"` for goals created before dedicated
+pots existed. For those rows the pot **is** the funding account, and the close path used to sweep
+the pot into the parent and then close it. On the shared demo database that has already happened
+once: a goal closed on 2026-08-28 posted journal transaction `01a04742-8a4a…` with both entries on
+account `01a01ed4-9a3a…` (`-79140` and `+79140` — balanced, so the double-entry constraint passed,
+but economically a no-op now permanent in an append-only journal), and then closed that account,
+which was the customer's main current account. `JournalTransaction.entry_for` returns only the first
+matching entry, so that transaction also renders misleadingly in a statement.
+
+The close path is now guarded, so this cannot happen again. **The existing damaged data has been
+left exactly as it is** — the closed account and the self-transfer are the goals track's to decide
+on, and the journal is append-only in any case. Affected rows are visible with
+`db.goals.find({$expr: {$eq: ["$accountId", "$parentAccountId"]}})`.
+
+
 ## What the payments screen does not do yet
 
 Present in the interface, deliberately inert, each marked "coming soon" rather than removed
@@ -1212,8 +1414,9 @@ Also missing, and worth knowing:
 
 ## Agent insights on the dashboard
 
-The AGENT INSIGHTS card reads `GET /api/insights?username=...`. That endpoint is scoped to the
-signed-in user and nothing else: a user with no notifications of their own gets an empty card.
+The AGENT INSIGHTS card reads `GET /api/insights`. The user id comes from the session actor, not
+from a query parameter, so the endpoint is scoped to the signed-in user and nothing else: a user
+with no notifications of their own gets an empty card.
 It never falls back to another user's rows — an earlier version did, and showed one synthetic
 user's bill as if it were yours.
 
@@ -1309,10 +1512,12 @@ before `baseline_days` (7) earlier — nearest-on-or-before, so a weekend or a h
 to the previous banking day instead of losing the comparison. Over threshold in either direction
 becomes one row in `fxSignals` with `direction: "up" | "down"`.
 
-The threshold is `1.5%`, not the 8%/12% the vendor pipeline uses. Currency rates move roughly an
-order of magnitude less than consumer prices — EUR/RON moved 0.26% over the week of 2026-08-26 —
-so reusing a vendor-sized threshold would mean the rule never fires and a rate crisis would look
-identical to a quiet week.
+The threshold is `0.5%`, not the 8%/12% the vendor pipeline uses. Currency rates move roughly an
+order of magnitude less than consumer prices — EUR/RON moved 0.26% over the week of 2026-08-26 and
+USD/RON 0.55% over the week of 2026-08-28 — so reusing a vendor-sized threshold would mean the
+rule never fires and a rate crisis would look identical to a quiet week. It started at `1.5%`,
+which on a leu this tightly managed against the euro is the same mistake one order of magnitude
+smaller: no week in the feed's ten-day window ever reached it.
 
 **Who hears about it.** Only a user with a positive balance in that currency. There is no
 read-only accounts adapter equivalent to `vendors/payments_adapter.py` — `accounts/service.py` is
@@ -1354,7 +1559,7 @@ redirect to the homepage, so this one is configuration, not a constant). Vendor 
 the first URL in `newsUrls`, labelled with the publishers; an insight with no external source
 (`origin: internal_mathematical`) says so in words instead of offering a dead link.
 
-**The endpoint.** `GET /api/insights?username=...` was extended rather than duplicated, and the
+**The endpoint.** `GET /api/insights` was extended rather than duplicated, and the
 FX rows sit in their own `fx` key:
 
 ```json

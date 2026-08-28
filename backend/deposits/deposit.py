@@ -1,40 +1,34 @@
 from datetime import date, datetime, timezone
 from typing import Any, Literal
 
+from backend.helpers.context import new_id
 from pydantic import BaseModel, Field
 
-from backend.helpers.context import new_id
 
-
-class Goal(BaseModel):
+class TermDeposit(BaseModel):
     id: str = Field(default_factory=new_id)
     user_id: str
     account_id: str
     parent_account_id: str
     name: str
-    target_minor: int
+    rate_bps: int
+    term_months: int
     currency: str
-    target_date: date
+    matures_at: date
     status: Literal["active", "closed"] = "active"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     closed_at: datetime | None = None
-    streak_weeks: int = 0
-    streak_last_week: str | None = None
-    streak_computed_at: datetime | None = None
-
-    def uses_shared_parent_account(self) -> bool:
-        return self.account_id == self.parent_account_id
 
     def public_view(self) -> dict[str, Any]:
         return {
-            "goalId": self.id,
+            "depositId": self.id,
             "accountId": self.account_id,
             "parentAccountId": self.parent_account_id,
             "name": self.name,
-            "target": {"minorUnits": self.target_minor, "currency": self.currency},
-            "targetDate": self.target_date.isoformat(),
+            "rateBps": self.rate_bps,
+            "termMonths": self.term_months,
+            "currency": self.currency,
+            "maturesAt": self.matures_at.isoformat(),
             "status": self.status,
             "createdAt": self.created_at.isoformat(),
-            "streakWeeks": self.streak_weeks,
-            "streakLastWeek": self.streak_last_week,
         }

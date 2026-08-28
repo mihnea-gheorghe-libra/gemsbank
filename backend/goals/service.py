@@ -12,10 +12,14 @@ from backend.accounts.account import AccountKind
 from backend.accounts.service import AccountsService, get_accounts_service
 from backend.command_bus import Command, CommandBus, CommandResult, bus
 from backend.database.records import AuditRecord, DomainEvent
-from backend.database.repositories import MongoGoalRepository, MongoStandingOrderRepository
+from backend.database.repositories import (
+    MongoGoalRepository,
+    MongoStandingOrderRepository,
+)
 from backend.goals import validation
 from backend.goals.goal import Goal
 from backend.goals.standing_order import StandingOrder
+from backend.goals.streak import STREAK_LOOKBACK_WEEKS, streak_from_movements
 from backend.helpers.context import Actor, ActorContext
 from backend.helpers.errors import ConflictError, IllegalTransitionError, NotFoundError
 from backend.ledger.service import LedgerService, get_ledger_service
@@ -33,6 +37,17 @@ class GoalRepository(Protocol):
     async def get(self, goal_id: str) -> Goal | None: ...
 
     async def get_for_user(self, user_id: str) -> Goal | None: ...
+
+    async def list_active_for_user(self, user_id: str) -> list[Goal]: ...
+
+    async def set_streak(
+        self,
+        goal_id: str,
+        streak_weeks: int,
+        streak_last_week: str | None,
+        computed_at: datetime,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> None: ...
 
     async def close(
         self,
@@ -97,6 +112,8 @@ class SystemClock:
 class GoalProgress:
     goal: Goal
     progress_minor: int
+    streak_weeks: int = 0
+    streak_last_week: str | None = None
 
 
 def _advance(when: datetime, frequency: str) -> datetime:
@@ -201,13 +218,67 @@ class GoalsService:
     async def get_for_user(self, user_id: str) -> Goal | None:
         return await self._goals.get_for_user(user_id)
 
+    async def list_active_for_user(self, user_id: str) -> list[Goal]:
+        return await self._goals.list_active_for_user(user_id)
+
+    async def match_active_for_user(self, user_id: str, ref: str | None) -> list[Goal]:
+        goals = await self._goals.list_active_for_user(user_id)
+        needle = (ref or "").strip()
+        if not needle:
+            return goals
+        by_id = [goal for goal in goals if goal.id == needle]
+        if by_id:
+            return by_id
+        folded = needle.casefold()
+        exact = [goal for goal in goals if goal.name.casefold() == folded]
+        if exact:
+            return exact
+        return [goal for goal in goals if folded in goal.name.casefold()]
+
+    async def _derive_streak(self, goal: Goal) -> tuple[int, str | None]:
+        now = self._clock.now()
+        movements = await self._ledger.statement_movements(
+            goal.account_id, now - timedelta(weeks=STREAK_LOOKBACK_WEEKS), now
+        )
+        return streak_from_movements(movements, now)
+
+    async def _progress_of(self, goal: Goal, user_id: str) -> GoalProgress:
+        account = await self._accounts.get_owned(goal.account_id, user_id)
+        balances = await self._ledger.balances_of([account.id])
+        streak_weeks, streak_last_week = await self._derive_streak(goal)
+        return GoalProgress(
+            goal=goal,
+            progress_minor=balances.get(account.id, 0),
+            streak_weeks=streak_weeks,
+            streak_last_week=streak_last_week,
+        )
+
     async def get_progress_for_user(self, user_id: str) -> GoalProgress | None:
         goal = await self._goals.get_for_user(user_id)
         if goal is None:
             return None
-        account = await self._accounts.get_owned(goal.account_id, user_id)
-        balances = await self._ledger.balances_of([account.id])
-        return GoalProgress(goal=goal, progress_minor=balances.get(account.id, 0))
+        return await self._progress_of(goal, user_id)
+
+    async def list_active_progress_for_user(self, user_id: str) -> list[GoalProgress]:
+        goals = await self._goals.list_active_for_user(user_id)
+        return [await self._progress_of(goal, user_id) for goal in goals]
+
+    async def get_progress_for_goal(self, goal_id: str, user_id: str) -> GoalProgress:
+        goal = await self._goals.get(goal_id)
+        if goal is None or goal.user_id != user_id:
+            raise NotFoundError(
+                "That goal does not belong to you.", details={"field": "goalId"}
+            )
+        return await self._progress_of(goal, user_id)
+
+    async def _persist_streak(
+        self, goal: Goal, session: AsyncIOMotorClientSession | None = None
+    ) -> tuple[int, str | None]:
+        streak_weeks, streak_last_week = await self._derive_streak(goal)
+        await self._goals.set_streak(
+            goal.id, streak_weeks, streak_last_week, self._clock.now(), session=session
+        )
+        return streak_weeks, streak_last_week
 
     async def get_standing_order_for_goal(
         self, goal_id: str, user_id: str
@@ -224,14 +295,6 @@ class GoalsService:
     ) -> CommandResult:
         assert isinstance(command, CreateGoal)
         user_id = context.actor.subject_id()
-
-        existing = await self._goals.get_for_user(user_id)
-        if existing is not None:
-            raise ConflictError(
-                "You already have a goal. GEMS supports one active goal per user for now.",
-                details={"field": "goalId", "existingGoalId": existing.id},
-            )
-
         parent = await self._accounts.get_owned(command.parent_account_id, user_id)
         parent.guard_can_send()
         today = self._clock.today()
@@ -333,7 +396,13 @@ class GoalsService:
             session=session,
         )
 
-        after = {"progressMinorUnits": pot_balance + amount, "journalTransactionId": transaction.id}
+        streak_weeks, streak_last_week = await self._persist_streak(goal, session=session)
+        after = {
+            "progressMinorUnits": pot_balance + amount,
+            "journalTransactionId": transaction.id,
+            "streakWeeks": streak_weeks,
+            "streakLastWeek": streak_last_week,
+        }
         return CommandResult(
             data=goal.public_view() | after,
             audit=AuditRecord(
@@ -381,7 +450,13 @@ class GoalsService:
             session=session,
         )
 
-        after = {"progressMinorUnits": pot_balance - amount, "journalTransactionId": transaction.id}
+        streak_weeks, streak_last_week = await self._persist_streak(goal, session=session)
+        after = {
+            "progressMinorUnits": pot_balance - amount,
+            "journalTransactionId": transaction.id,
+            "streakWeeks": streak_weeks,
+            "streakLastWeek": streak_last_week,
+        }
         return CommandResult(
             data=goal.public_view() | after,
             audit=AuditRecord(
@@ -419,24 +494,26 @@ class GoalsService:
         pot = await self._accounts.get_owned(goal.account_id, user_id)
         parent = await self._accounts.get_owned(goal.parent_account_id, user_id)
         swept_minor = 0
-        pot_balance = await self._ledger.balance_of(pot.id)
-        if pot_balance > 0:
-            pot.guard_can_send()
-            await self._ledger.transfer(
-                source_account_id=pot.id,
-                target_account_id=parent.id,
-                amount_minor=pot_balance,
-                currency=goal.currency,
-                reference="Savings pot closed — balance returned",
-                counterparty=parent.label,
-                category="savings",
-                correlation_id=context.correlation_id,
-                actor=context.actor.label(),
-                session=session,
-            )
-            swept_minor = pot_balance
+        shares_parent_account = goal.uses_shared_parent_account()
+        if not shares_parent_account:
+            pot_balance = await self._ledger.balance_of(pot.id)
+            if pot_balance > 0:
+                pot.guard_can_send()
+                await self._ledger.transfer(
+                    source_account_id=pot.id,
+                    target_account_id=parent.id,
+                    amount_minor=pot_balance,
+                    currency=goal.currency,
+                    reference="Savings pot closed — balance returned",
+                    counterparty=parent.label,
+                    category="savings",
+                    correlation_id=context.correlation_id,
+                    actor=context.actor.label(),
+                    session=session,
+                )
+                swept_minor = pot_balance
 
-        await self._accounts.close_owned(pot.id, user_id, session=session)
+            await self._accounts.close_owned(pot.id, user_id, session=session)
 
         open_order = await self._standing_orders.get_open_for_goal(goal.id)
         if open_order is not None:
@@ -452,7 +529,11 @@ class GoalsService:
             )
 
         before = goal.public_view()
-        after = before | {"status": "closed", "sweptBackMinorUnits": swept_minor}
+        after = before | {
+            "status": "closed",
+            "sweptBackMinorUnits": swept_minor,
+            "sharedParentAccount": shares_parent_account,
+        }
         return CommandResult(
             data=after,
             audit=AuditRecord(
@@ -641,6 +722,10 @@ class GoalsService:
         )
         next_run_at = _advance(order.next_run_at, order.frequency)
         await self._standing_orders.record_run(order.id, next_run_at, now, session=session)
+
+        goal = await self._goals.get(order.goal_id)
+        if goal is not None:
+            await self._persist_streak(goal, session=session)
 
         after = {
             "journalTransactionId": transaction.id,

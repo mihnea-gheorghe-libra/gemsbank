@@ -1,7 +1,5 @@
 from functools import lru_cache
 
-from pydantic import BaseModel, Field
-
 from backend.auth.service import get_auth_service
 from backend.capabilities import analytics
 from backend.capabilities import cards as cards_capabilities
@@ -17,6 +15,7 @@ from backend.capabilities.registry import (
 )
 from backend.capabilities.support_docs import search_support_docs
 from backend.helpers.context import Actor
+from pydantic import BaseModel, Field
 
 
 class SupportSearchInput(BaseModel):

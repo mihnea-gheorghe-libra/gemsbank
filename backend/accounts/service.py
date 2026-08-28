@@ -2,11 +2,9 @@ from datetime import datetime
 from functools import lru_cache
 from typing import Any, ClassVar, Protocol
 
-from motor.motor_asyncio import AsyncIOMotorClientSession
-
 from backend.accounts.account import Account, AccountKind, AccountStatus
 from backend.accounts.adapters import STARTER_ACCOUNTS, SystemClock
-from backend.accounts.validation import generate_iban, normalise_iban
+from backend.accounts.validation import generate_iban, normalise_iban, normalise_label
 from backend.command_bus import Command, CommandBus, CommandResult, bus
 from backend.database.records import AuditRecord, DomainEvent
 from backend.database.repositories import (
@@ -14,14 +12,20 @@ from backend.database.repositories import (
     MongoAuthUserRepository,
 )
 from backend.helpers.context import ActorContext
-from backend.helpers.errors import NotFoundError
+from backend.helpers.errors import (
+    IllegalTransitionError,
+    NotFoundError,
+    ValidationError,
+)
 from backend.ledger.service import LedgerService, get_ledger_service
 from backend.ledger.validation import normalise_currency
+from motor.motor_asyncio import AsyncIOMotorClientSession
 
 __all__ = [
     "Account",
     "AccountKind",
     "AccountsService",
+    "CloseAccount",
     "OpenAccount",
     "get_accounts_service",
     "normalise_iban",
@@ -65,6 +69,13 @@ class OpenAccount(Command):
 
     currency: str
     kind: AccountKind
+    label: str | None = None
+
+
+class CloseAccount(Command):
+    command_name: ClassVar[str] = "accounts.close"
+
+    account_id: str
 
 
 def _label_for(kind: AccountKind, currency: str) -> str:
@@ -90,6 +101,7 @@ class AccountsService:
 
     def register(self, command_bus: CommandBus) -> None:
         command_bus.register(OpenAccount, self._handle_open)
+        command_bus.register(CloseAccount, self._handle_close)
 
     async def open_account(
         self,
@@ -162,13 +174,14 @@ class AccountsService:
         user = await self._users.get(context.actor.id)
         holder_name = user.display_name if user is not None else context.actor.id
         currency = command.currency.strip().upper()
+        label = normalise_label(command.label) if command.label else _label_for(command.kind, currency)
 
         account = await self.open_account(
             user_id=context.actor.id,
             holder_name=holder_name,
             currency=currency,
             kind=command.kind,
-            label=_label_for(command.kind, currency),
+            label=label,
             session=session,
         )
         view = account.public_view(0)
@@ -191,6 +204,49 @@ class AccountsService:
                         "currency": account.currency,
                         "kind": account.kind.value,
                     },
+                )
+            ],
+        )
+
+    async def _handle_close(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, CloseAccount)
+        user_id = context.actor.subject_id()
+        account = await self.get_owned(command.account_id, user_id)
+
+        if account.status is not AccountStatus.ACTIVE:
+            raise IllegalTransitionError(
+                f"This account is already {account.status.value}.",
+                details={"field": "accountId", "status": account.status.value},
+            )
+
+        balance = await self._ledger.balance_of(account.id)
+        if balance != 0:
+            raise ValidationError(
+                "Empty this account before closing it.",
+                details={"field": "accountId", "balanceMinorUnits": balance},
+            )
+
+        before = account.public_view(balance)
+        await self._accounts.set_status(account.id, AccountStatus.CLOSED, session=session)
+        after = before | {"status": AccountStatus.CLOSED.value}
+
+        return CommandResult(
+            data=after,
+            audit=AuditRecord(
+                action="accounts.closed",
+                entity_type="account",
+                entity_id=account.id,
+                before=before,
+                after=after,
+            ),
+            events=[
+                DomainEvent(
+                    name="accounts.closed",
+                    aggregate_type="account",
+                    aggregate_id=account.id,
+                    payload={"userId": user_id},
                 )
             ],
         )

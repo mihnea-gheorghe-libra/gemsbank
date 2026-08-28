@@ -1,11 +1,10 @@
+from backend.config import settings
 from motor.motor_asyncio import (
     AsyncIOMotorClient,
     AsyncIOMotorCollection,
     AsyncIOMotorDatabase,
 )
 from pymongo import ASCENDING, DESCENDING
-
-from backend.config import settings
 
 _client: AsyncIOMotorClient | None = None
 
@@ -90,8 +89,26 @@ def standing_orders_collection() -> AsyncIOMotorCollection:
     return get_db()["standingOrders"]
 
 
+def investment_orders_collection() -> AsyncIOMotorCollection:
+    return get_db()["investmentOrders"]
+
+
+def term_deposits_collection() -> AsyncIOMotorCollection:
+    return get_db()["termDeposits"]
+
+
+def credit_applications_collection() -> AsyncIOMotorCollection:
+    return get_db()["creditApplications"]
+
+
 def handoffs_collection() -> AsyncIOMotorCollection:
     return get_db()["supportHandoffs"]
+
+
+async def _drop_unique_indexes(collection: AsyncIOMotorCollection) -> None:
+    for name, spec in (await collection.index_information()).items():
+        if name != "_id_" and spec.get("unique"):
+            await collection.drop_index(name)
 
 
 async def ensure_indexes() -> None:
@@ -166,23 +183,9 @@ async def ensure_indexes() -> None:
     await cards_collection().create_index([("userId", ASCENDING)], name="ix_user")
     await cards_collection().create_index([("createdAt", ASCENDING)], name="ix_created")
 
-
-    # Auto-heal duplicate active goals
-    cursor = goals_collection().aggregate([
-        {"$match": {"status": "active"}},
-        {"$group": {"_id": "$userId", "count": {"$sum": 1}, "docs": {"$push": "$_id"}}},
-        {"$match": {"count": {"$gt": 1}}}
-    ])
-    async for doc in cursor:
-        docs_to_remove = doc["docs"][1:]
-        await goals_collection().delete_many({"_id": {"$in": docs_to_remove}})
-
+    await _drop_unique_indexes(goals_collection())
     await goals_collection().create_index(
-
-        [("userId", ASCENDING)],
-        unique=True,
-        name="uq_user_active",
-        partialFilterExpression={"status": "active"},
+        [("userId", ASCENDING), ("status", ASCENDING)], name="ix_user_status"
     )
 
     await standing_orders_collection().create_index(
@@ -193,5 +196,21 @@ async def ensure_indexes() -> None:
     )
     await standing_orders_collection().create_index(
         [("status", ASCENDING), ("nextRunAt", ASCENDING)], name="ix_due"
+    )
+
+    await investment_orders_collection().create_index(
+        [("accountId", ASCENDING), ("instrumentId", ASCENDING), ("executedAt", ASCENDING)],
+        name="ix_account_instrument",
+    )
+    await investment_orders_collection().create_index(
+        [("userId", ASCENDING), ("executedAt", DESCENDING)], name="ix_user_executed"
+    )
+
+    await term_deposits_collection().create_index(
+        [("userId", ASCENDING), ("createdAt", ASCENDING)], name="ix_user_created"
+    )
+
+    await credit_applications_collection().create_index(
+        [("userId", ASCENDING), ("submittedAt", DESCENDING)], name="ix_user_submitted"
     )
 

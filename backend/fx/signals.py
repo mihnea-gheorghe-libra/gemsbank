@@ -60,7 +60,7 @@ class SignalRule(BaseModel):
     source_name: str = SOURCE_NAME
     source_url: str = SOURCE_PAGE_URL
     baseline_days: int = 7
-    threshold_percent: float = 1.5
+    threshold_percent: float = 0.5
     repeat_rate_tolerance_percent: float = 0.5
     min_balance_minor_units: int = 1
     generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

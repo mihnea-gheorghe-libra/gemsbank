@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     bnr_fx_source_page_url: str = (
         "https://www.bnr.ro/23988-cursurile-pietei-valutare-in-format-xml"
     )
-    fx_signal_threshold_percent: float = 1.5
+    fx_signal_threshold_percent: float = 0.5
     fx_baseline_days: int = 7
     fx_repeat_rate_tolerance_percent: float = 0.5
     fx_insights_source: str = "bnr"
@@ -105,6 +105,7 @@ class Settings(BaseSettings):
     cashflow_low_balance_threshold_minor: int = 0
 
     standing_orders_poll_seconds: int = 3600
+    index_reassert_seconds: int = 300
 
     yahoo_chart_base_url: str = "https://query1.finance.yahoo.com"
     frankfurter_base_url: str = "https://api.frankfurter.app"
