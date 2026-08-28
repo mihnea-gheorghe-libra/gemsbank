@@ -301,11 +301,7 @@
           <div className="dash-balance-figure">
             {balanceHidden ? "•••••••• RON" : formatMinor(totalBalanceMinor) + " RON"}
           </div>
-          {!balanceHidden && (
-            <div className="text-muted" style={{ fontSize: 12 }}>
-              {t("dashboard.home.balanceSub")}
-            </div>
-          )}
+
 
           <div className="hr" />
 
@@ -842,7 +838,7 @@
         </div>
 
         <div className="dash-accounts-row">
-        <UI.Plate className="elev-sm" style={{ padding: 16 }}>
+        <UI.Plate className="elev-sm" style={{ padding: 16, display: "flex", flexDirection: "column", height: "100%" }}>
           <div className="dash-kicker-row">
             <UI.Kicker>{t("dashboard.portfolio.cashAccounts")}</UI.Kicker>
             <UI.Button type="button" variant="primary" onClick={() => onOpenAccount("current")}>
@@ -850,22 +846,24 @@
             </UI.Button>
           </div>
           {cashAccounts.length ? (
-            <div className="dash-product-list dash-scroll-accounts">
-              {cashAccounts.map((account) => (
-                <AccountRow
-                  key={account.id}
-                  account={account}
-                  onStatement={() => onOpenStatement(account)}
-                  onDelete={() => onDeleteAccount(account)}
-                />
-              ))}
+            <div style={{ flex: 1, position: "relative", minHeight: 100 }}>
+              <div className="dash-product-list dash-scroll-accounts">
+                {cashAccounts.map((account) => (
+                  <AccountRow
+                    key={account.id}
+                    account={account}
+                    onStatement={() => onOpenStatement(account)}
+                    onDelete={() => onDeleteAccount(account)}
+                  />
+                ))}
+              </div>
             </div>
           ) : (
             <div className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.accounts.empty")}</div>
           )}
         </UI.Plate>
 
-        <UI.Plate className="elev-sm" style={{ padding: 16 }}>
+        <UI.Plate className="elev-sm" style={{ padding: 16, display: "flex", flexDirection: "column", height: "100%" }}>
           <div className="dash-kicker-row">
             <UI.Kicker>{t("dashboard.portfolio.deposits")}</UI.Kicker>
             <UI.Button type="button" variant="primary" onClick={() => onOpenAccount("deposit")}>
