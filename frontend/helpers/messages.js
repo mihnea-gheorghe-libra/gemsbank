@@ -1783,7 +1783,7 @@
             reachOn: "Îl atingi în jurul datei {date} — peste aproximativ {months} luni.",
             nothing: "Mișcă glisorul ca să vezi când ai atinge obiectivul.",
             tooSlow: "În acest ritm, obiectivul e la peste 50 de ani distanță.",
-            required: "Ai nevoie de {amount} pe lună ca să ajungi la {date}. Apasă ca să încerci.",
+            required: "Ai nevoie de {amount} pe lună ca să ajungi la {date} <b>(goal-ul stabilit)</b>. Apasă ca să încerci.",
           },
           legacyAccountNote: "Acest obiectiv a fost creat înainte de conturile de economii dedicate, așa că urmărește un cont pe care îl aveai deja. Închiderea lui nu mută bani și nu închide acel cont.",
           closeGoal: "Închide acest obiectiv",

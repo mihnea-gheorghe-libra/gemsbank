@@ -2469,10 +2469,10 @@
             className="dash-projector-hint"
             onClick={() => setMonthly(Math.min(maxMonthly, required))}
           >
-            {t("dashboard.analytics.goal.projector.required", {
+            <span dangerouslySetInnerHTML={{ __html: t("dashboard.analytics.goal.projector.required", {
               amount: UI.formatMoney(required, goal.currency),
               date: GEMS.i18n.isoToDisplayDate(goal.targetDate),
-            })}
+            }) }} />
           </button>
         ) : null}
       </div>
