@@ -25,7 +25,7 @@
     cards: (row) => row.channel === "card",
   };
 
-  const PAGE_SIZES = [10, 25, 50, 100];
+  const PAGE_SIZES = [5, 10, 25, 50, 100];
 
   function matchesQuery(row, query) {
     if (!query) return true;
@@ -1675,19 +1675,27 @@
     );
   }
 
+  let _globalGoalVersion = 0;
+
   SCR.EducationScreen = function EducationScreen({ accounts }) {
-    const [goalVersion, setGoalVersion] = useState(0);
+    const [goalVersion, setGoalVersion] = useState(_globalGoalVersion);
+
+    function bumpGoalVersion() {
+      _globalGoalVersion++;
+      setGoalVersion(_globalGoalVersion);
+    }
+
     return (
       <div className="dash-edu-page">
         <div className="dash-screen-head">
           <h3 style={{ margin: 0 }}>{t("dashboard.education.title")}</h3>
         </div>
 
-        <EducationChatPanel onGoalCreated={() => setGoalVersion((value) => value + 1)} />
+        <EducationChatPanel onGoalCreated={bumpGoalVersion} />
 
-        <GoalsPanel accounts={accounts} goalVersion={goalVersion} />
+        <GoalsPanel accounts={accounts} goalVersion={goalVersion} onGoalChange={bumpGoalVersion} />
 
-        <RecommendationsCard />
+        <RecommendationsCard goalVersion={goalVersion} />
 
         <LessonsPanel />
       </div>
@@ -1963,11 +1971,21 @@
     );
   }
 
-  function RecommendationsCard() {
-    const [state, setState] = useState({ loading: true, answer: null, error: null });
+  let _recoCache = { version: -1, answer: null };
+
+  function RecommendationsCard({ goalVersion }) {
+    const [state, setState] = useState({
+      loading: _recoCache.version !== goalVersion,
+      answer: _recoCache.version === goalVersion ? _recoCache.answer : null,
+      error: null
+    });
 
     useEffect(() => {
+      if (_recoCache.version === goalVersion && _recoCache.answer !== null) {
+        return; // Use cache
+      }
       let cancelled = false;
+      setState({ loading: true, answer: null, error: null });
       const prompt =
         GEMS.i18n.locale === "ro"
           ? "Dă-mi recomandările concrete de economisire și buget care reies din tranzacțiile mele: cel " +
@@ -1983,7 +2001,9 @@
         .askAnalytics(prompt)
         .then((result) => {
           if (cancelled) return;
-          setState({ loading: false, answer: (result && result.answer ? result.answer : "").trim(), error: null });
+          const ans = (result && result.answer ? result.answer : "").trim();
+          _recoCache = { version: goalVersion, answer: ans };
+          setState({ loading: false, answer: ans, error: null });
         })
         .catch((err) => {
           if (!cancelled) setState({ loading: false, answer: null, error: err });
@@ -1991,7 +2011,7 @@
       return () => {
         cancelled = true;
       };
-    }, []);
+    }, [goalVersion]);
 
     const body = state.loading
       ? t("dashboard.analytics.recommendations.loading")
@@ -2296,7 +2316,7 @@
     );
   }
 
-  function GoalsPanel({ accounts, goalVersion }) {
+  function GoalsPanel({ accounts, goalVersion, onGoalChange }) {
     const [state, setState] = useState({ loading: true, goals: [], error: null });
     const [refreshKey, setRefreshKey] = useState(0);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -2321,6 +2341,7 @@
 
     function refresh() {
       setRefreshKey((value) => value + 1);
+      if (onGoalChange) onGoalChange();
     }
 
     function submitGoal(payload) {
@@ -2420,6 +2441,8 @@
     const step = Math.max(1000, Math.round(maxMonthly / 100 / 1000) * 1000);
 
     const [monthly, setMonthly] = useState(Math.min(maxMonthly, Math.max(step, suggested)));
+    const [isEditingPace, setIsEditingPace] = useState(false);
+    const [editValue, setEditValue] = useState("");
 
     const chosen = Math.max(0, Math.min(monthly, maxMonthly));
     const months = chosen > 0 ? Math.ceil(remaining / chosen) : null;
@@ -2432,7 +2455,47 @@
         <label className="dash-projector-label" htmlFor={"pace-" + goal.goalId}>
           {t("dashboard.analytics.goal.projector.label")}
         </label>
-        <div className="dash-projector-amount">{UI.formatMoney(chosen, goal.currency)}</div>
+        {isEditingPace ? (
+          <div className="dash-projector-amount" style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
+            <input
+              type="number"
+              value={editValue}
+              onChange={(event) => {
+                setEditValue(event.target.value);
+                setMonthly(Math.round(Number(event.target.value) * 100));
+              }}
+              onBlur={() => setIsEditingPace(false)}
+              onKeyDown={(e) => { if (e.key === "Enter") setIsEditingPace(false); }}
+              min={0}
+              max={maxMonthly / 100}
+              step="any"
+              autoFocus
+              style={{
+                background: "transparent",
+                border: "none",
+                borderBottom: "1px dashed currentColor",
+                color: "inherit",
+                font: "inherit",
+                width: "4.5em",
+                outline: "none",
+                padding: 0,
+                margin: 0
+              }}
+            />
+            <span>{goal.currency}</span>
+          </div>
+        ) : (
+          <div 
+            className="dash-projector-amount" 
+            onClick={() => {
+              setEditValue(chosen > 0 ? String(chosen / 100) : "");
+              setIsEditingPace(true);
+            }}
+            style={{ cursor: "text" }}
+          >
+            {UI.formatMoney(chosen, goal.currency)}
+          </div>
+        )}
         <input
           id={"pace-" + goal.goalId}
           className="dash-projector-slider"
@@ -2469,10 +2532,10 @@
             className="dash-projector-hint"
             onClick={() => setMonthly(Math.min(maxMonthly, required))}
           >
-            {t("dashboard.analytics.goal.projector.required", {
+            <span dangerouslySetInnerHTML={{ __html: t("dashboard.analytics.goal.projector.required", {
               amount: UI.formatMoney(required, goal.currency),
               date: GEMS.i18n.isoToDisplayDate(goal.targetDate),
-            })}
+            }) }} />
           </button>
         ) : null}
       </div>
