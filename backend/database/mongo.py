@@ -166,7 +166,19 @@ async def ensure_indexes() -> None:
     await cards_collection().create_index([("userId", ASCENDING)], name="ix_user")
     await cards_collection().create_index([("createdAt", ASCENDING)], name="ix_created")
 
+
+    # Auto-heal duplicate active goals
+    cursor = goals_collection().aggregate([
+        {"$match": {"status": "active"}},
+        {"$group": {"_id": "$userId", "count": {"$sum": 1}, "docs": {"$push": "$_id"}}},
+        {"$match": {"count": {"$gt": 1}}}
+    ])
+    async for doc in cursor:
+        docs_to_remove = doc["docs"][1:]
+        await goals_collection().delete_many({"_id": {"$in": docs_to_remove}})
+
     await goals_collection().create_index(
+
         [("userId", ASCENDING)],
         unique=True,
         name="uq_user_active",

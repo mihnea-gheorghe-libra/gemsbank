@@ -99,7 +99,7 @@
           </div>
         ) : null}
         {error ? (
-          <div style={{ fontSize: 11, marginTop: 4, color: "var(--color-negative)" }}>{error}</div>
+          <div style={{ fontSize: 13, marginTop: 4, color: "var(--color-negative)" }}>{error}</div>
         ) : null}
       </div>
     );

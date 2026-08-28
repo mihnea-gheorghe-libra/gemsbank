@@ -79,6 +79,7 @@
       suggested: "SUGGESTED",
       whyId: "Why do you need my ID?",
       readAloud: "Read this step aloud",
+      stopReading: "Stop reading",
       messages: {
         document:
           "I read the fields off the document and fill the form for you. If a value looks wrong, correct it — your edit wins over my reading.",
@@ -1149,6 +1150,7 @@
       suggested: "SUGESTII",
       whyId: "De ce aveți nevoie de actul meu?",
       readAloud: "Citește pasul cu voce tare",
+      stopReading: "Oprește citirea",
       messages: {
         document:
           "Citesc câmpurile de pe document și completez formularul pentru tine. Dacă o valoare pare greșită, corectează-o — modificarea ta are prioritate.",
