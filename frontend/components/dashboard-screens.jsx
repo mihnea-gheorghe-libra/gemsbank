@@ -3205,10 +3205,10 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
       <UI.Dialog labelledBy="pin-change-title" onDismiss={onDismiss}>
         <h2 id="pin-change-title" className="dialog-title">{t("dashboard.settings.pinDialog.title")}</h2>
         <form noValidate onSubmit={(event) => { event.preventDefault(); onSubmit(newPin, confirmation); }}>
-          <UI.Field id="pin-new" label={t("dashboard.settings.pinDialog.newPin")} error={error ? error.message : null}>
+          <UI.Field id="pin-new" label={t("dashboard.settings.pinDialog.newPin")}>
             <UI.TextInput id="pin-new" inputMode="numeric" autoFocus value={newPin} onChange={(event) => setNewPin(event.target.value)} />
           </UI.Field>
-          <UI.Field id="pin-confirm" label={t("dashboard.settings.pinDialog.confirmPin")}>
+          <UI.Field id="pin-confirm" label={t("dashboard.settings.pinDialog.confirmPin")} error={error ? error.message : null}>
             <UI.TextInput id="pin-confirm" inputMode="numeric" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
           </UI.Field>
           <div className="dialog-actions">
@@ -3227,7 +3227,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
       <UI.Dialog labelledBy="password-change-title" onDismiss={onDismiss}>
         <h2 id="password-change-title" className="dialog-title">{t("dashboard.settings.passwordDialog.title")}</h2>
         <form noValidate onSubmit={(event) => { event.preventDefault(); onSubmit(newPassword, confirmation); }}>
-          <UI.Field id="password-new" label={t("dashboard.settings.passwordDialog.newPassword")} error={error ? error.message : null}>
+          <UI.Field id="password-new" label={t("dashboard.settings.passwordDialog.newPassword")}>
             <UI.TextInput
               id="password-new"
               type="password"
@@ -3237,7 +3237,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
               onChange={(event) => setNewPassword(event.target.value)}
             />
           </UI.Field>
-          <UI.Field id="password-confirm" label={t("dashboard.settings.passwordDialog.confirmPassword")}>
+          <UI.Field id="password-confirm" label={t("dashboard.settings.passwordDialog.confirmPassword")} error={error ? error.message : null}>
             <UI.TextInput
               id="password-confirm"
               type="password"
@@ -3472,12 +3472,39 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
             ? api.requestEmailChange(current.value)
             : api.requestPhoneChange(current.value);
       request
-        .then((response) => setActiveCase({ kind: current.kind, caseId: response.recoveryCaseId, delivery: response.delivery, rest }))
+        .then((response) => {
+          if (response.recoveryCaseId) {
+            setActiveCase({ kind: current.kind, caseId: response.recoveryCaseId, delivery: response.delivery, rest });
+          } else {
+            // Immediate success without OTP (e.g. if backend is updated to skip OTP)
+            onMeChange((prev) => ({
+              ...(prev || {}),
+              userId: response.userId,
+              username: response.username,
+              email: response.email,
+              phone: response.phone,
+            }));
+            if (rest.length > 0) {
+              runNextChange(rest);
+            } else {
+              setSavingContact(false);
+              setContactNotice(t({
+                username: "dashboard.settings.otp.successUsername",
+                email: "dashboard.settings.otp.successEmail",
+                phone: "dashboard.settings.otp.successPhone",
+              }[current.kind] || "dashboard.settings.otp.successEmail"));
+            }
+          }
+        })
         .catch((err) => {
           setContactError(err);
           setSavingContact(false);
         });
     }
+
+    const [verifyPinOpen, setVerifyPinOpen] = useState(false);
+    const [verifyPinBusy, setVerifyPinBusy] = useState(false);
+    const [verifyPinError, setVerifyPinError] = useState(null);
 
     function saveContact() {
       if (!me) return;
@@ -3489,10 +3516,36 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
       if (nextEmail && nextEmail !== me.email) changes.push({ kind: "email", value: nextEmail });
       if (nextPhone && nextPhone !== me.phone) changes.push({ kind: "phone", value: nextPhone });
       if (!changes.length) return;
-      setContactError(null);
-      setContactNotice(null);
-      setSavingContact(true);
-      runNextChange(changes);
+      
+      setVerifyPinOpen(true);
+      setVerifyPinError(null);
+    }
+
+    async function submitVerifyPin(pin) {
+      setVerifyPinBusy(true);
+      setVerifyPinError(null);
+      try {
+        await api.verifyPin(me.username, pin);
+        setVerifyPinOpen(false);
+        
+        const changes = [];
+        const nextUsername = usernameDraft.trim().toLowerCase();
+        const nextEmail = emailDraft.trim();
+        const nextPhone = phoneDraft.trim();
+        if (nextUsername && nextUsername !== me.username) changes.push({ kind: "username", value: nextUsername });
+        if (nextEmail && nextEmail !== me.email) changes.push({ kind: "email", value: nextEmail });
+        if (nextPhone && nextPhone !== me.phone) changes.push({ kind: "phone", value: nextPhone });
+        
+        if (!changes.length) return;
+        setContactError(null);
+        setContactNotice(null);
+        setSavingContact(true);
+        runNextChange(changes);
+      } catch (err) {
+        setVerifyPinError(err);
+      } finally {
+        setVerifyPinBusy(false);
+      }
     }
 
     function submitContactOtp(code) {
@@ -3622,6 +3675,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                 <UI.TextInput
                   id="set-name"
                   readOnly
+                  disabled={true}
                   value={identity ? GEMS.people.fullName(identity.fullName) : (me ? me.fullName : placeholder)}
                 />
               </UI.Field>
@@ -3629,6 +3683,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                 <UI.TextInput
                   id="set-birth"
                   readOnly
+                  disabled={true}
                   value={identity ? GEMS.i18n.isoToDisplayDate(identity.birthDate) : placeholder}
                 />
               </UI.Field>
@@ -3682,16 +3737,6 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                   <UI.Button type="button" variant={theme === "dark" ? "primary" : "secondary"} style={{ gap: 6 }} onClick={() => onTheme("dark")}><UI.Icon name="Moon" size={15} />{t("dashboard.settings.dark")}</UI.Button>
                 </div>
               </div>
-              <div>
-                <div style={{ fontSize: 13, marginBottom: 6 }}>{t("dashboard.settings.readAloud")}</div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <UI.Button type="button" variant={ttsOn ? "primary" : "secondary"} style={{ gap: 6 }} onClick={onToggleTts}>
-                    <UI.Icon name={ttsOn ? "Volume2" : "VolumeX"} size={15} />
-                    {ttsOn ? t("dashboard.settings.readAloudOn") : t("dashboard.settings.readAloudOff")}
-                  </UI.Button>
-                  <span className="text-muted" style={{ fontSize: 12 }}>{t("dashboard.settings.readAloudNote")}</span>
-                </div>
-              </div>
             </div>
           </UI.Plate>
 
@@ -3727,11 +3772,26 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
         {activeCase ? (
           <OtpDialog
             titleId="contact-otp-title"
-            delivery={activeCase.delivery}
             busy={otpBusy}
             error={otpError}
+            delivery={activeCase.delivery}
+            onDismiss={() => {
+              setActiveCase(null);
+              setSavingContact(false);
+            }}
             onSubmit={submitContactOtp}
-            onDismiss={() => { setActiveCase(null); setSavingContact(false); }}
+          />
+        ) : null}
+
+        {verifyPinOpen ? (
+          <CardPinDialog
+            busy={verifyPinBusy}
+            error={verifyPinError}
+            onSubmit={submitVerifyPin}
+            onDismiss={() => {
+              setVerifyPinOpen(false);
+              setSavingContact(false);
+            }}
           />
         ) : null}
 

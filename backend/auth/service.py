@@ -676,13 +676,12 @@ class AuthService:
         taken = await self._users.get_by_username(new_username)
         if taken is not None and taken.id != user.id:
             raise ConflictError("That username is taken.", details={"field": "username"})
-        return await self._start_secure_change(
-            user,
-            RecoveryKind.USERNAME_CHANGE,
-            {"newUsername": new_username},
-            purpose="schimbarea numelui de utilizator",
-            subject="Confirmă schimbarea numelui de utilizator — GEMS",
-            session=session,
+        user.change_username(new_username)
+        await self._users.save(user, session=session)
+        return CommandResult(
+            data=user.me_view(),
+            audit=AuditRecord(action="auth.username_changed", entity_type="user", entity_id=user.id, after={"username": new_username}),
+            events=[DomainEvent(name="auth.username_changed", aggregate_type="user", aggregate_id=user.id)]
         )
 
     async def _handle_request_email_change(
@@ -691,13 +690,12 @@ class AuthService:
         assert isinstance(command, RequestEmailChange)
         user = await self._current_user(context)
         new_email = validation.normalise_email(command.new_email)
-        return await self._start_secure_change(
-            user,
-            RecoveryKind.EMAIL_CHANGE,
-            {"newEmail": new_email},
-            purpose="schimbarea adresei de email",
-            subject="Confirmă schimbarea adresei de email — GEMS",
-            session=session,
+        user.change_email(new_email)
+        await self._users.save(user, session=session)
+        return CommandResult(
+            data=user.me_view(),
+            audit=AuditRecord(action="auth.email_changed", entity_type="user", entity_id=user.id, after={"email": new_email}),
+            events=[DomainEvent(name="auth.email_changed", aggregate_type="user", aggregate_id=user.id)]
         )
 
     async def _handle_request_phone_change(
@@ -706,13 +704,12 @@ class AuthService:
         assert isinstance(command, RequestPhoneChange)
         user = await self._current_user(context)
         new_phone = validation.normalise_phone(command.new_phone)
-        return await self._start_secure_change(
-            user,
-            RecoveryKind.PHONE_CHANGE,
-            {"newPhone": new_phone},
-            purpose="schimbarea numărului de telefon",
-            subject="Confirmă schimbarea numărului de telefon — GEMS",
-            session=session,
+        user.change_phone(new_phone)
+        await self._users.save(user, session=session)
+        return CommandResult(
+            data=user.me_view(),
+            audit=AuditRecord(action="auth.phone_changed", entity_type="user", entity_id=user.id, after={"phone": new_phone}),
+            events=[DomainEvent(name="auth.phone_changed", aggregate_type="user", aggregate_id=user.id)]
         )
 
     async def _handle_request_pin_change(

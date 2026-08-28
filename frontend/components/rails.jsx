@@ -11,13 +11,7 @@
     { key: "credentials", num: "04" },
   ];
 
-  function speak(text) {
-    if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB";
-    window.speechSynthesis.speak(utterance);
-  }
+
 
   ONB.StepRail = function StepRail({ current }) {
     return (
@@ -57,6 +51,37 @@
 
   ONB.AgentPanel = function AgentPanel({ stepKey, lede }) {
     const message = t("agent.messages." + stepKey);
+    const [isSpeaking, setIsSpeaking] = React.useState(false);
+
+    // Stop speaking when unmounted
+    React.useEffect(() => {
+      return () => {
+        if (window.speechSynthesis) {
+          window.speechSynthesis.cancel();
+        }
+      };
+    }, []);
+
+    const handleSpeak = (text) => {
+      if (!window.speechSynthesis) return;
+      if (isSpeaking) {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+      } else {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(true);
+        setTimeout(() => {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB";
+          utterance.onend = () => setIsSpeaking(false);
+          utterance.onerror = (e) => {
+            if (e && e.error === "interrupted") return;
+            setIsSpeaking(false);
+          };
+          window.speechSynthesis.speak(utterance);
+        }, 100);
+      }
+    };
 
     return (
       <aside className="onb-panel" aria-label={t("agent.header")}>
@@ -92,19 +117,20 @@
           <UI.Button
             type="button"
             style={{ justifyContent: "flex-start" }}
-            onClick={() => speak(message)}
+            onClick={() => handleSpeak(message)}
           >
             {t("agent.whyId")}
           </UI.Button>
           <UI.Button
             type="button"
             style={{ justifyContent: "flex-start" }}
-            onClick={() => speak([lede, message].filter(Boolean).join(" "))}
+            onClick={() => handleSpeak([lede, message].filter(Boolean).join(" "))}
           >
-            {t("agent.readAloud")}
+            {isSpeaking ? t("agent.stopReading") : t("agent.readAloud")}
           </UI.Button>
         </div>
       </aside>
     );
   };
 })();
+
