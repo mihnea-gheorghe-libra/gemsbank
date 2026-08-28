@@ -117,7 +117,7 @@
   width: 240px; padding: 14px; display: flex; flex-direction: column; gap: 8px;
   background: var(--color-bg);
 }
-.dash-profile-name { font-family: var(--font-heading); font-size: 16px; color: var(--color-heading); }
+.dash-profile-name { font-family: var(--font-heading); font-size: 16px; line-height: 1.25; color: var(--color-heading); overflow-wrap: anywhere; }
 
 .dash-content { flex: 1; overflow: auto; padding: 26px; }
 

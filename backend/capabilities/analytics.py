@@ -28,6 +28,9 @@ _SIGNIFICANT_ABSOLUTE_FLOOR_MINOR = 5000
 
 _DISCRETIONARY_CATEGORIES = ("entertainment", "other", "transport")
 _SPENDING_CAP_TRIM_PCT = 15
+_MAX_CATEGORY_ALERTS = 3
+_TARGET_SAVINGS_RATE_PCT = 20
+_NON_SPEND_CATEGORIES = ("transfer", "income")
 
 _HOME_CURRENCY = "RON"
 
@@ -638,7 +641,13 @@ class RecommendationsInput(BaseModel):
 
 
 class Recommendation(BaseModel):
-    kind: Literal["savings_rate", "spending_cap", "category_alert", "goal_projection"]
+    kind: Literal[
+        "savings_rate",
+        "spending_cap",
+        "category_alert",
+        "goal_projection",
+        "recurring_spend",
+    ]
     category: str | None = None
     current_value_minor: int | None = Field(default=None, alias="currentValueMinorUnits")
     suggested_value_minor: int | None = Field(default=None, alias="suggestedValueMinorUnits")
@@ -701,6 +710,7 @@ async def resolve_recommendations(actor: Actor, payload: BaseModel) -> BaseModel
     )
     start_prior, end_prior = _month_bounds(prior_year, prior_month)
     start_last, end_last = _month_bounds(last_year, last_month)
+    month_label = f"{last_year:04d}-{last_month:02d}"
 
     rows_prior = [
         row
@@ -715,9 +725,7 @@ async def resolve_recommendations(actor: Actor, payload: BaseModel) -> BaseModel
     totals_prior = _spend_by_category(rows_prior)
     totals_last = _spend_by_category(rows_last)
 
-    best_category: str | None = None
-    best_delta = 0
-    best_pct = 0.0
+    grown: list[tuple[int, float, str]] = []
     for category, spent_last in totals_last.items():
         spent_prior = totals_prior.get(category, 0)
         delta = spent_last - spent_prior
@@ -726,26 +734,116 @@ async def resolve_recommendations(actor: Actor, payload: BaseModel) -> BaseModel
         pct = (delta / spent_prior * 100) if spent_prior else 100.0
         if spent_prior and pct < _SIGNIFICANT_PCT_THRESHOLD:
             continue
-        if delta > best_delta:
-            best_delta = delta
-            best_category = category
-            best_pct = pct
+        grown.append((delta, pct, category))
+    grown.sort(reverse=True)
 
-    if best_category is not None:
+    for _, pct, category in grown[:_MAX_CATEGORY_ALERTS]:
         recommendations.append(
             Recommendation(
                 kind="category_alert",
-                category=best_category,
-                currentValueMinorUnits=totals_last[best_category],
-                suggestedValueMinorUnits=totals_prior.get(best_category, 0),
+                category=category,
+                currentValueMinorUnits=totals_last[category],
+                suggestedValueMinorUnits=totals_prior.get(category, 0),
                 messageData={
                     "currency": _HOME_CURRENCY,
-                    "currentValueFormatted": format_minor(totals_last[best_category], _HOME_CURRENCY),
+                    "currentValueFormatted": format_minor(totals_last[category], _HOME_CURRENCY),
                     "suggestedValueFormatted": format_minor(
-                        totals_prior.get(best_category, 0), _HOME_CURRENCY
+                        totals_prior.get(category, 0), _HOME_CURRENCY
                     ),
-                    "growthPct": round(best_pct, 1),
-                    "month": f"{last_year:04d}-{last_month:02d}",
+                    "growthPct": round(pct, 1),
+                    "month": month_label,
+                },
+            )
+        )
+
+    discretionary = [
+        (totals_last[category], category)
+        for category in _DISCRETIONARY_CATEGORIES
+        if totals_last.get(category, 0) >= _SIGNIFICANT_ABSOLUTE_FLOOR_MINOR
+    ]
+    if discretionary:
+        spent, category = max(discretionary)
+        cap = round(spent * (100 - _SPENDING_CAP_TRIM_PCT) / 100)
+        recommendations.append(
+            Recommendation(
+                kind="spending_cap",
+                category=category,
+                currentValueMinorUnits=spent,
+                suggestedValueMinorUnits=cap,
+                messageData={
+                    "currency": _HOME_CURRENCY,
+                    "currentValueFormatted": format_minor(spent, _HOME_CURRENCY),
+                    "suggestedValueFormatted": format_minor(cap, _HOME_CURRENCY),
+                    "freedUpFormatted": format_minor(spent - cap, _HOME_CURRENCY),
+                    "trimPct": _SPENDING_CAP_TRIM_PCT,
+                    "month": month_label,
+                },
+            )
+        )
+
+    income_last = sum(
+        row["amount"]["minorUnits"] for row in rows_last if row["amount"]["minorUnits"] > 0
+    )
+    spend_last = sum(
+        amount
+        for category, amount in totals_last.items()
+        if category not in _NON_SPEND_CATEGORIES
+    )
+    if goal_gap.status != "ok" and income_last > 0:
+        kept = income_last - spend_last
+        target = round(income_last * _TARGET_SAVINGS_RATE_PCT / 100)
+        recommendations.append(
+            Recommendation(
+                kind="savings_rate",
+                currentValueMinorUnits=kept,
+                suggestedValueMinorUnits=target,
+                messageData={
+                    "currency": _HOME_CURRENCY,
+                    "currentValueFormatted": format_minor(kept, _HOME_CURRENCY),
+                    "suggestedValueFormatted": format_minor(target, _HOME_CURRENCY),
+                    "incomeFormatted": format_minor(income_last, _HOME_CURRENCY),
+                    "spendFormatted": format_minor(spend_last, _HOME_CURRENCY),
+                    "keptPct": round(kept / income_last * 100, 1),
+                    "targetPct": _TARGET_SAVINGS_RATE_PCT,
+                    "month": month_label,
+                    "hasGoal": False,
+                },
+            )
+        )
+
+    recurring_rows = [
+        row
+        for row in await _transactions_in_range(
+            payments, user_id, now - timedelta(days=_RECURRING_LOOKBACK_DAYS), now
+        )
+        if row["amount"]["currency"] == _HOME_CURRENCY and row["amount"]["minorUnits"] < 0
+    ]
+    recurring = [
+        group
+        for group in _detect_recurring_groups(recurring_rows)
+        if group["category"] not in _NON_SPEND_CATEGORIES
+    ]
+    if recurring:
+        recurring.sort(key=lambda group: group["amount_minor"])
+        monthly_total = sum(-group["amount_minor"] for group in recurring)
+        recommendations.append(
+            Recommendation(
+                kind="recurring_spend",
+                currentValueMinorUnits=monthly_total,
+                messageData={
+                    "currency": _HOME_CURRENCY,
+                    "currentValueFormatted": format_minor(monthly_total, _HOME_CURRENCY),
+                    "count": len(recurring),
+                    "items": [
+                        {
+                            "counterparty": group["counterparty"],
+                            "category": group["category"],
+                            "amountFormatted": format_minor(
+                                -group["amount_minor"], _HOME_CURRENCY
+                            ),
+                        }
+                        for group in recurring[:_MAX_CATEGORY_ALERTS]
+                    ],
                 },
             )
         )

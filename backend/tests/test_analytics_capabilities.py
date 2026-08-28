@@ -314,6 +314,84 @@ async def test_recommendations_flags_the_fastest_growing_category_between_the_la
     assert alert.message_data["suggestedValueFormatted"] == "50,00 RON"
 
 
+def _last_two_month_starts(now: datetime) -> tuple[datetime, datetime]:
+    last_year, last_month = (now.year - 1, 12) if now.month == 1 else (now.year, now.month - 1)
+    prior_year, prior_month = (
+        (last_year - 1, 12) if last_month == 1 else (last_year, last_month - 1)
+    )
+    start_last, _ = analytics._month_bounds(last_year, last_month)
+    start_prior, _ = analytics._month_bounds(prior_year, prior_month)
+    return start_prior, start_last
+
+
+async def test_recommendations_talk_about_spending_when_there_is_no_goal(monkeypatch) -> None:
+    monkeypatch.setattr(analytics, "get_goals_service", lambda: _FakeGoals(None))
+    now = datetime.now(timezone.utc)
+    _, start_last = _last_two_month_starts(now)
+    rows = [
+        _row(start_last + timedelta(days=1), "Employer", "income", 600_000),
+        _row(start_last + timedelta(days=4), "Cinema City", "entertainment", -40_000),
+        _row(start_last + timedelta(days=9), "Bolt", "transport", -20_000),
+    ]
+    monkeypatch.setattr(analytics, "get_payments_service", lambda: _FakePayments(rows))
+
+    output = await analytics.resolve_recommendations(_ACTOR, analytics.RecommendationsInput())
+
+    assert output.status == "ok"
+    cap = next(r for r in output.recommendations if r.kind == "spending_cap")
+    assert cap.category == "entertainment"
+    assert cap.current_value_minor == 40_000
+    assert cap.suggested_value_minor == 34_000
+    assert cap.message_data["suggestedValueFormatted"] == "340,00 RON"
+
+    rate = next(r for r in output.recommendations if r.kind == "savings_rate")
+    assert rate.current_value_minor == 540_000
+    assert rate.message_data["incomeFormatted"] == "6.000,00 RON"
+    assert rate.message_data["hasGoal"] is False
+
+
+async def test_recommendations_flag_every_category_that_grew_not_only_the_worst(monkeypatch) -> None:
+    monkeypatch.setattr(analytics, "get_goals_service", lambda: _FakeGoals(None))
+    now = datetime.now(timezone.utc)
+    start_prior, start_last = _last_two_month_starts(now)
+    rows = [
+        _row(start_prior + timedelta(days=2), "Glovo", "other", -5_000),
+        _row(start_prior + timedelta(days=3), "Bolt", "transport", -4_000),
+        _row(start_last + timedelta(days=2), "Glovo", "other", -40_000),
+        _row(start_last + timedelta(days=3), "Bolt", "transport", -20_000),
+    ]
+    monkeypatch.setattr(analytics, "get_payments_service", lambda: _FakePayments(rows))
+
+    output = await analytics.resolve_recommendations(_ACTOR, analytics.RecommendationsInput())
+
+    alerted = [r.category for r in output.recommendations if r.kind == "category_alert"]
+    assert alerted == ["other", "transport"]
+
+
+async def test_recommendations_name_the_recurring_charges_found_in_the_history(monkeypatch) -> None:
+    monkeypatch.setattr(analytics, "get_goals_service", lambda: _FakeGoals(None))
+    now = datetime.now(timezone.utc)
+    rows = [
+        _row(now - timedelta(days=offset), "Netflix", "entertainment", -5_000)
+        for offset in (5, 35, 65, 95)
+    ] + [
+        _row(now - timedelta(days=offset), "Orange", "utilities", -9_000)
+        for offset in (3, 33, 63, 93)
+    ]
+    monkeypatch.setattr(analytics, "get_payments_service", lambda: _FakePayments(rows))
+
+    output = await analytics.resolve_recommendations(_ACTOR, analytics.RecommendationsInput())
+
+    subscriptions = next(r for r in output.recommendations if r.kind == "recurring_spend")
+    assert subscriptions.current_value_minor == 14_000
+    assert subscriptions.message_data["count"] == 2
+    assert subscriptions.message_data["currentValueFormatted"] == "140,00 RON"
+    assert [item["counterparty"] for item in subscriptions.message_data["items"]] == [
+        "Orange",
+        "Netflix",
+    ]
+
+
 def _goal_pace_setup(monkeypatch, target_minor: int, progress_minor: int, target_days: int = 400):
     now = datetime.now(timezone.utc)
     goal = Goal(

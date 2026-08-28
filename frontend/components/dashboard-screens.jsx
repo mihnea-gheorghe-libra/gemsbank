@@ -1759,7 +1759,6 @@
 
     function transcriptOf(list) {
       return list
-        .filter((message) => message.kind === "text")
         .filter((message) => typeof message.text === "string" && message.text.trim() !== "")
         .slice(-10)
         .map((message) => ({ role: message.role === "user" ? "user" : "assistant", content: message.text }));
@@ -1975,14 +1974,15 @@
       let cancelled = false;
       const prompt =
         GEMS.i18n.locale === "ro"
-          ? "Dă-mi exact 3 recomandări concrete de economisire și buget, pe baza tranzacțiilor mele reale. " +
-            "Scrie fiecare recomandare pe un rând separat care începe cu '- '. Fiecare trebuie să fie o " +
-            "acțiune clară, cu suma exactă și categoria sau comerciantul la care se referă, și să spună pe " +
-            "scurt de ce. Fără introducere, fără concluzie, fără titluri."
-          : "Give me exactly 3 concrete savings and budgeting recommendations based on my real transactions. " +
-            "Put each one on its own line starting with '- '. Each must be a clear action naming the exact " +
-            "amount and the category or merchant it refers to, and briefly say why. " +
-            "No introduction, no conclusion, no headings.";
+          ? "Dă-mi recomandările concrete de economisire și buget care reies din tranzacțiile mele: cel " +
+            "mult trei, câte un rând pentru fiecare acțiune diferită. Dacă ai o singură recomandare, " +
+            "scrie un singur rând; nu completa până la trei reformulând aceeași acțiune. Fiecare rând " +
+            "începe cu '- ' și spune suma exactă, categoria sau obiectivul și, pe scurt, de ce. Fără " +
+            "introducere, fără concluzie, fără titluri."
+          : "Give me the concrete savings and budgeting actions that follow from my transactions: at most " +
+            "three, one line per distinct action. If only one follows, write only one line; do not pad to " +
+            "three by rephrasing the same action. Start each line with '- ' and name the exact amount, " +
+            "the category or goal, and briefly why. No introduction, no conclusion, no headings.";
       api
         .askAnalytics(prompt)
         .then((result) => {

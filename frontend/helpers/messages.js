@@ -615,7 +615,7 @@
           loading: "Looking at your recent activity…",
           empty: "Not enough activity yet for a personalized recommendation — check back after a few more transactions.",
           error: "Couldn't load recommendations right now.",
-          hint: "Three concrete actions, based on your own transactions.",
+          hint: "Concrete actions, based on your own transactions.",
         },
         goal: {
           title: "Savings goal",
@@ -1749,7 +1749,7 @@
           loading: "Analizăm activitatea ta recentă…",
           empty: "Încă nu sunt suficiente date pentru o recomandare personalizată — revino după câteva tranzacții în plus.",
           error: "Recomandările nu au putut fi încărcate acum.",
-          hint: "Trei acțiuni concrete, pe baza tranzacțiilor tale.",
+          hint: "Acțiuni concrete, pe baza tranzacțiilor tale.",
         },
         goal: {
           title: "Obiectiv de economisire",

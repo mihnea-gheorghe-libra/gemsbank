@@ -106,7 +106,7 @@
 
           {menuOpen ? (
             <div className="dash-profile-menu elev-md plate" role="menu">
-              <div className="dash-profile-name">{me ? GEMS.people.firstName((me.identity && me.identity.fullName) || me.fullName) : ""}</div>
+              <div className="dash-profile-name">{me ? GEMS.people.fullName((me.identity && me.identity.fullName) || me.fullName) : ""}</div>
               <div className="hr" />
               <UI.Button
                 type="button"

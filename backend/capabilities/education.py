@@ -70,6 +70,15 @@ class GoalProposalInput(BaseModel):
     target_date: date = Field(
         alias="targetDate", description="The date the goal should be reached by."
     )
+    currency: str | None = Field(
+        default=None,
+        max_length=3,
+        description=(
+            "The ISO 4217 code of the currency the customer named the target amount in: "
+            "'5.000 lei' is RON, '400 euro' is EUR. Pass it whenever they named one — it is "
+            "what separates two accounts that answer to the same description."
+        ),
+    )
     model_config = {"populate_by_name": True}
 
 
@@ -129,6 +138,11 @@ async def resolve_goal_proposal(
         )
 
     matches, _ = _resolve_ref(eligible, payload.account_ref)
+    if len(matches) > 1 and payload.currency:
+        named = payload.currency.strip().upper()
+        narrowed = [account for account in matches if account["currency"] == named]
+        if narrowed:
+            matches = narrowed
     if not matches:
         return GoalProposalOutput(
             status="needs_clarification",
