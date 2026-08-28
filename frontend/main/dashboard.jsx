@@ -1329,8 +1329,9 @@
     }, [closeStatement]);
 
     const openExchange = useCallback(() => {
-      setExchangeError(null);
-      setExchangeShown(true);
+      setScreen("accounts");
+      setQuickTransferError(null);
+      setQuickTransferShown(true);
     }, []);
 
     const closeExchange = useCallback(() => {
