@@ -7,7 +7,7 @@ from typing import Any, ClassVar, Protocol
 
 from motor.motor_asyncio import AsyncIOMotorClientSession
 
-from backend.accounts.account import Account, AccountKind
+from backend.accounts.account import Account, AccountKind, AccountStatus
 from backend.accounts.service import AccountsService, get_accounts_service
 from backend.command_bus import Command, CommandBus, CommandResult, bus
 from backend.config import Settings, settings
@@ -353,7 +353,7 @@ class InvestmentsService:
         accounts = [
             account
             for account in await self._accounts.owned_accounts(user_id)
-            if account.kind is AccountKind.INVEST
+            if account.kind is AccountKind.INVEST and account.status is AccountStatus.ACTIVE and account.currency == "RON"
         ]
         if not accounts:
             raise NotFoundError(

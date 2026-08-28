@@ -1687,7 +1687,7 @@
     return known.sort((a, b) => counts[b] - counts[a])[0];
   }
 
-  function useAnalyticsData(months) {
+  function useAnalyticsData(months, accounts) {
     const [rows, setRows] = useState(null);
     const [error, setError] = useState(null);
 
@@ -1716,8 +1716,26 @@
     const oldestKey = buckets.length ? buckets[0].key : monthBucketKey(new Date());
     const categoryTotals = {};
 
+    const accountById = new Map((accounts || []).map(a => [a.id, a]));
+    const rowsByTx = new Map();
+    (rows || []).forEach(row => {
+      if (!rowsByTx.has(row.transactionId)) rowsByTx.set(row.transactionId, []);
+      rowsByTx.get(row.transactionId).push(row);
+    });
+
     (rows || []).forEach((row) => {
       if (row.amount.currency !== currency) return;
+      
+      const acc = accountById.get(row.accountId);
+      if (!acc || acc.typeKey !== "current") return;
+
+      const siblingRows = rowsByTx.get(row.transactionId) || [];
+      const hasOtherCurrent = siblingRows.some(s => 
+         s.accountId !== row.accountId && 
+         accountById.get(s.accountId)?.typeKey === "current"
+      );
+      if (hasOtherCurrent) return;
+
       const posted = new Date(row.postedAt);
       const key = monthBucketKey(posted);
       if (key < oldestKey) return;
@@ -3175,7 +3193,7 @@
     );
   }
 
-  SCR.AnalyticsScreen = function AnalyticsScreen({ range, onRange }) {
+  SCR.AnalyticsScreen = function AnalyticsScreen({ range, onRange, accounts }) {
     const RC = window.Recharts;
     const months = range === "3" ? 3 : range === "12" ? 12 : 6;
     const periods = [
@@ -3183,7 +3201,7 @@
       { value: "6", label: t("dashboard.analytics.period6") },
       { value: "12", label: t("dashboard.analytics.period12") },
     ];
-    const { loading, error, currency, buckets, categories, hasActivity } = useAnalyticsData(months);
+    const { loading, error, currency, buckets, categories, hasActivity } = useAnalyticsData(months, accounts);
 
     const categoryData = categories.map((row) => ({
       name: t("dashboard.category." + row.category),
