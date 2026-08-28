@@ -2420,6 +2420,7 @@
     const step = Math.max(1000, Math.round(maxMonthly / 100 / 1000) * 1000);
 
     const [monthly, setMonthly] = useState(Math.min(maxMonthly, Math.max(step, suggested)));
+    const [isEditingPace, setIsEditingPace] = useState(false);
 
     const chosen = Math.max(0, Math.min(monthly, maxMonthly));
     const months = chosen > 0 ? Math.ceil(remaining / chosen) : null;
@@ -2432,28 +2433,41 @@
         <label className="dash-projector-label" htmlFor={"pace-" + goal.goalId}>
           {t("dashboard.analytics.goal.projector.label")}
         </label>
-        <div className="dash-projector-amount" style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
-          <input
-            type="number"
-            value={chosen / 100}
-            onChange={(event) => setMonthly(Math.round(Number(event.target.value) * 100))}
-            min={0}
-            max={maxMonthly / 100}
-            step="any"
-            style={{
-              background: "transparent",
-              border: "none",
-              borderBottom: "1px dashed currentColor",
-              color: "inherit",
-              font: "inherit",
-              width: "4.5em",
-              outline: "none",
-              padding: 0,
-              margin: 0
-            }}
-          />
-          <span>{goal.currency}</span>
-        </div>
+        {isEditingPace ? (
+          <div className="dash-projector-amount" style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
+            <input
+              type="number"
+              value={chosen / 100}
+              onChange={(event) => setMonthly(Math.round(Number(event.target.value) * 100))}
+              onBlur={() => setIsEditingPace(false)}
+              onKeyDown={(e) => { if (e.key === "Enter") setIsEditingPace(false); }}
+              min={0}
+              max={maxMonthly / 100}
+              step="any"
+              autoFocus
+              style={{
+                background: "transparent",
+                border: "none",
+                borderBottom: "1px dashed currentColor",
+                color: "inherit",
+                font: "inherit",
+                width: "4.5em",
+                outline: "none",
+                padding: 0,
+                margin: 0
+              }}
+            />
+            <span>{goal.currency}</span>
+          </div>
+        ) : (
+          <div 
+            className="dash-projector-amount" 
+            onClick={() => setIsEditingPace(true)}
+            style={{ cursor: "text" }}
+          >
+            {UI.formatMoney(chosen, goal.currency)}
+          </div>
+        )}
         <input
           id={"pace-" + goal.goalId}
           className="dash-projector-slider"
