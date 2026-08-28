@@ -289,8 +289,8 @@
 .dash-product-row { padding: 12px 14px; border-radius: var(--radius-lg); background: var(--color-surface); }
 .dash-product-head { display: flex; align-items: flex-start; gap: 12px; }
 .dash-product-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-.dash-scroll-accounts { max-height: 268px; overflow-y: auto; padding-right: 4px; }
-.dash-scroll-deposits { max-height: 360px; overflow-y: auto; padding-right: 4px; }
+.dash-scroll-accounts { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.dash-scroll-deposits { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
 .dash-scroll-credits { max-height: 268px; overflow-y: auto; padding-right: 4px; }
 .dash-progress { height: 9px; border-radius: 999px; overflow: hidden; background: var(--color-bg); border: 1px solid var(--color-border); }
 .dash-progress > span { display: block; height: 100%; background: var(--color-lime-600); }

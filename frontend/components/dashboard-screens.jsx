@@ -842,7 +842,7 @@
         </div>
 
         <div className="dash-accounts-row">
-        <UI.Plate className="elev-sm" style={{ padding: 16 }}>
+        <UI.Plate className="elev-sm" style={{ padding: 16, display: "flex", flexDirection: "column", height: "100%" }}>
           <div className="dash-kicker-row">
             <UI.Kicker>{t("dashboard.portfolio.cashAccounts")}</UI.Kicker>
             <UI.Button type="button" variant="primary" onClick={() => onOpenAccount("current")}>
@@ -865,7 +865,7 @@
           )}
         </UI.Plate>
 
-        <UI.Plate className="elev-sm" style={{ padding: 16 }}>
+        <UI.Plate className="elev-sm" style={{ padding: 16, display: "flex", flexDirection: "column", height: "100%" }}>
           <div className="dash-kicker-row">
             <UI.Kicker>{t("dashboard.portfolio.deposits")}</UI.Kicker>
             <UI.Button type="button" variant="primary" onClick={() => onOpenAccount("deposit")}>
