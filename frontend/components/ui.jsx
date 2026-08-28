@@ -198,7 +198,7 @@
       return () => document.removeEventListener("keydown", onKeyDown);
     }, [onDismiss]);
 
-    return (
+    return ReactDOM.createPortal(
       <div className="dialog-backdrop" onMouseDown={(event) => {
         if (event.target === event.currentTarget) onDismiss();
       }}>
@@ -211,7 +211,8 @@
         >
           {children}
         </div>
-      </div>
+      </div>,
+      document.body
     );
   };
 

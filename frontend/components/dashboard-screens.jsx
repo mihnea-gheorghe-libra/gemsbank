@@ -2106,12 +2106,14 @@
           ? "Dă-mi recomandările concrete de economisire și buget care reies din tranzacțiile mele: cel " +
             "mult trei, câte un rând pentru fiecare acțiune diferită. Dacă ai o singură recomandare, " +
             "scrie un singur rând; nu completa până la trei reformulând aceeași acțiune. Fiecare rând " +
-            "începe cu '- ' și spune suma exactă, categoria sau obiectivul și, pe scurt, de ce. Fără " +
+            "începe cu '- ', spune suma exactă și categoria sau obiectivul, ca o acțiune concretă — nu doar " +
+            "o cifră sau un streak; nu adăuga mențiunea că e o estimare, apare deja separat. Fără " +
             "introducere, fără concluzie, fără titluri."
           : "Give me the concrete savings and budgeting actions that follow from my transactions: at most " +
             "three, one line per distinct action. If only one follows, write only one line; do not pad to " +
-            "three by rephrasing the same action. Start each line with '- ' and name the exact amount, " +
-            "the category or goal, and briefly why. No introduction, no conclusion, no headings.";
+            "three by rephrasing the same action. Start each line with '- ', name the exact amount and " +
+            "category or goal, phrased as an action to take — never a bare figure or streak alone, and " +
+            "skip the estimate note, that already shows separately. No introduction, no conclusion, no headings.";
       api
         .askAnalytics(prompt)
         .then((result) => {
