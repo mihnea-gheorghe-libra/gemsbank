@@ -197,7 +197,7 @@
 
 /* ── payments ────────────────────────────────────────────── */
 .dash-screen-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-.dash-accounts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; margin-bottom: 18px; }
+.dash-accounts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: stretch; margin-bottom: 18px; }
 .dash-pending-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .dash-pending-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--radius-lg); background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-sm), var(--relief-highlight); }
 .dash-filters-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
