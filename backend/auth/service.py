@@ -37,7 +37,13 @@ from backend.helpers.crypto import (
     hash_token,
     new_opaque_token,
 )
-from backend.helpers.errors import AuthenticationError, DomainError, NotFoundError
+from backend.helpers.errors import (
+    AuthenticationError,
+    ConflictError,
+    DomainError,
+    NotFoundError,
+    ValidationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +94,12 @@ class SignOut(Command):
     command_name: ClassVar[str] = "auth.sign_out"
 
     session_token: str
+
+
+class RequestUsernameChange(Command):
+    command_name: ClassVar[str] = "auth.username_change.request"
+
+    new_username: str
 
 
 class RequestEmailChange(Command):
@@ -234,6 +246,7 @@ class AuthService:
         command_bus.register(VerifyResetCode, self._handle_reset_verify)
         command_bus.register(ResetPassword, self._handle_reset_complete)
         command_bus.register(SignOut, self._handle_sign_out)
+        command_bus.register(RequestUsernameChange, self._handle_request_username_change)
         command_bus.register(RequestEmailChange, self._handle_request_email_change)
         command_bus.register(RequestPhoneChange, self._handle_request_phone_change)
         command_bus.register(RequestPinChange, self._handle_request_pin_change)
@@ -650,6 +663,28 @@ class AuthService:
             ],
         )
 
+    async def _handle_request_username_change(
+        self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
+    ) -> CommandResult:
+        assert isinstance(command, RequestUsernameChange)
+        user = await self._current_user(context)
+        new_username = validation.normalise_username(command.new_username)
+        if new_username == user.username:
+            raise ValidationError(
+                "That is already your username.", details={"field": "username"}
+            )
+        taken = await self._users.get_by_username(new_username)
+        if taken is not None and taken.id != user.id:
+            raise ConflictError("That username is taken.", details={"field": "username"})
+        return await self._start_secure_change(
+            user,
+            RecoveryKind.USERNAME_CHANGE,
+            {"newUsername": new_username},
+            purpose="schimbarea numelui de utilizator",
+            subject="Confirmă schimbarea numelui de utilizator — GEMS",
+            session=session,
+        )
+
     async def _handle_request_email_change(
         self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
     ) -> CommandResult:
@@ -734,7 +769,15 @@ class AuthService:
         if user is None:
             raise NotFoundError("The account for this request no longer exists.")
 
-        if case.kind == RecoveryKind.EMAIL_CHANGE:
+        if case.kind == RecoveryKind.USERNAME_CHANGE:
+            new_username = case.payload["newUsername"]
+            taken = await self._users.get_by_username(new_username)
+            if taken is not None and taken.id != user.id:
+                raise ConflictError(
+                    "That username is taken.", details={"field": "username"}
+                )
+            user.change_username(new_username)
+        elif case.kind == RecoveryKind.EMAIL_CHANGE:
             user.change_email(case.payload["newEmail"])
         elif case.kind == RecoveryKind.PHONE_CHANGE:
             user.change_phone(case.payload["newPhone"])

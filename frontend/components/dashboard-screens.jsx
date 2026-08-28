@@ -2936,6 +2936,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     const identity = (me && me.identity) || null;
     const placeholder = "—";
 
+    const [usernameDraft, setUsernameDraft] = useState("");
     const [emailDraft, setEmailDraft] = useState("");
     const [phoneDraft, setPhoneDraft] = useState("");
     const [savingContact, setSavingContact] = useState(false);
@@ -2967,6 +2968,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
 
     useEffect(() => {
       if (me) {
+        setUsernameDraft(me.username || "");
         setEmailDraft(me.email);
         setPhoneDraft(me.phone);
       }
@@ -2978,7 +2980,12 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
         return;
       }
       const [current, ...rest] = queue;
-      const request = current.kind === "email" ? api.requestEmailChange(current.value) : api.requestPhoneChange(current.value);
+      const request =
+        current.kind === "username"
+          ? api.requestUsernameChange(current.value)
+          : current.kind === "email"
+            ? api.requestEmailChange(current.value)
+            : api.requestPhoneChange(current.value);
       request
         .then((response) => setActiveCase({ kind: current.kind, caseId: response.recoveryCaseId, delivery: response.delivery, rest }))
         .catch((err) => {
@@ -2990,8 +2997,10 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     function saveContact() {
       if (!me) return;
       const changes = [];
+      const nextUsername = usernameDraft.trim().toLowerCase();
       const nextEmail = emailDraft.trim();
       const nextPhone = phoneDraft.trim();
+      if (nextUsername && nextUsername !== me.username) changes.push({ kind: "username", value: nextUsername });
       if (nextEmail && nextEmail !== me.email) changes.push({ kind: "email", value: nextEmail });
       if (nextPhone && nextPhone !== me.phone) changes.push({ kind: "phone", value: nextPhone });
       if (!changes.length) return;
@@ -3008,13 +3017,16 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
       api
         .verifySecureChange(activeCase.caseId, code)
         .then((response) => {
-          onMeChange({
+          onMeChange((prev) => ({
+            ...(prev || {}),
             userId: response.userId,
             username: response.username,
             email: response.email,
             phone: response.phone,
             fullName: response.fullName,
-          });
+            identity: response.identity !== undefined ? response.identity : (prev && prev.identity),
+          }));
+          setUsernameDraft(response.username || "");
           setEmailDraft(response.email);
           setPhoneDraft(response.phone);
           const rest = activeCase.rest || [];
@@ -3025,7 +3037,15 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
             runNextChange(rest);
           } else {
             setSavingContact(false);
-            setContactNotice(t(kind === "email" ? "dashboard.settings.otp.successEmail" : "dashboard.settings.otp.successPhone"));
+            setContactNotice(
+              t(
+                {
+                  username: "dashboard.settings.otp.successUsername",
+                  email: "dashboard.settings.otp.successEmail",
+                  phone: "dashboard.settings.otp.successPhone",
+                }[kind] || "dashboard.settings.otp.successEmail"
+              )
+            );
           }
         })
         .catch((err) => {
@@ -3101,8 +3121,20 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
           <UI.Plate className="elev-sm" style={{ padding: 18 }}>
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.settings.personalDetails")}</UI.Kicker>
             <div className="dash-field-grid">
+              <div style={{ gridColumn: "1 / -1" }}>
+                <UI.Field id="set-username" label={t("dashboard.settings.username")}>
+                  <UI.TextInput
+                    id="set-username"
+                    value={usernameDraft}
+                    onChange={(event) => setUsernameDraft(event.target.value)}
+                    disabled={!me}
+                    autoComplete="username"
+                    spellCheck={false}
+                  />
+                </UI.Field>
+              </div>
               <UI.Field id="set-name" label={t("dashboard.settings.fullName")}>
-<UI.TextInput
+                <UI.TextInput
                   id="set-name"
                   readOnly
                   value={identity ? GEMS.people.fullName(identity.fullName) : (me ? me.fullName : placeholder)}
