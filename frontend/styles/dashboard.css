@@ -263,7 +263,7 @@
 .dash-split-share-amount { font-family: var(--font-heading); font-size: 15px; }
 
 /* ── portfolio ───────────────────────────────────────────── */
-.dash-portfolio-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+.dash-portfolio-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px; }
 .dash-account-tile-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .dash-tile-menu { position: relative; flex: none; margin: -6px -6px 0 0; }
 .dash-tile-menu-trigger {
@@ -283,6 +283,8 @@
   background: transparent; color: var(--color-text);
 }
 .dash-tile-menu-item:hover { background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
+.dash-tile-menu-item.is-danger { color: var(--color-negative); }
+.dash-tile-menu-item.is-danger:hover { background: color-mix(in srgb, var(--color-negative) 10%, transparent); }
 .dash-portfolio-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .dash-product-list { display: flex; flex-direction: column; gap: 12px; }
 .dash-product-row { padding: 12px 14px; border-radius: var(--radius-lg); background: var(--color-surface); }

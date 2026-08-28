@@ -1,10 +1,9 @@
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
-from openai import AsyncAzureOpenAI, BadRequestError, RateLimitError
-
 from backend.config import Settings
 from backend.helpers.errors import RateLimitedError
+from openai import AsyncAzureOpenAI, BadRequestError, RateLimitError
 
 CONTENT_FILTER_REFUSAL = "I can't help with that request."
 

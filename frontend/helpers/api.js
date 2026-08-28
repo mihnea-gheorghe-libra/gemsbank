@@ -161,7 +161,9 @@
     updatePreferences: (prefs) => send("/auth/preferences", { method: "PUT", json: { prefs } }),
 
     listAccounts: () => send("/accounts"),
-    openAccount: (currency, kind) => send("/accounts", { method: "POST", json: { currency, kind } }),
+    openAccount: (currency, kind, label) =>
+      send("/accounts", { method: "POST", json: { currency, kind, label: label || null } }),
+    closeAccount: (accountId) => send("/accounts/" + accountId + "/close", { method: "POST", json: {} }),
     exchangeRate: (from, to) => send("/exchange/rate" + query({ from, to })),
     exchange: (payload) => send("/exchange/convert", { method: "POST", json: payload }),
     paymentsSummary: () => send("/payments/summary"),
@@ -185,6 +187,9 @@
 
     marketSnapshot: (range, refresh) =>
       send("/investments/market" + query({ range, refresh: refresh ? "true" : "" })),
+    investPortfolio: () => send("/investments/portfolio"),
+    investBuy: (payload) => send("/investments/buy", { method: "POST", json: payload }),
+    investSell: (payload) => send("/investments/sell", { method: "POST", json: payload }),
 
     listCards: () => send("/cards"),
     issueVirtualCard: (accountId) =>
@@ -246,6 +251,33 @@
       }),
     cancelStandingOrder: (standingOrderId) =>
       send("/goals/standing-order/" + encodeURIComponent(standingOrderId) + "/cancel", {
+        method: "POST",
+      }),
+
+    listTermDeposits: () => send("/deposits"),
+    createTermDeposit: (parentAccountId, name, termMonths, initialDepositMinorUnits) =>
+      send("/deposits", {
+        method: "POST",
+        json: { parentAccountId, name, termMonths, initialDepositMinorUnits },
+      }),
+    topUpTermDeposit: (depositId, amountMinorUnits) =>
+      send("/deposits/" + encodeURIComponent(depositId) + "/topup", {
+        method: "POST",
+        json: { amountMinorUnits },
+      }),
+    withdrawFromTermDeposit: (depositId, amountMinorUnits) =>
+      send("/deposits/" + encodeURIComponent(depositId) + "/withdraw", {
+        method: "POST",
+        json: { amountMinorUnits },
+      }),
+    closeTermDeposit: (depositId) =>
+      send("/deposits/" + encodeURIComponent(depositId) + "/close", { method: "POST" }),
+
+    listCreditApplications: () => send("/credits/applications"),
+    submitCreditApplication: (payload) =>
+      send("/credits/applications", { method: "POST", json: payload }),
+    withdrawCreditApplication: (applicationId) =>
+      send("/credits/applications/" + encodeURIComponent(applicationId) + "/withdraw", {
         method: "POST",
       }),
     askSupport: (question) =>

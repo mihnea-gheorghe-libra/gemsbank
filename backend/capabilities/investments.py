@@ -1,10 +1,9 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
 from backend.capabilities.payments import format_minor
 from backend.helpers.context import Actor
 from backend.investments.service import InvestmentsService, get_investments_service
+from pydantic import BaseModel, Field
 
 RANGES = ("1mo", "3mo", "6mo", "1y")
 

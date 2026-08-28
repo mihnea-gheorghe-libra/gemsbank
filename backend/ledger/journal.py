@@ -15,6 +15,7 @@ class HouseAccount(StrEnum):
     FEE_REVENUE = "house:fee_revenue"
     SUSPENSE = "house:suspense"
     FX = "house:fx"
+    INVEST_SUSPENSE = "house:invest_suspense"
 
 
 def house_account_id(account: HouseAccount, currency: str) -> str:
@@ -28,6 +29,8 @@ class TransactionKind(StrEnum):
     REVERSAL = "reversal"
     FX_CONVERSION = "fx_conversion"
     DEMO_TOPUP = "demo_topup"
+    INVESTMENT_BUY = "investment_buy"
+    INVESTMENT_SELL = "investment_sell"
 
 
 class EntrySide(StrEnum):

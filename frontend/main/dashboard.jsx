@@ -6,10 +6,9 @@
   const t = GEMS.i18n.t;
   const api = GEMS.api;
   const DATA = GEMS.dashboardData;
-  const { useState, useCallback, useEffect, useRef } = React;
+  const { useState, useCallback, useEffect, useMemo, useRef } = React;
 
   const SCREENS = ["home", "payments", "chat", "accounts", "portfolio", "cards", "analytics", "education", "settings"];
-  const REAL_ACCOUNT_KINDS = ["current", "savings", "invest"];
 
   const ANSWER_KEYS = {
     pendingSign: "answerPendingSign",
@@ -140,9 +139,41 @@
       id: account.accountId,
       cur: account.currency,
       typeKey: account.kind,
+      label: account.label,
       minor: account.balance.minorUnits,
       iban: account.iban,
       ibanShort: account.ibanMasked,
+      status: account.status,
+    };
+  }
+
+  function mapTermDepositRow(deposit) {
+    return {
+      id: deposit.depositId,
+      accountId: deposit.accountId,
+      parentAccountId: deposit.parentAccountId,
+      name: deposit.name,
+      rateBps: deposit.rateBps,
+      termMonths: deposit.termMonths,
+      matures: deposit.maturesAt,
+      cur: deposit.currency,
+      minor: deposit.balance.minorUnits,
+    };
+  }
+
+  function mapCreditApplicationRow(application) {
+    return {
+      id: application.applicationId,
+      productId: application.productId,
+      kind: application.kind,
+      amountMinor: application.amount.minorUnits,
+      cur: application.amount.currency,
+      termMonths: application.termMonths,
+      rateBps: application.rateBps,
+      purpose: application.purpose,
+      payoutAccountId: application.payoutAccountId,
+      status: application.status,
+      submitted: (application.submittedAt || "").slice(0, 10),
     };
   }
 
@@ -200,7 +231,7 @@
     const [splitOpen, setSplitOpen] = useState(false);
     const [templateDraft, setTemplateDraft] = useState(null);
     const [templateOpen, setTemplateOpen] = useState(false);
-    const [accounts, setAccounts] = useState(DATA.accounts);
+    const [accounts, setAccounts] = useState([]);
     const [transactions, setTransactions] = useState(DATA.transactions);
     const [pending, setPending] = useState(DATA.pending);
     const [templates, setTemplates] = useState(DATA.templates);
@@ -208,16 +239,30 @@
     const [templatesBusy, setTemplatesBusy] = useState(false);
     const [templatesDialogError, setTemplatesDialogError] = useState(null);
     const [splitBills, setSplitBills] = useState([]);
-    const [deposits, setDeposits] = useState(DATA.deposits);
-    const [credits] = useState(DATA.credits);
-    const [holdings, setHoldings] = useState(DATA.holdings);
+    const [termDeposits, setTermDeposits] = useState([]);
+    const [depositMoveBusy, setDepositMoveBusy] = useState(false);
+    const [depositMoveError, setDepositMoveError] = useState(null);
+    const [depositActionError, setDepositActionError] = useState(null);
+    const [quickTransferShown, setQuickTransferShown] = useState(false);
+    const [quickTransferBusy, setQuickTransferBusy] = useState(false);
+    const [quickTransferError, setQuickTransferError] = useState(null);
+    const [investAccountId, setInvestAccountId] = useState(null);
     const [investCashMinor, setInvestCashMinor] = useState(null);
+    const [investQuantities, setInvestQuantities] = useState({});
+    const [tradeBusy, setTradeBusy] = useState(false);
+    const [tradeError, setTradeError] = useState(null);
     const [market, setMarket] = useState(null);
     const [marketLoading, setMarketLoading] = useState(false);
     const [marketError, setMarketError] = useState(null);
     const [creditApplications, setCreditApplications] = useState([]);
+    const [creditApplyBusy, setCreditApplyBusy] = useState(false);
+    const [creditApplyError, setCreditApplyError] = useState(null);
+    const [creditActionError, setCreditActionError] = useState(null);
     const [openAccountShown, setOpenAccountShown] = useState(false);
     const [openAccountInitialType, setOpenAccountInitialType] = useState(null);
+    const [accountToClose, setAccountToClose] = useState(null);
+    const [closeAccountBusy, setCloseAccountBusy] = useState(false);
+    const [closeAccountError, setCloseAccountError] = useState(null);
     const [depositMove, setDepositMove] = useState(null);
     const [trade, setTrade] = useState(null);
     const [creditShown, setCreditShown] = useState(false);
@@ -334,23 +379,47 @@
       };
     }, [username]);
 
+    const loadPortfolio = useCallback(async () => {
+      try {
+        const data = await api.investPortfolio();
+        const primary = data.accounts[0] || null;
+        setInvestAccountId(primary ? primary.accountId : null);
+        setInvestCashMinor(primary ? primary.cashBalanceMinor : null);
+        const quantities = {};
+        (primary ? primary.holdings : []).forEach((holding) => {
+          quantities[holding.instrumentId] = holding.quantityMicro;
+        });
+        setInvestQuantities(quantities);
+      } catch (err) {
+        if (err && err.status === 404) {
+          setInvestAccountId(null);
+          setInvestCashMinor(null);
+          setInvestQuantities({});
+          return;
+        }
+        throw err;
+      }
+    }, []);
+
     const loadPaymentsData = useCallback(async () => {
-      const [accountList, txList, pendingList, templateList] = await Promise.all([
+      const [accountList, txList, pendingList, templateList, depositList, creditList] = await Promise.all([
         api.listAccounts(),
         api.listTransactions({}),
         api.listPending(),
         api.listTemplates(),
+        api.listTermDeposits(),
+        api.listCreditApplications(),
       ]);
-      const mappedAccounts = accountList.accounts.map(mapAccountRow);
-      setAccounts(mappedAccounts);
+      setAccounts(accountList.accounts.map(mapAccountRow).filter((account) => account.status !== "closed"));
       setTransactions(pendingList.pending.map(mapPendingSignatureRow).concat(txList.transactions.map(mapMovementRow)));
       setPending(pendingList.pending);
       setTemplates(templateList.templates.map(mapTemplateRow));
+      setTermDeposits(depositList.deposits.map(mapTermDepositRow));
+      setCreditApplications(creditList.applications.map(mapCreditApplicationRow));
 
-      const investAccount = mappedAccounts.find((account) => account.typeKey === "invest");
-      setInvestCashMinor(investAccount ? investAccount.minor : null);
+      await loadPortfolio();
       setDataLoaded(true);
-    }, []);
+    }, [loadPortfolio]);
 
     useEffect(() => {
       loadPaymentsData().catch(() => {});
@@ -697,7 +766,24 @@
       }
     }, [screen, market, marketLoading, marketError, loadMarket]);
 
-    const pricedHoldings = DASH.applyQuotes(holdings, market);
+    const pricedHoldings = useMemo(() => {
+      if (!market || !market.quotes) return [];
+      return market.quotes.map((quote) => ({
+        id: quote.id,
+        name: quote.name,
+        symbol: quote.symbol,
+        unitKey: quote.unitKey,
+        cur: quote.currency,
+        quoteCurrency: quote.quoteCurrency,
+        quoteUnitPriceMinor: quote.quoteUnitPriceMinor,
+        unitPriceMinor: quote.unitPriceMinor,
+        changeBps: quote.changeBps,
+        history: quote.history,
+        live: quote.live,
+        asOf: quote.asOf,
+        units: (investQuantities[quote.id] || 0) / 1000000,
+      }));
+    }, [market, investQuantities]);
 
     const selectCard = useCallback((cardId) => {
       setSelectedCardId(cardId);
@@ -1065,13 +1151,13 @@
     }, [loadPaymentsData]);
 
     const useTemplate = useCallback((template) => {
-      const match = accounts.find((account) => account.cur === template.cur) || accounts[0];
+      const match = accounts.find((account) => account.cur === template.cur) || accounts[0] || null;
       openPayment({
         payType: "iban",
         beneficiary: template.beneficiary,
         iban: template.iban,
         reference: template.reference,
-        fromId: match.id,
+        fromId: match ? match.id : "",
       });
     }, [accounts, openPayment]);
 
@@ -1163,16 +1249,6 @@
       setSplitBills((list) => list.filter((bill) => bill.id !== billId));
     }, []);
 
-    const creditAccount = useCallback((accountId, minor) => {
-      setAccounts((list) =>
-        list.map((account) => (account.id === accountId ? Object.assign({}, account, { minor: account.minor + minor }) : account))
-      );
-    }, []);
-
-    const bookMovement = useCallback((row) => {
-      setTransactions((list) => [Object.assign({ date: today(), statusKey: "booked", channel: "transfer" }, row)].concat(list));
-    }, [today]);
-
     const openAddFunds = useCallback(() => {
       setAddFundsError(null);
       setAddFundsShown(true);
@@ -1257,28 +1333,10 @@
     }, [loadPaymentsData]);
 
     const openAccount = useCallback(async ({ account, fundFromId, fundMinor }) => {
-      if (REAL_ACCOUNT_KINDS.indexOf(account.typeKey) < 0) {
-        setAccounts((list) => list.concat([Object.assign({}, account, { minor: fundMinor })]));
-        if (fundFromId && fundMinor > 0) {
-          creditAccount(fundFromId, -fundMinor);
-          bookMovement({
-            who: DASH.accountLabel(account),
-            ref: t("dashboard.openAccount.movementRef"),
-            categoryKey: "transfer",
-            minor: fundMinor,
-            currency: account.cur,
-            direction: "out",
-            accountId: fundFromId,
-          });
-        }
-        setOpenAccountShown(false);
-        return;
-      }
-
       setOpenAccountBusy(true);
       setOpenAccountError(null);
       try {
-        const opened = await api.openAccount(account.cur, account.typeKey);
+        const opened = await api.openAccount(account.cur, account.typeKey, account.label);
         let fundResponse = null;
         if (fundFromId && fundMinor > 0) {
           fundResponse = await api.transfer({
@@ -1302,124 +1360,150 @@
       } finally {
         setOpenAccountBusy(false);
       }
-    }, [creditAccount, bookMovement, displayName, loadPaymentsData]);
+    }, [displayName, loadPaymentsData]);
 
-    const newDeposit = useCallback(({ deposit, fromId, amountMinor }) => {
-      setDeposits((list) => list.concat([deposit]));
-      creditAccount(fromId, -amountMinor);
-      bookMovement({
-        who: deposit.name,
-        ref: t("dashboard.deposit.movementRef"),
-        categoryKey: "transfer",
-        minor: amountMinor,
-        currency: deposit.cur,
-        direction: "out",
-        accountId: fromId,
-      });
-      setOpenAccountShown(false);
-    }, [creditAccount, bookMovement]);
+    const requestCloseAccount = useCallback((account) => {
+      setCloseAccountError(null);
+      setAccountToClose(account);
+    }, []);
+
+    const cancelCloseAccount = useCallback(() => {
+      setAccountToClose(null);
+      setCloseAccountError(null);
+    }, []);
+
+    const confirmCloseAccount = useCallback(async (accountId) => {
+      setCloseAccountBusy(true);
+      setCloseAccountError(null);
+      try {
+        await api.closeAccount(accountId);
+        setAccountToClose(null);
+        await loadPaymentsData();
+      } catch (err) {
+        setCloseAccountError(err);
+      } finally {
+        setCloseAccountBusy(false);
+      }
+    }, [loadPaymentsData]);
+
+    const createTermDeposit = useCallback(async (payload) => {
+      setOpenAccountBusy(true);
+      setOpenAccountError(null);
+      try {
+        await api.createTermDeposit(
+          payload.parentAccountId,
+          payload.name,
+          payload.termMonths,
+          payload.initialDepositMinorUnits
+        );
+        await loadPaymentsData();
+        setOpenAccountShown(false);
+      } catch (err) {
+        setOpenAccountError(err);
+      } finally {
+        setOpenAccountBusy(false);
+      }
+    }, [loadPaymentsData]);
 
     const openProduct = useCallback(
-      (payload) => (payload.deposit ? newDeposit(payload) : openAccount(payload)),
-      [newDeposit, openAccount]
+      (payload) => (payload.termDeposit ? createTermDeposit(payload.termDeposit) : openAccount(payload)),
+      [createTermDeposit, openAccount]
     );
 
-    const moveDeposit = useCallback(({ depositId, accountId, amountMinor, direction }) => {
-      const inbound = direction === "in";
-      setDeposits((list) =>
-        list.map((deposit) =>
-          deposit.id === depositId
-            ? Object.assign({}, deposit, { minor: deposit.minor + (inbound ? amountMinor : -amountMinor) })
-            : deposit
-        )
-      );
-      creditAccount(accountId, inbound ? -amountMinor : amountMinor);
-
-      const deposit = deposits.find((item) => item.id === depositId);
-      bookMovement({
-        who: deposit ? deposit.name : "",
-        ref: inbound ? t("dashboard.deposit.topUp") : t("dashboard.deposit.withdraw"),
-        categoryKey: "transfer",
-        minor: amountMinor,
-        currency: deposit ? deposit.cur : "RON",
-        direction: inbound ? "out" : "in",
-        accountId,
-      });
-      setDepositMove(null);
-    }, [deposits, creditAccount, bookMovement]);
-
-    const closeDeposit = useCallback((deposit) => {
-      const target = accounts.find((account) => account.cur === deposit.cur);
-      if (!target) return;
-      setDeposits((list) => list.filter((item) => item.id !== deposit.id));
-      if (deposit.minor > 0) {
-        creditAccount(target.id, deposit.minor);
-        bookMovement({
-          who: deposit.name,
-          ref: t("dashboard.deposit.closeRef"),
-          categoryKey: "transfer",
-          minor: deposit.minor,
-          currency: deposit.cur,
-          direction: "in",
-          accountId: target.id,
-        });
+    const moveDeposit = useCallback(async ({ depositId, amountMinor, direction }) => {
+      setDepositMoveBusy(true);
+      setDepositMoveError(null);
+      try {
+        const call = direction === "in" ? api.topUpTermDeposit : api.withdrawFromTermDeposit;
+        await call(depositId, amountMinor);
+        await loadPaymentsData();
+        setDepositMove(null);
+      } catch (err) {
+        setDepositMoveError(err);
+      } finally {
+        setDepositMoveBusy(false);
       }
-    }, [accounts, creditAccount, bookMovement]);
+    }, [loadPaymentsData]);
 
-    const runTrade = useCallback(({ holdingId, accountId, amountMinor, direction }) => {
-      const holding = DASH.applyQuotes(holdings, market).find((item) => item.id === holdingId);
-      if (!holding) return;
-      const buying = direction === "buy";
+    const closeDeposit = useCallback(async (deposit) => {
+      setDepositActionError(null);
+      try {
+        await api.closeTermDeposit(deposit.id);
+        await loadPaymentsData();
+      } catch (err) {
+        setDepositActionError(err);
+      }
+    }, [loadPaymentsData]);
 
-      if (buying) {
-        const availableCash = investCashMinor || 0;
-        const fromCash = Math.min(availableCash, amountMinor);
-        const fromAccount = amountMinor - fromCash;
-        if (fromCash > 0) setInvestCashMinor((cash) => (cash || 0) - fromCash);
-        if (fromAccount > 0) {
-          creditAccount(accountId, -fromAccount);
-          bookMovement({
-            who: holding.name,
-            ref: t("dashboard.invest.buy"),
-            categoryKey: "transfer",
-            minor: fromAccount,
-            currency: holding.cur,
-            direction: "out",
-            accountId,
-          });
+    const runTrade = useCallback(async ({ holdingId, amountMinor, direction }) => {
+      if (!investAccountId) return;
+      setTradeBusy(true);
+      setTradeError(null);
+      try {
+        const call = direction === "buy" ? api.investBuy : api.investSell;
+        await call({
+          accountId: investAccountId,
+          instrumentId: holdingId,
+          amountMinorUnits: amountMinor,
+        });
+        await loadPaymentsData();
+        setTrade(null);
+      } catch (err) {
+        setTradeError(err);
+      } finally {
+        setTradeBusy(false);
+      }
+    }, [investAccountId, loadPaymentsData]);
+
+    const applyForCredit = useCallback(async (payload) => {
+      setCreditApplyBusy(true);
+      setCreditApplyError(null);
+      try {
+        await api.submitCreditApplication(payload);
+        await loadPaymentsData();
+        setCreditShown(false);
+      } catch (err) {
+        setCreditApplyError(err);
+      } finally {
+        setCreditApplyBusy(false);
+      }
+    }, [loadPaymentsData]);
+
+    const withdrawApplication = useCallback(async (applicationId) => {
+      setCreditActionError(null);
+      try {
+        await api.withdrawCreditApplication(applicationId);
+        await loadPaymentsData();
+      } catch (err) {
+        setCreditActionError(err);
+      }
+    }, [loadPaymentsData]);
+
+    const quickTransfer = useCallback(async (payload) => {
+      setQuickTransferBusy(true);
+      setQuickTransferError(null);
+      try {
+        const response = await api.transfer({
+          sourceAccountId: payload.sourceAccountId,
+          targetAccountId: payload.targetAccountId,
+          counterparty: displayName,
+          amountMinorUnits: payload.amountMinor,
+          reference: t("dashboard.accounts.quickTransferRef"),
+          category: null,
+          acknowledgePayeeMismatch: false,
+        });
+        await loadPaymentsData();
+        setQuickTransferShown(false);
+        if (response && response.status === "awaiting_signature") {
+          setSignFormError(null);
+          setSigningPayment(response);
         }
-      } else {
-        creditAccount(accountId, amountMinor);
-        bookMovement({
-          who: holding.name,
-          ref: t("dashboard.invest.sell"),
-          categoryKey: "transfer",
-          minor: amountMinor,
-          currency: holding.cur,
-          direction: "in",
-          accountId,
-        });
+      } catch (err) {
+        setQuickTransferError(err);
+      } finally {
+        setQuickTransferBusy(false);
       }
-
-      const deltaUnits = amountMinor / holding.unitPriceMinor;
-      setHoldings((list) =>
-        list.map((item) =>
-          item.id === holdingId
-            ? Object.assign({}, item, { units: Math.max(0, item.units + (buying ? deltaUnits : -deltaUnits)) })
-            : item
-        )
-      );
-      setTrade(null);
-    }, [holdings, market, investCashMinor, creditAccount, bookMovement]);
-
-    const applyForCredit = useCallback((application) => {
-      setCreditApplications((list) => [application].concat(list));
-      setCreditShown(false);
-    }, []);
-
-    const withdrawApplication = useCallback((applicationId) => {
-      setCreditApplications((list) => list.filter((item) => item.id !== applicationId));
-    }, []);
+    }, [displayName, loadPaymentsData]);
 
     return (
       <div className="dash-shell">
@@ -1513,25 +1597,29 @@
             {screen === "accounts" ? (
               <SCR.AccountsScreen
                 accounts={accounts}
-                deposits={deposits}
-                credits={credits}
+                termDeposits={termDeposits}
+                depositActionError={depositActionError}
                 creditApplications={creditApplications}
+                creditActionError={creditActionError}
                 onOpenAccount={(typeKey) => {
                   setOpenAccountError(null);
                   setOpenAccountInitialType(typeKey || null);
                   setOpenAccountShown(true);
                 }}
-                onMoveDeposit={(deposit, direction) => setDepositMove({ deposit, direction })}
+                onMoveDeposit={(deposit, direction) => { setDepositMoveError(null); setDepositMove({ deposit, direction }); }}
                 onCloseDeposit={closeDeposit}
-                onApplyCredit={() => setCreditShown(true)}
+                onApplyCredit={() => { setCreditApplyError(null); setCreditShown(true); }}
                 onWithdrawApplication={withdrawApplication}
                 onOpenStatement={openStatement}
+                onDeleteAccount={requestCloseAccount}
+                onOpenQuickTransfer={() => { setQuickTransferError(null); setQuickTransferShown(true); }}
               />
             ) : null}
             {screen === "portfolio" ? (
               <SCR.PortfolioScreen
                 holdings={pricedHoldings}
                 investCashMinor={investCashMinor}
+                hasInvestAccount={Boolean(investAccountId)}
                 market={market}
                 marketLoading={marketLoading}
                 marketError={marketError}
@@ -1683,26 +1771,53 @@
           />
         ) : null}
 
+        {accountToClose ? (
+          <DASH.DeleteAccountDialog
+            key={accountToClose.id}
+            account={accountToClose}
+            busy={closeAccountBusy}
+            error={closeAccountError}
+            onClose={cancelCloseAccount}
+            onSubmit={confirmCloseAccount}
+          />
+        ) : null}
+
         {depositMove ? (
           <DASH.MoveDepositDialog
             key={depositMove.deposit.id + depositMove.direction}
-            deposit={deposits.find((item) => item.id === depositMove.deposit.id) || depositMove.deposit}
+            deposit={termDeposits.find((item) => item.id === depositMove.deposit.id) || depositMove.deposit}
             accounts={accounts}
             direction={depositMove.direction}
+            busy={depositMoveBusy}
+            error={depositMoveError}
             onClose={() => setDepositMove(null)}
             onSubmit={moveDeposit}
+          />
+        ) : null}
+
+        {quickTransferShown ? (
+          <DASH.QuickTransferDialog
+            accounts={accounts}
+            busy={quickTransferBusy}
+            error={quickTransferError}
+            onClose={() => setQuickTransferShown(false)}
+            onSubmit={quickTransfer}
           />
         ) : null}
 
         {trade ? (
           <DASH.InvestDialog
             key={(trade.holdingId || "any") + trade.direction}
-            holdings={pricedHoldings}
-            accounts={accounts}
+            holdings={pricedHoldings.filter((holding) => holding.units > 0 || trade.direction === "buy")}
             investCashMinor={investCashMinor}
             holdingId={trade.holdingId}
             direction={trade.direction}
-            onClose={() => setTrade(null)}
+            busy={tradeBusy}
+            error={tradeError}
+            onClose={() => {
+              setTrade(null);
+              setTradeError(null);
+            }}
             onSubmit={runTrade}
           />
         ) : null}
@@ -1710,6 +1825,8 @@
         {creditShown ? (
           <DASH.CreditApplicationDialog
             accounts={accounts}
+            busy={creditApplyBusy}
+            error={creditApplyError}
             onClose={() => setCreditShown(false)}
             onSubmit={applyForCredit}
           />

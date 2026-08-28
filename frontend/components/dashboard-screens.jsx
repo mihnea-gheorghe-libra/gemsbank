@@ -127,6 +127,8 @@
   // One vendor story and one exchange-rate story. Everything else lives behind "view all".
   const INSIGHT_CARD_LIMIT = 1;
 
+  const HOME_ACCOUNT_PREVIEW_LIMIT = 3;
+
   function hostOf(url) {
     if (!url) return "";
     const match = /^https?:\/\/([^/?#]+)/i.exec(url);
@@ -290,7 +292,7 @@
       <div className="dash-grid-home">
         <UI.Plate className="dash-balance-card elev-sm">
           <div className="dash-kicker-row">
-            <UI.Kicker>{t("dashboard.home.totalBalance")}</UI.Kicker>
+            <UI.Kicker>{t("dashboard.home.totalBalance", { count: accounts.length })}</UI.Kicker>
             <UI.Button type="button" variant="ghost" style={{ gap: 6 }} onClick={onToggleBalance}>
               <UI.Icon name={balanceHidden ? "Eye" : "EyeOff"} size={15} />
               {balanceHidden ? t("dashboard.home.reveal") : t("dashboard.home.hide")}
@@ -331,16 +333,25 @@
             <a href="#" onClick={(event) => { event.preventDefault(); onOpenAccount(); }}>{t("dashboard.home.openAccount")}</a>
           </div>
           <div className="dash-accounts-tiles">
-            {accounts.map((account, index) => (
-              <UI.Plate key={index} className="dash-account-tile">
+            {accounts.slice(0, HOME_ACCOUNT_PREVIEW_LIMIT).map((account) => (
+              <UI.Plate key={account.id} className="dash-account-tile">
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
-                  {account.cur} · {t("dashboard.accountType." + account.typeKey)}
+                  {account.cur} · {account.label || t("dashboard.accountType." + account.typeKey)}
                 </div>
                 <div className="dash-account-amount">{balanceHidden ? "••••••" : formatMinor(account.minor)}</div>
                 <div className="text-muted" style={{ fontSize: 11 }}>{account.ibanShort}</div>
               </UI.Plate>
             ))}
           </div>
+          {accounts.length > HOME_ACCOUNT_PREVIEW_LIMIT ? (
+            <a
+              href="#"
+              style={{ display: "inline-block", marginTop: 10, fontSize: 13 }}
+              onClick={(event) => { event.preventDefault(); onNavigate("accounts"); }}
+            >
+              {t("dashboard.home.seeAllAccounts", { count: accounts.length })}
+            </a>
+          ) : null}
         </UI.Plate>
 
         {/* Moved below the accounts frame, same footprint (grid-column: span 2) per request. */}
@@ -643,7 +654,7 @@
       </div>
     );
   };
-  function AccountTileMenu({ onStatement }) {
+  function AccountTileMenu({ onStatement, onDelete }) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef(null);
 
@@ -686,6 +697,15 @@
               <UI.Icon name="FileText" size={14} />
               {t("dashboard.accounts.statementMenuItem")}
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="dash-tile-menu-item is-danger"
+              onClick={() => { setOpen(false); onDelete(); }}
+            >
+              <UI.Icon name="Trash2" size={14} />
+              {t("dashboard.accounts.deleteMenuItem")}
+            </button>
           </div>
         ) : null}
       </div>
@@ -694,31 +714,44 @@
 
   SCR.AccountsScreen = function AccountsScreen({
     accounts,
-    deposits,
-    credits,
+    termDeposits,
+    depositActionError,
     creditApplications,
+    creditActionError,
     onOpenAccount,
     onMoveDeposit,
     onCloseDeposit,
     onApplyCredit,
     onWithdrawApplication,
     onOpenStatement,
+    onDeleteAccount,
+    onOpenQuickTransfer,
   }) {
+    const activeApplications = creditApplications.filter((application) => application.status === "review");
+
     return (
       <div>
         <div className="dash-screen-head">
           <h3 style={{ margin: 0 }}>{t("dashboard.accounts.title")}</h3>
-          <UI.Button type="button" variant="primary" onClick={() => onOpenAccount()}>{t("dashboard.portfolio.openAccount")}</UI.Button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <UI.Button type="button" variant="secondary" disabled={accounts.length < 2} onClick={onOpenQuickTransfer}>
+              {t("dashboard.accounts.quickTransfer")}
+            </UI.Button>
+            <UI.Button type="button" variant="primary" onClick={() => onOpenAccount()}>{t("dashboard.portfolio.openAccount")}</UI.Button>
+          </div>
         </div>
 
         <div className="dash-portfolio-tiles">
           {accounts.map((account) => (
             <UI.Plate key={account.id} className="elev-sm" style={{ padding: 14, position: "relative" }}>
               <div className="dash-account-tile-head">
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
-                  {account.cur} &middot; {t("dashboard.accountType." + account.typeKey)}
+                <div style={{ fontFamily: "var(--font-heading)", fontSize: 14 }}>
+                  {account.label || t("dashboard.accountType." + account.typeKey)}
                 </div>
-                <AccountTileMenu onStatement={() => onOpenStatement(account)} />
+                <AccountTileMenu onStatement={() => onOpenStatement(account)} onDelete={() => onDeleteAccount(account)} />
+              </div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55, marginTop: 2 }}>
+                {account.cur} &middot; {t("dashboard.accountType." + account.typeKey)}
               </div>
               <div className="dash-account-amount">{formatMinor(account.minor)}</div>
               <div className="text-muted" style={{ fontSize: 11 }}>{account.iban}</div>
@@ -730,21 +763,26 @@
           <UI.Plate className="elev-sm" style={{ padding: 16 }}>
             <div className="dash-kicker-row">
               <UI.Kicker>{t("dashboard.portfolio.deposits")}</UI.Kicker>
+              <UI.Button type="button" variant="ghost" onClick={() => onOpenAccount("deposit")}>
+                {t("dashboard.deposit.new")}
+              </UI.Button>
             </div>
-            {deposits.length ? (
+            {depositActionError ? (
+              <div className="dash-balance-line is-short" role="alert" style={{ marginBottom: 10 }}>
+                {depositActionError.message}
+              </div>
+            ) : null}
+            {termDeposits.length ? (
               <div className="dash-product-list">
-                {deposits.map((deposit) => (
+                {termDeposits.map((deposit) => (
                   <div className="dash-product-row" key={deposit.id}>
                     <div className="dash-product-head">
                       <div style={{ flex: 1 }}>
                         <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>{deposit.name}</div>
                         <div className="text-muted" style={{ fontSize: 11 }}>
-                          {t("dashboard.deposit.meta", {
-                            kind: t("dashboard.deposit.kind." + deposit.kind),
+                          {t("dashboard.deposit.metaShort", {
                             rate: DASH.formatRate(deposit.rateBps),
-                            matures: deposit.matures
-                              ? t("dashboard.deposit.maturesOn", { date: GEMS.i18n.isoToDisplayDate(deposit.matures) })
-                              : t("dashboard.deposit.noMaturity"),
+                            matures: t("dashboard.deposit.maturesOn", { date: GEMS.i18n.isoToDisplayDate(deposit.matures) }),
                           })}
                         </div>
                       </div>
@@ -752,21 +790,6 @@
                         {formatMinor(deposit.minor)} {deposit.cur}
                       </div>
                     </div>
-
-                    {deposit.targetMinor ? (
-                      <div style={{ marginTop: 8 }}>
-                        <div className="text-muted" style={{ fontSize: 11, marginBottom: 4 }}>
-                          {t("dashboard.deposit.goalProgress", {
-                            saved: formatMinor(deposit.minor) + " " + deposit.cur,
-                            target: formatMinor(deposit.targetMinor) + " " + deposit.cur,
-                          })}
-                        </div>
-                        <DASH.ProgressBar
-                          pct={Math.min(100, Math.round((deposit.minor / deposit.targetMinor) * 100))}
-                          label={deposit.name}
-                        />
-                      </div>
-                    ) : null}
 
                     <div className="dash-product-actions">
                       <UI.Button type="button" variant="secondary" onClick={() => onMoveDeposit(deposit, "in")}>
@@ -792,47 +815,30 @@
             )}
           </UI.Plate>
 
-          <UI.Plate className="elev-sm" style={{ padding: 16 }}>
-            <div className="dash-kicker-row">
-              <UI.Kicker>{t("dashboard.portfolio.credits")}</UI.Kicker>
-              <UI.Button type="button" variant="secondary" onClick={onApplyCredit}>{t("dashboard.portfolio.applyCredit")}</UI.Button>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {credits.map((credit) => {
-                const loan = credit.kind === "loan";
-                const pct = loan
-                  ? Math.round((credit.paidMonths / credit.termMonths) * 100)
-                  : Math.round((credit.usedMinor / credit.limitMinor) * 100);
-                const name = loan
-                  ? t("dashboard.credit.loanName", {
-                      name: t("dashboard.credit.name." + credit.nameKey),
-                      paid: credit.paidMonths,
-                      term: credit.termMonths,
-                    })
-                  : t("dashboard.credit.name." + credit.nameKey);
-                const right = loan
-                  ? t("dashboard.credit.left", { amount: formatMinor(credit.outstandingMinor) + " " + credit.cur })
-                  : t("dashboard.credit.used", {
-                      used: formatMinor(credit.usedMinor),
-                      limit: formatMinor(credit.limitMinor) + " " + credit.cur,
-                    });
-                return (
-                  <div key={credit.id}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6, gap: 12 }}>
-                      <span>{name}</span>
-                      <span className="text-muted">{right}</span>
-                    </div>
-                    <DASH.ProgressBar pct={pct} label={name} />
-                  </div>
-                );
-              })}
-            </div>
+          <GoalProgressCard accounts={accounts} goalVersion={0} />
+        </div>
 
-            {creditApplications.length ? (
+        <UI.Plate className="elev-sm" style={{ padding: 16, marginTop: 20 }}>
+          <div className="dash-kicker-row">
+            <UI.Kicker>{t("dashboard.portfolio.credits")}</UI.Kicker>
+            <UI.Button type="button" variant="secondary" onClick={onApplyCredit}>{t("dashboard.portfolio.applyCredit")}</UI.Button>
+          </div>
+
+            {creditActionError ? (
+              <div className="dash-balance-line is-short" role="alert" style={{ marginBottom: 10 }}>
+                {creditActionError.message}
+              </div>
+            ) : null}
+
+            {!activeApplications.length ? (
+              <div className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.credit.empty")}</div>
+            ) : null}
+
+            {activeApplications.length ? (
               <div style={{ marginTop: 18 }}>
                 <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.credit.applicationsTitle")}</UI.Kicker>
                 <div className="dash-product-list">
-                  {creditApplications.map((application) => (
+                  {activeApplications.map((application) => (
                     <div className="dash-product-row" key={application.id}>
                       <div className="dash-product-head">
                         <div style={{ flex: 1 }}>
@@ -872,8 +878,7 @@
                 </div>
               </div>
             ) : null}
-          </UI.Plate>
-        </div>
+        </UI.Plate>
       </div>
     );
   };
@@ -881,6 +886,7 @@
   SCR.PortfolioScreen = function PortfolioScreen({
     holdings,
     investCashMinor,
+    hasInvestAccount,
     market,
     marketLoading,
     marketError,
@@ -930,9 +936,20 @@
                     months: DASH.seriesMonths(totalSeries),
                   })}
             </UI.Kicker>
-            <UI.Button type="button" variant="secondary" onClick={() => onTrade(null, "buy")}>
-              {t("dashboard.invest.new")}
-            </UI.Button>
+            {hasInvestAccount ? (
+              <UI.Button
+                type="button"
+                variant="secondary"
+                disabled={!holdings.length}
+                onClick={() => onTrade(null, "buy")}
+              >
+                {t("dashboard.invest.new")}
+              </UI.Button>
+            ) : (
+              <UI.Button type="button" variant="secondary" onClick={() => onOpenAccount("invest")}>
+                {t("dashboard.invest.openInvestAccount")}
+              </UI.Button>
+            )}
           </div>
 
           <DASH.MarketStatus
@@ -1058,13 +1075,18 @@
                       )}
                     </td>
                     <td className="amount-col dash-trade-cell">
-                      <UI.Button type="button" variant="secondary" onClick={() => onTrade(holding.id, "buy")}>
+                      <UI.Button
+                        type="button"
+                        variant="secondary"
+                        disabled={!hasInvestAccount}
+                        onClick={() => onTrade(holding.id, "buy")}
+                      >
                         {t("dashboard.invest.buy")}
                       </UI.Button>
                       <UI.Button
                         type="button"
                         variant="secondary"
-                        disabled={DASH.holdingValue(holding) <= 0}
+                        disabled={!hasInvestAccount || DASH.holdingValue(holding) <= 0}
                         onClick={() => onTrade(holding.id, "sell")}
                       >
                         {t("dashboard.invest.sell")}
@@ -1977,7 +1999,7 @@
   }
 
   function accountPickerLabel(account) {
-    return t("dashboard.accountType." + account.typeKey) + " · " + account.cur + " · " + account.ibanShort;
+    return DASH.accountLabel(account);
   }
 
   function SetGoalDialog({ accounts, busy, error, onSubmit, onDismiss }) {

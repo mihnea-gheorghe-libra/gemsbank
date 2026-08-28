@@ -1,7 +1,5 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
 from backend.capabilities.payments import format_minor
 from backend.helpers.context import Actor
 from backend.products.catalogue import (
@@ -9,6 +7,7 @@ from backend.products.catalogue import (
     DEPOSIT_PRODUCTS,
     format_rate,
 )
+from pydantic import BaseModel, Field
 
 MAX_TERM_MONTHS = 360
 
@@ -127,8 +126,9 @@ class MaturityOutput(BaseModel):
 
 
 _DEPOSIT_NOTE = (
-    "These are demo product terms. Opening a deposit is not wired to the ledger in this "
-    "system: nothing you say here opens, funds or reserves anything."
+    "These are demo product terms. Opening a term deposit or a savings goal happens on the "
+    "Portfolio screen, not through this conversation. Nothing said here opens, funds or "
+    "reserves anything."
 )
 
 _CREDIT_NOTE = (

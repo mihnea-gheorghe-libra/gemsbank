@@ -1,8 +1,6 @@
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
 from backend.accounts.service import AccountsService, get_accounts_service
 from backend.config import settings
 from backend.helpers.context import Actor
@@ -10,6 +8,7 @@ from backend.ledger.service import LedgerService, get_ledger_service
 from backend.payments.adapters import PolicyOutcome, StaticLimitPolicy
 from backend.payments.service import PaymentsService, get_payments_service
 from backend.payments.validation import normalise_counterparty, normalise_reference
+from pydantic import BaseModel, Field
 
 _MAX_PROPOSAL_MINOR = 10**12
 

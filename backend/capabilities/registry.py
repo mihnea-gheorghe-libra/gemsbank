@@ -3,10 +3,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel
-
 from backend.helpers.context import Actor
 from backend.helpers.errors import NotFoundError
+from pydantic import BaseModel
 
 
 class SideEffect(StrEnum):

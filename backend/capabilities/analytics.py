@@ -4,14 +4,13 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
 from backend.accounts.service import get_accounts_service
 from backend.capabilities.payments import format_minor
 from backend.config import settings
 from backend.goals.service import get_goals_service
 from backend.helpers.context import Actor
 from backend.payments.service import PaymentsService, get_payments_service
+from pydantic import BaseModel, Field
 
 _RECURRING_LOOKBACK_DAYS = 182
 _RECURRING_MIN_OCCURRENCES = 3
