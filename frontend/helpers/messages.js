@@ -1376,6 +1376,10 @@
         draft: "Ciornă",
       },
       category: {
+        investment: "Investiții",
+        investment_buy: "Investiții",
+        investment_sell: "Investiții",
+        savings: "Economii",
         groceries: "Cumpărături",
         utilities: "Utilități",
         income: "Venituri",
