@@ -299,9 +299,11 @@
           <div className="dash-balance-figure">
             {balanceHidden ? "•••••••• RON" : formatMinor(totalBalanceMinor) + " RON"}
           </div>
-          <div className="text-muted" style={{ fontSize: 12 }}>
-            {balanceHidden ? t("dashboard.home.balanceHiddenSub") : t("dashboard.home.balanceSub")}
-          </div>
+          {!balanceHidden && (
+            <div className="text-muted" style={{ fontSize: 12 }}>
+              {t("dashboard.home.balanceSub")}
+            </div>
+          )}
 
           <div className="hr" />
 
@@ -402,7 +404,7 @@
             <UI.Kicker>{t("dashboard.home.recentActivity")}</UI.Kicker>
             <a href="#" onClick={(event) => { event.preventDefault(); onNavigate("payments"); }}>{t("dashboard.home.allTransactions")}</a>
           </div>
-          <TxTable rows={transactions.slice(0, 4)} compact />
+          <TxTable rows={transactions.slice(0, 4)} />
         </UI.Plate>
       </div>
     );
@@ -1512,13 +1514,13 @@
   };
 
   const CATEGORY_COLORS = {
-    groceries: "var(--color-plum-600)",
-    utilities: "var(--color-lime-600)",
-    transport: "var(--color-plum-400)",
-    entertainment: "var(--color-lime-400)",
-    transfer: "var(--color-plum-400)",
-    income: "var(--color-lime-700)",
-    other: "var(--color-neutral-600)",
+    groceries: "var(--chart-1)",
+    utilities: "var(--chart-2)",
+    transport: "var(--chart-3)",
+    entertainment: "var(--chart-4)",
+    transfer: "var(--chart-5)",
+    income: "var(--chart-6)",
+    other: "var(--chart-7)",
   };
 
   const CHART_SERIES_LABEL = {
@@ -3072,10 +3074,74 @@
           </UI.Plate>
         </div>
 
+        <UI.Plate className="elev-sm" style={{ padding: 18, marginTop: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+             <UI.Icon name="Sparkles" size={16} color="var(--color-primary)" />
+             <UI.Kicker style={{ margin: 0 }}>Sinteză inteligentă</UI.Kicker>
+          </div>
+          <AnalyticsInsights range={range} />
+        </UI.Plate>
+
         <UI.ErrorNote error={error} />
       </div>
     );
   };
+
+  const analyticsInsightsCache = {};
+
+  function AnalyticsInsights({ range }) {
+    const [insights, setInsights] = useState(analyticsInsightsCache[range] || null);
+    const [loading, setLoading] = useState(!analyticsInsightsCache[range]);
+    
+    useEffect(() => {
+      if (analyticsInsightsCache[range]) {
+        setInsights(analyticsInsightsCache[range]);
+        setLoading(false);
+        return;
+      }
+      
+      let cancelled = false;
+      setLoading(true);
+      setInsights(null);
+      
+      const prompt = `Analizeaza datele financiare reale ale utilizatorului pe ultimele ${range} luni (folosind tool-urile tale). Ofera-i fix 3 observatii personalizate si actionabile legate de sumele si categoriile lui de cheltuieli (de ex: "In ultima perioada ai cheltuit ... pe X. Ai putea sa mai reduci..."). NU oferi sfaturi generice, ci strict observatii aplicate pe cheltuielile lui. Fiecare observatie sa fie un bullet point scurt. Nu folosi nicio introducere.`;
+      
+      api.askAnalytics(prompt)
+        .then(res => {
+          if (!cancelled) {
+             const answer = res.answer.split('\n').filter(l => l.trim().length > 0);
+             analyticsInsightsCache[range] = answer;
+             setInsights(answer);
+          }
+        })
+        .catch(err => {
+          if (!cancelled) {
+             setInsights(["Nu am putut genera interpretarea."]);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+      return () => { cancelled = true; };
+    }, [range]);
+
+    if (loading) {
+       return <div className="dash-chart-empty">{t("dashboard.analytics.loading")}</div>;
+    }
+    if (!insights || insights.length === 0) return null;
+    return (
+      <ul className="dash-msg-list">
+        {insights.map((line, i) => {
+          const cleanLine = line.replace(/^[\s*-]+/, '').trim();
+          return (
+            <li key={i}>
+              {renderInlineText(cleanLine, i)}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
 
 function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     const [code, setCode] = useState("");
@@ -3333,6 +3399,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     const identity = (me && me.identity) || null;
     const placeholder = "—";
 
+    const [usernameDraft, setUsernameDraft] = useState("");
     const [emailDraft, setEmailDraft] = useState("");
     const [phoneDraft, setPhoneDraft] = useState("");
     const [savingContact, setSavingContact] = useState(false);
@@ -3364,6 +3431,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
 
     useEffect(() => {
       if (me) {
+        setUsernameDraft(me.username || "");
         setEmailDraft(me.email);
         setPhoneDraft(me.phone);
       }
@@ -3375,7 +3443,12 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
         return;
       }
       const [current, ...rest] = queue;
-      const request = current.kind === "email" ? api.requestEmailChange(current.value) : api.requestPhoneChange(current.value);
+      const request =
+        current.kind === "username"
+          ? api.requestUsernameChange(current.value)
+          : current.kind === "email"
+            ? api.requestEmailChange(current.value)
+            : api.requestPhoneChange(current.value);
       request
         .then((response) => setActiveCase({ kind: current.kind, caseId: response.recoveryCaseId, delivery: response.delivery, rest }))
         .catch((err) => {
@@ -3387,8 +3460,10 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     function saveContact() {
       if (!me) return;
       const changes = [];
+      const nextUsername = usernameDraft.trim().toLowerCase();
       const nextEmail = emailDraft.trim();
       const nextPhone = phoneDraft.trim();
+      if (nextUsername && nextUsername !== me.username) changes.push({ kind: "username", value: nextUsername });
       if (nextEmail && nextEmail !== me.email) changes.push({ kind: "email", value: nextEmail });
       if (nextPhone && nextPhone !== me.phone) changes.push({ kind: "phone", value: nextPhone });
       if (!changes.length) return;
@@ -3405,13 +3480,16 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
       api
         .verifySecureChange(activeCase.caseId, code)
         .then((response) => {
-          onMeChange({
+          onMeChange((prev) => ({
+            ...(prev || {}),
             userId: response.userId,
             username: response.username,
             email: response.email,
             phone: response.phone,
             fullName: response.fullName,
-          });
+            identity: response.identity !== undefined ? response.identity : (prev && prev.identity),
+          }));
+          setUsernameDraft(response.username || "");
           setEmailDraft(response.email);
           setPhoneDraft(response.phone);
           const rest = activeCase.rest || [];
@@ -3422,7 +3500,15 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
             runNextChange(rest);
           } else {
             setSavingContact(false);
-            setContactNotice(t(kind === "email" ? "dashboard.settings.otp.successEmail" : "dashboard.settings.otp.successPhone"));
+            setContactNotice(
+              t(
+                {
+                  username: "dashboard.settings.otp.successUsername",
+                  email: "dashboard.settings.otp.successEmail",
+                  phone: "dashboard.settings.otp.successPhone",
+                }[kind] || "dashboard.settings.otp.successEmail"
+              )
+            );
           }
         })
         .catch((err) => {
@@ -3498,8 +3584,20 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
           <UI.Plate className="elev-sm" style={{ padding: 18 }}>
             <UI.Kicker style={{ marginBottom: 14 }}>{t("dashboard.settings.personalDetails")}</UI.Kicker>
             <div className="dash-field-grid">
+              <div style={{ gridColumn: "1 / -1" }}>
+                <UI.Field id="set-username" label={t("dashboard.settings.username")}>
+                  <UI.TextInput
+                    id="set-username"
+                    value={usernameDraft}
+                    onChange={(event) => setUsernameDraft(event.target.value)}
+                    disabled={!me}
+                    autoComplete="username"
+                    spellCheck={false}
+                  />
+                </UI.Field>
+              </div>
               <UI.Field id="set-name" label={t("dashboard.settings.fullName")}>
-<UI.TextInput
+                <UI.TextInput
                   id="set-name"
                   readOnly
                   value={identity ? GEMS.people.fullName(identity.fullName) : (me ? me.fullName : placeholder)}
@@ -3662,7 +3760,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   };
 
-  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, micBusy, micError, onToggleMic, onPromptClick, prompts, onConfirmTx, onConfirmProposal, onRequestHuman, handoffBusy, handoffSent, username, ttsOn, onToggleTts, playingMessageIndex, ttsBusyIndex, onSpeakMessage, onStopSpeaking }) {
+  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, micBusy, micError, onToggleMic, onPromptClick, prompts, onConfirmTx, onConfirmProposal, onRequestHuman, handoffBusy, handoffSent, username, ttsOn, onToggleTts, playingMessageIndex, ttsBusyIndex, onSpeakMessage, onStopSpeaking, onClearChat }) {
     const inputRef = useRef(null);
 
     useEffect(() => {
@@ -3677,6 +3775,18 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
       <div className="dash-chat-layout">
         <div className="dash-chat-col">
           <div className="dash-chat-header-actions">
+            <UI.Button
+              type="button"
+              variant="secondary"
+              disabled={busy || messages.length <= 1}
+              onClick={onClearChat}
+              style={{ fontSize: 12, padding: "4px 8px", gap: 6, marginRight: "auto" }}
+              title={t("dashboard.chat.clear")}
+            >
+              <UI.Icon name="Trash2" size={14} />
+              <span>{t("dashboard.chat.clear")}</span>
+            </UI.Button>
+
             {(playingMessageIndex !== null || ttsBusyIndex !== null) ? (
               <UI.Button
                 type="button"
@@ -3718,7 +3828,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
                   <div className="dash-msg-ai">
                     <span className="dash-msg-ai-dot" aria-hidden="true" />
                     <div className="dash-msg-ai-body">
-                      {message.text ? <div>{message.text}</div> : null}
+                      {message.text ? renderStructuredText(message.text) : null}
 
                       {message.text ? (
                         <div className="dash-msg-actions">

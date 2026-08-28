@@ -28,6 +28,8 @@ class TransactionKind(StrEnum):
     REVERSAL = "reversal"
     FX_CONVERSION = "fx_conversion"
     DEMO_TOPUP = "demo_topup"
+    INVESTMENT_BUY = "investment_buy"
+    INVESTMENT_SELL = "investment_sell"
 
 
 class EntrySide(StrEnum):

@@ -140,6 +140,8 @@
     me: () => send("/auth/me"),
     listSessions: () => send("/auth/sessions"),
     revokeSession: (sessionId) => send("/auth/sessions/" + sessionId + "/revoke", { method: "POST" }),
+    requestUsernameChange: (newUsername) =>
+      send("/auth/username/change", { method: "POST", json: { newUsername } }),
     requestEmailChange: (newEmail) =>
       send("/auth/email/change", { method: "POST", json: { newEmail } }),
     requestPhoneChange: (newPhone) =>

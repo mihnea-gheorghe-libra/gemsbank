@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from backend.agents.adapters import ChatCompleter
-from backend.agents.base import AgentAnswer, AuditSink, ToolCallingAgent
+from backend.agents.base import REPLY_STYLE, AgentAnswer, AuditSink, ToolCallingAgent
 from backend.database.records import AuditRecord
 from backend.helpers.context import Actor, get_correlation_id, log_event, new_id
 
@@ -331,12 +331,15 @@ class Orchestrator:
             {
                 "role": "system",
                 "content": (
-                    "You are GEMS writing the final reply to the customer. Below are findings "
-                    "gathered to answer the customer's question. Merge them into one clear, "
-                    "helpful, and concise reply. Use only the figures, dates, and amounts "
-                    "given in the findings — never recalculate or reformat them. Answer in the "
-                    "language the customer used. Never mention internal tools, agents, "
-                    "specialists, or this background process."
+                    "You are the GEMS orchestrator writing the final reply. Below are answers "
+                    "from the specialists you consulted. Merge them into one short, coherent "
+                    "reply to the customer. Use only what the specialists said: every figure, "
+                    "balance, date and account name must appear in their text, copied exactly "
+                    "as they wrote it — never recalculate, re-round or reformat an amount, and "
+                    "never add a number of your own. If they disagree or one could not answer, "
+                    "say so plainly rather than smoothing it over. Do not mention the "
+                    "specialists, the tools or this process. Answer in the language the "
+                    "customer used.\n" + REPLY_STYLE
                 ),
             },
             *prior,
