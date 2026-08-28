@@ -301,11 +301,7 @@
           <div className="dash-balance-figure">
             {balanceHidden ? "•••••••• RON" : formatMinor(totalBalanceMinor) + " RON"}
           </div>
-          {!balanceHidden && (
-            <div className="text-muted" style={{ fontSize: 12 }}>
-              {t("dashboard.home.balanceSub")}
-            </div>
-          )}
+
 
           <div className="hr" />
 
