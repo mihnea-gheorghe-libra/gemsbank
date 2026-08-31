@@ -2908,40 +2908,43 @@
             </div>
             {standingOrder ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <span style={{ fontSize: 13 }}>
-                  {t(
-                    standingOrder.status === "paused"
-                      ? "dashboard.analytics.goal.standingOrder.paused"
-                      : "dashboard.analytics.goal.standingOrder.active",
-                    {
-                      amount: UI.formatMoney(
-                        standingOrder.amount.minorUnits,
-                        standingOrder.amount.currency
-                      ),
-                      frequency: t(
-                        standingOrder.frequency === "weekly"
-                          ? "dashboard.analytics.goal.standingOrder.frequencyWeekly"
-                          : "dashboard.analytics.goal.standingOrder.frequencyMonthly"
-                      ),
-                      account: (() => {
-                        const source = (accounts || []).find(
-                          (account) => account.id === standingOrder.sourceAccountId
-                        );
-                        return source ? DASH.accountLabel(source) : t("dashboard.cards.accountUnknown");
-                      })(),
-                      date: GEMS.i18n.isoToDisplayDate((standingOrder.nextRunAt || "").slice(0, 10)),
-                    }
-                  )}
-                </span>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                  <span style={{ fontSize: 13 }}>
+                    {t(
+                      standingOrder.status === "paused"
+                        ? "dashboard.analytics.goal.standingOrder.paused"
+                        : "dashboard.analytics.goal.standingOrder.active",
+                      {
+                        amount: UI.formatMoney(
+                          standingOrder.amount.minorUnits,
+                          standingOrder.amount.currency
+                        ),
+                        frequency: t(
+                          standingOrder.frequency === "weekly"
+                            ? "dashboard.analytics.goal.standingOrder.frequencyWeekly"
+                            : "dashboard.analytics.goal.standingOrder.frequencyMonthly"
+                        ),
+                        account: (() => {
+                          const source = (accounts || []).find(
+                            (account) => account.id === standingOrder.sourceAccountId
+                          );
+                          return source ? DASH.accountLabel(source) : t("dashboard.cards.accountUnknown");
+                        })(),
+                        date: GEMS.i18n.isoToDisplayDate((standingOrder.nextRunAt || "").slice(0, 10)),
+                      }
+                    )}
+                  </span>
                   <button
                     type="button"
                     className="dash-copy-btn"
                     aria-label={t("dashboard.analytics.goal.standingOrder.edit")}
                     onClick={() => setEditAmountOpen(true)}
+                    style={{ flex: "none" }}
                   >
                     <UI.Icon name="Pencil" size={14} />
                   </button>
+                </div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   {standingOrder.status === "active" ? (
                     <UI.Button
                       type="button"
