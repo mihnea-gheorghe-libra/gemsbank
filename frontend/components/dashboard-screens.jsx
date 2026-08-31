@@ -1181,7 +1181,7 @@
                             holding.changeBps < 0 && "is-down"
                           )}
                         >
-                          {DASH.formatChangeBps(holding.changeBps)}
+                          {DASH.formatChangeBps(holding.changeBps) + " today"}
                         </div>
                       )}
                     </td>
@@ -1652,6 +1652,8 @@
     transfer: "var(--chart-5)",
     income: "var(--chart-6)",
     other: "var(--chart-7)",
+    investment: "var(--chart-1)",
+    savings: "var(--chart-2)",
   };
 
   const CHART_SERIES_LABEL = {
@@ -1746,7 +1748,19 @@
       } else if (row.direction === "debit" && minor < 0) {
         const spend = -minor;
         if (bucket) bucket.spend += spend;
-        categoryTotals[row.category] = (categoryTotals[row.category] || 0) + spend;
+        let cat = row.category;
+        if (cat === "transfer" && row.kind === "internal_transfer") {
+          const siblingRows = rowsByTx.get(row.transactionId) || [];
+          const otherRow = siblingRows.find(s => s.accountId !== row.accountId);
+          if (otherRow) {
+            const otherAcc = accountById.get(otherRow.accountId);
+            if (otherAcc) {
+              if (otherAcc.typeKey === "invest") cat = "investment";
+              else if (otherAcc.typeKey === "savings" || otherAcc.typeKey === "deposit") cat = "savings";
+            }
+          }
+        }
+        categoryTotals[cat] = (categoryTotals[cat] || 0) + spend;
       }
     });
 
