@@ -117,7 +117,7 @@
           <UI.Button
             type="button"
             style={{ justifyContent: "flex-start" }}
-            onClick={() => handleSpeak(message)}
+            onClick={() => handleSpeak(t("agent.whyIdAnswer"))}
           >
             {t("agent.whyId")}
           </UI.Button>
