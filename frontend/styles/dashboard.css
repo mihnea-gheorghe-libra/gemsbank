@@ -291,7 +291,10 @@
 .dash-product-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .dash-scroll-accounts { position: absolute; top: 0; bottom: 0; left: 0; right: 0; overflow-y: auto; padding-right: 4px; }
 .dash-scroll-deposits { max-height: 380px; overflow-y: auto; padding-right: 4px; }
-.dash-scroll-credits { max-height: 268px; overflow-y: auto; padding-right: 4px; }
+.dash-scroll-credits { max-height: 380px; overflow-y: auto; padding-right: 4px; }
+.dash-credits-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; margin-top: 18px; }
+.dash-credits-col { display: flex; flex-direction: column; min-width: 0; }
+.dash-credits-col-empty { padding: 16px 12px; border-radius: var(--radius-lg); border: 1px dashed var(--color-border); background: color-mix(in srgb, var(--color-surface) 50%, transparent); font-size: 12px; color: var(--color-muted); text-align: center; }
 .dash-progress { height: 9px; border-radius: 999px; overflow: hidden; background: var(--color-bg); border: 1px solid var(--color-border); }
 .dash-progress > span { display: block; height: 100%; background: var(--color-lime-600); }
 .dash-donut { width: 150px; height: 150px; flex: none; border-radius: 50%; }
@@ -812,7 +815,7 @@
   .dash-sidebar { width: 100%; flex-direction: row; align-items: center; padding: 12px; overflow-x: auto; }
   .dash-sidebar-brand { padding: 0 12px 0 4px; }
   .dash-sidebar-foot { display: none; }
-  .dash-grid-home, .dash-analytics-cols, .dash-cards-layout, .dash-settings-grid, .dash-chat-layout, .dash-invest-row, .dash-accounts-row {
+  .dash-grid-home, .dash-analytics-cols, .dash-cards-layout, .dash-settings-grid, .dash-chat-layout, .dash-invest-row, .dash-accounts-row, .dash-credits-cols {
     grid-template-columns: 1fr;
   }
   .dash-balance-card { grid-row: auto; }

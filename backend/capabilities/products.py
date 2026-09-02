@@ -1,13 +1,15 @@
 from typing import Literal
 
+from pydantic import BaseModel, Field
+
 from backend.capabilities.payments import format_minor
 from backend.helpers.context import Actor
 from backend.products.catalogue import (
     CREDIT_PRODUCTS,
     DEPOSIT_PRODUCTS,
+    estimate_repayment,
     format_rate,
 )
-from pydantic import BaseModel, Field
 
 MAX_TERM_MONTHS = 360
 
@@ -188,10 +190,9 @@ async def resolve_credit_products(_actor: Actor, payload: BaseModel) -> BaseMode
 
 async def resolve_repayment_estimate(_actor: Actor, payload: BaseModel) -> BaseModel:
     assert isinstance(payload, RepaymentInput)
-    years = payload.months / 12
-    interest = round(payload.amount_minor * (payload.rate_bps / 10_000) * years)
-    total = payload.amount_minor + interest
-    monthly = round(total / payload.months)
+    monthly, total, interest = estimate_repayment(
+        payload.amount_minor, payload.months, payload.rate_bps
+    )
     return RepaymentOutput(
         status="ok",
         monthlyMinorUnits=monthly,

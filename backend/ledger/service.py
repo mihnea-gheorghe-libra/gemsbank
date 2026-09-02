@@ -5,6 +5,7 @@ from typing import Any, Protocol
 from motor.motor_asyncio import AsyncIOMotorClientSession
 
 from backend.database.repositories import MongoJournalRepository
+from backend.helpers.errors import ConflictError, NotFoundError
 from backend.ledger.adapters import SystemClock
 from backend.ledger.journal import JournalEntry, JournalTransaction, TransactionKind
 from backend.ledger.validation import normalise_currency, validate_minor_units
@@ -14,6 +15,10 @@ class JournalRepository(Protocol):
     async def append(
         self, transaction: JournalTransaction, session: AsyncIOMotorClientSession | None = None
     ) -> None: ...
+
+    async def get(self, transaction_id: str) -> JournalTransaction | None: ...
+
+    async def reversal_of(self, transaction_id: str) -> JournalTransaction | None: ...
 
     async def balances_for(self, account_ids: list[str]) -> dict[str, int]: ...
 
@@ -61,6 +66,8 @@ class LedgerService:
         category: str,
         correlation_id: str,
         actor: str,
+        reverses: str | None = None,
+        reason: str | None = None,
         session: AsyncIOMotorClientSession | None = None,
     ) -> JournalTransaction:
         transaction = JournalTransaction(
@@ -76,9 +83,55 @@ class LedgerService:
             posted_at=self._clock.now(),
             correlation_id=correlation_id,
             actor=actor,
+            reverses=reverses,
+            reason=reason,
         )
         await self._journal.append(transaction, session=session)
         return transaction
+
+    async def get_transaction(self, transaction_id: str) -> JournalTransaction:
+        transaction = await self._journal.get(transaction_id)
+        if transaction is None:
+            raise NotFoundError(
+                "There is no such transaction in the journal.",
+                details={"field": "transactionId"},
+            )
+        return transaction
+
+    async def reversal_of(self, transaction_id: str) -> JournalTransaction | None:
+        return await self._journal.reversal_of(transaction_id)
+
+    async def reverse(
+        self,
+        *,
+        transaction: JournalTransaction,
+        reason: str,
+        correlation_id: str,
+        actor: str,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> JournalTransaction:
+        existing = await self._journal.reversal_of(transaction.id)
+        if existing is not None:
+            raise ConflictError(
+                "That transaction has already been reversed.",
+                details={
+                    "field": "transactionId",
+                    "reversalTransactionId": existing.id,
+                },
+            )
+        return await self.post_transaction(
+            currency=transaction.currency,
+            kind=TransactionKind.REVERSAL,
+            legs=transaction.reversal_legs(),
+            reference=f"Reversal of {transaction.reference}",
+            counterparty=transaction.counterparty,
+            category=transaction.category,
+            correlation_id=correlation_id,
+            actor=actor,
+            reverses=transaction.id,
+            reason=reason,
+            session=session,
+        )
 
     async def transfer(
         self,

@@ -1,5 +1,6 @@
+from datetime import datetime, timezone
 from functools import lru_cache
-from typing import Any, ClassVar, Protocol
+from typing import Any, ClassVar, Literal, Protocol
 
 from backend.accounts.service import AccountsService, get_accounts_service
 from backend.command_bus import Command, CommandBus, CommandResult, bus
@@ -28,6 +29,25 @@ class CreditApplicationRepository(Protocol):
         application_id: str,
         user_id: str,
         status: str,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool: ...
+
+    async def page(
+        self,
+        status: str | None,
+        cursor: tuple[datetime, str] | None,
+        limit: int,
+    ) -> list[CreditApplication]: ...
+
+    async def count(self, status: str | None) -> int: ...
+
+    async def decide(
+        self,
+        application_id: str,
+        status: str,
+        reason: str,
+        decided_at: datetime,
+        decided_by: str,
         session: AsyncIOMotorClientSession | None = None,
     ) -> bool: ...
 
@@ -62,6 +82,56 @@ class CreditsService:
     async def list_for_user(self, user_id: str) -> list[dict[str, Any]]:
         applications = await self._applications.list_for_user(user_id)
         return [application.public_view() for application in applications]
+
+    async def get(self, application_id: str) -> CreditApplication:
+        application = await self._applications.get(application_id)
+        if application is None:
+            raise NotFoundError(
+                "There is no such credit application.", details={"field": "applicationId"}
+            )
+        return application
+
+    async def page(
+        self,
+        status: str | None,
+        cursor: tuple[datetime, str] | None,
+        limit: int,
+    ) -> tuple[list[CreditApplication], tuple[datetime, str] | None]:
+        found = await self._applications.page(status, cursor, limit + 1)
+        has_more = len(found) > limit
+        found = found[:limit]
+        next_cursor = (found[-1].submitted_at, found[-1].id) if has_more and found else None
+        return found, next_cursor
+
+    async def count(self, status: str | None) -> int:
+        return await self._applications.count(status)
+
+    async def decide(
+        self,
+        application: CreditApplication,
+        status: Literal["approved", "rejected"],
+        reason: str,
+        decided_by: str,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> CreditApplication:
+        application.guard_decidable()
+        decided_at = datetime.now(timezone.utc)
+        changed = await self._applications.decide(
+            application.id, status, reason, decided_at, decided_by, session=session
+        )
+        if not changed:
+            raise IllegalTransitionError(
+                "That application has already been decided.",
+                details={"field": "applicationId"},
+            )
+        return application.model_copy(
+            update={
+                "status": status,
+                "decision_reason": reason,
+                "decided_at": decided_at,
+                "decided_by": decided_by,
+            }
+        )
 
     async def _handle_submit(
         self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession

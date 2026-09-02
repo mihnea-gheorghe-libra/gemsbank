@@ -72,6 +72,8 @@ class AuthUser(BaseModel):
     password_lockout_stage: int = 0
     password_locked_until: datetime | None = None
     prefs: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    monthly_income_minor: int | None = None
 
     def guard_usable(self, now: datetime) -> None:
         if self.status != "active":

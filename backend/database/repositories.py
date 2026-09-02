@@ -2,7 +2,12 @@ import re
 from datetime import date, datetime, timezone
 from typing import Any
 
+from motor.motor_asyncio import AsyncIOMotorClientSession
+from pymongo import ASCENDING, DESCENDING
+from pymongo.errors import DuplicateKeyError
+
 from backend.accounts.account import Account, AccountKind, AccountStatus
+from backend.admin.session import AdminSession
 from backend.auth.credentials import (
     AuthUser,
     PersonalIdentity,
@@ -16,6 +21,7 @@ from backend.cards.card import Card, CardKind, CardState
 from backend.credits.application import CreditApplication
 from backend.database.mongo import (
     accounts_collection,
+    admin_sessions_collection,
     beneficiaries_collection,
     cards_collection,
     credit_applications_collection,
@@ -56,9 +62,6 @@ from backend.payments.payment import (
     PaymentTemplate,
     SignatureChallenge,
 )
-from motor.motor_asyncio import AsyncIOMotorClientSession
-from pymongo import ASCENDING, DESCENDING
-from pymongo.errors import DuplicateKeyError
 
 
 def _document_to_bson(document: SubmittedDocument | None) -> dict[str, Any] | None:
@@ -235,6 +238,20 @@ def _identity_from_bson(raw: dict[str, Any] | None) -> PersonalIdentity | None:
     )
 
 
+def _user_search_query(search: str | None) -> dict[str, Any]:
+    if not search:
+        return {}
+    pattern = re.escape(search)
+    return {
+        "$or": [
+            {"username": {"$regex": pattern, "$options": "i"}},
+            {"email": {"$regex": pattern, "$options": "i"}},
+            {"fullName": {"$regex": pattern, "$options": "i"}},
+            {"phone": {"$regex": pattern, "$options": "i"}},
+        ]
+    }
+
+
 def _auth_user_from_bson(raw: dict[str, Any]) -> AuthUser:
     pin = raw.get("pin") or {}
     password = raw.get("password") or {}
@@ -256,6 +273,8 @@ def _auth_user_from_bson(raw: dict[str, Any]) -> AuthUser:
         password_lockout_stage=password.get("lockoutStage", 0),
         password_locked_until=password.get("lockedUntil"),
         prefs=raw.get("prefs", {}),
+        created_at=raw.get("createdAt"),
+        monthly_income_minor=raw.get("monthlyIncomeMinorUnits"),
     )
 
 
@@ -267,6 +286,53 @@ class MongoAuthUserRepository:
     async def get(self, user_id: str) -> AuthUser | None:
         raw = await users_collection().find_one({"_id": user_id})
         return _auth_user_from_bson(raw) if raw else None
+
+    async def set_monthly_income(
+        self, user_id: str, minor: int, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await users_collection().update_one(
+            {"_id": user_id},
+            {"$set": {"monthlyIncomeMinorUnits": minor}},
+            session=session,
+        )
+
+    async def set_status(
+        self, user_id: str, status: str, session: AsyncIOMotorClientSession | None = None
+    ) -> bool:
+        result = await users_collection().update_one(
+            {"_id": user_id},
+            {"$set": {"status": status}},
+            session=session,
+        )
+        return result.matched_count > 0
+
+    async def page(
+        self,
+        search: str | None,
+        cursor: tuple[datetime, str] | None,
+        limit: int,
+    ) -> list[AuthUser]:
+        query = _user_search_query(search)
+        if cursor:
+            created_at, user_id = cursor
+            query["$and"] = [
+                {
+                    "$or": [
+                        {"createdAt": {"$lt": created_at}},
+                        {"createdAt": created_at, "_id": {"$lt": user_id}},
+                    ]
+                }
+            ]
+        found = (
+            users_collection()
+            .find(query)
+            .sort([("createdAt", DESCENDING), ("_id", DESCENDING)])
+            .limit(limit)
+        )
+        return [_auth_user_from_bson(raw) async for raw in found]
+
+    async def count(self, search: str | None) -> int:
+        return await users_collection().count_documents(_user_search_query(search))
 
     async def save(
         self, user: AuthUser, session: AsyncIOMotorClientSession | None = None
@@ -438,6 +504,9 @@ def _account_to_bson(account: Account) -> dict[str, Any]:
         "label": account.label,
         "status": account.status.value,
         "openedAt": account.opened_at,
+        "statusReason": account.status_reason,
+        "statusChangedAt": account.status_changed_at,
+        "statusChangedBy": account.status_changed_by,
     }
 
 
@@ -452,6 +521,9 @@ def _account_from_bson(raw: dict[str, Any]) -> Account:
         label=raw["label"],
         status=AccountStatus(raw["status"]),
         opened_at=raw["openedAt"],
+        status_reason=raw.get("statusReason"),
+        status_changed_at=raw.get("statusChangedAt"),
+        status_changed_by=raw.get("statusChangedBy"),
     )
 
 
@@ -483,9 +555,19 @@ class MongoAccountRepository:
         account_id: str,
         status: AccountStatus,
         session: AsyncIOMotorClientSession | None = None,
+        reason: str | None = None,
+        changed_at: datetime | None = None,
+        changed_by: str | None = None,
     ) -> bool:
+        changes: dict[str, Any] = {"status": status.value}
+        if reason is not None:
+            changes |= {
+                "statusReason": reason,
+                "statusChangedAt": changed_at,
+                "statusChangedBy": changed_by,
+            }
         result = await accounts_collection().update_one(
-            {"_id": account_id}, {"$set": {"status": status.value}}, session=session
+            {"_id": account_id}, {"$set": changes}, session=session
         )
         return result.modified_count == 1
 
@@ -798,6 +880,9 @@ def _credit_application_to_bson(application: CreditApplication) -> dict[str, Any
         "currency": application.currency,
         "status": application.status,
         "submittedAt": application.submitted_at,
+        "decisionReason": application.decision_reason,
+        "decidedAt": application.decided_at,
+        "decidedBy": application.decided_by,
     }
 
 
@@ -815,6 +900,9 @@ def _credit_application_from_bson(raw: dict[str, Any]) -> CreditApplication:
         currency=raw["currency"],
         status=raw.get("status", "review"),
         submitted_at=raw["submittedAt"],
+        decision_reason=raw.get("decisionReason"),
+        decided_at=raw.get("decidedAt"),
+        decided_by=raw.get("decidedBy"),
     )
 
 
@@ -838,6 +926,35 @@ class MongoCreditApplicationRepository:
         )
         return [_credit_application_from_bson(raw) async for raw in found]
 
+    async def page(
+        self,
+        status: str | None,
+        cursor: tuple[datetime, str] | None,
+        limit: int,
+    ) -> list[CreditApplication]:
+        query: dict[str, Any] = {"status": status} if status else {}
+        if cursor:
+            submitted_at, application_id = cursor
+            query["$and"] = [
+                {
+                    "$or": [
+                        {"submittedAt": {"$lt": submitted_at}},
+                        {"submittedAt": submitted_at, "_id": {"$lt": application_id}},
+                    ]
+                }
+            ]
+        found = (
+            credit_applications_collection()
+            .find(query)
+            .sort([("submittedAt", DESCENDING), ("_id", DESCENDING)])
+            .limit(limit)
+        )
+        return [_credit_application_from_bson(raw) async for raw in found]
+
+    async def count(self, status: str | None) -> int:
+        query: dict[str, Any] = {"status": status} if status else {}
+        return await credit_applications_collection().count_documents(query)
+
     async def set_status(
         self,
         application_id: str,
@@ -846,11 +963,82 @@ class MongoCreditApplicationRepository:
         session: AsyncIOMotorClientSession | None = None,
     ) -> bool:
         result = await credit_applications_collection().update_one(
-            {"_id": application_id, "userId": user_id, "status": {"$ne": "withdrawn"}},
+            {"_id": application_id, "userId": user_id, "status": "review"},
             {"$set": {"status": status}},
             session=session,
         )
         return result.modified_count == 1
+
+    async def decide(
+        self,
+        application_id: str,
+        status: str,
+        reason: str,
+        decided_at: datetime,
+        decided_by: str,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool:
+        result = await credit_applications_collection().update_one(
+            {"_id": application_id, "status": "review"},
+            {
+                "$set": {
+                    "status": status,
+                    "decisionReason": reason,
+                    "decidedAt": decided_at,
+                    "decidedBy": decided_by,
+                }
+            },
+            session=session,
+        )
+        return result.modified_count == 1
+
+
+def _admin_session_to_bson(record: AdminSession) -> dict[str, Any]:
+    return {
+        "_id": record.id,
+        "adminId": record.admin_id,
+        "username": record.username,
+        "tokenHash": record.token_hash,
+        "issuedAt": record.issued_at,
+        "expiresAt": record.expires_at,
+        "revokedAt": record.revoked_at,
+        "userAgent": record.user_agent,
+        "ipAddress": record.ip_address,
+    }
+
+
+def _admin_session_from_bson(raw: dict[str, Any]) -> AdminSession:
+    return AdminSession(
+        id=raw["_id"],
+        admin_id=raw["adminId"],
+        username=raw["username"],
+        token_hash=raw["tokenHash"],
+        issued_at=raw["issuedAt"],
+        expires_at=raw["expiresAt"],
+        revoked_at=raw.get("revokedAt"),
+        user_agent=raw.get("userAgent"),
+        ip_address=raw.get("ipAddress"),
+    )
+
+
+class MongoAdminSessionRepository:
+    async def add(
+        self, record: AdminSession, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await admin_sessions_collection().insert_one(
+            _admin_session_to_bson(record), session=session
+        )
+
+    async def get_by_token_hash(self, token_hash: str) -> AdminSession | None:
+        raw = await admin_sessions_collection().find_one({"tokenHash": token_hash})
+        return _admin_session_from_bson(raw) if raw else None
+
+    async def revoke(
+        self, record: AdminSession, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await admin_sessions_collection().update_one(
+            {"_id": record.id}, {"$set": {"revokedAt": record.revoked_at}}, session=session
+        )
 
 
 def _handoff_to_bson(handoff: Handoff) -> dict[str, Any]:
@@ -904,6 +1092,7 @@ def _journal_to_bson(transaction: JournalTransaction) -> dict[str, Any]:
         "correlationId": transaction.correlation_id,
         "actor": transaction.actor,
         "reverses": transaction.reverses,
+        "reason": transaction.reason,
     }
 
 
@@ -923,6 +1112,7 @@ def _journal_from_bson(raw: dict[str, Any]) -> JournalTransaction:
         correlation_id=raw["correlationId"],
         actor=raw["actor"],
         reverses=raw.get("reverses"),
+        reason=raw.get("reason"),
     )
 
 
@@ -930,7 +1120,23 @@ class MongoJournalRepository:
     async def append(
         self, transaction: JournalTransaction, session: AsyncIOMotorClientSession | None = None
     ) -> None:
-        await journal_collection().insert_one(_journal_to_bson(transaction), session=session)
+        try:
+            await journal_collection().insert_one(
+                _journal_to_bson(transaction), session=session
+            )
+        except DuplicateKeyError as exc:
+            raise ConflictError(
+                "That transaction has already been reversed.",
+                details={"field": "transactionId"},
+            ) from exc
+
+    async def get(self, transaction_id: str) -> JournalTransaction | None:
+        raw = await journal_collection().find_one({"_id": transaction_id})
+        return _journal_from_bson(raw) if raw else None
+
+    async def reversal_of(self, transaction_id: str) -> JournalTransaction | None:
+        raw = await journal_collection().find_one({"reverses": transaction_id})
+        return _journal_from_bson(raw) if raw else None
 
     async def balances_for(self, account_ids: list[str]) -> dict[str, int]:
         pipeline: list[dict[str, Any]] = [

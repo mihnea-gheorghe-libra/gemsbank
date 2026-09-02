@@ -227,6 +227,20 @@ For each of these: build nothing. A feature folder appears the day its first lin
   explicitly requested and approved deviation from "savings" in the not-in-v0 list above — see
   README.md's "Portfolio" section for the mechanics and the demo simplifications (no
   early-withdrawal penalty, no compounding).
+- **Admin back office** — `backend/admin/` and a fourth mode of the web app exist; see README. The
+  not-in-v0 list above names "admin back-office" explicitly, and this is a deliberate, explicitly
+  requested and approved deviation from it. It is one role, not an IAM: a single credential from
+  env, its own session store, its own `Actor` kind, and no page of its own — the administrator
+  signs in on the customer sign-in form and lands in the back office instead of the dashboard.
+  It adds exactly four powers — read the user directory and each user's accounts and journal,
+  reverse a transaction, freeze/unfreeze an account, decide a credit application — each one a
+  command on the same `bus.execute` path every other write uses. It builds no eligibility rules
+  for what may be reversed, no scoring engine, and no editing of anyone's personal data.
+- **Credit applications, now decided by a human** — the line below said no application is ever
+  approved or refused. That is no longer true: an administrator can approve or reject a pending
+  application with a mandatory reason. Nothing else about it changed — no scoring runs, no terms
+  are recalculated, no money moves on approval. The agent seam described in §7 is unaffected: an
+  agent would still be a caller of the same command, not a second pathway.
 - **Credit applications, recorded but never decided** — `backend/credits/` lets a customer submit
   a real, persisted application against a product from `products.catalogue.CREDIT_PRODUCTS`. This
   adds a small new feature not named anywhere in this file, explicitly requested and approved. It

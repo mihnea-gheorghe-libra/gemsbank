@@ -29,6 +29,9 @@ class Account(BaseModel):
     label: str
     status: AccountStatus = AccountStatus.ACTIVE
     opened_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    status_reason: str | None = None
+    status_changed_at: datetime | None = None
+    status_changed_by: str | None = None
 
     def guard_can_send(self) -> None:
         if self.status is not AccountStatus.ACTIVE:
@@ -42,6 +45,32 @@ class Account(BaseModel):
             raise IllegalTransitionError(
                 "That account is closed and cannot receive money.",
                 details={"field": "iban", "status": self.status.value},
+            )
+
+    def guard_can_freeze(self) -> None:
+        if self.status is AccountStatus.CLOSED:
+            raise IllegalTransitionError(
+                "That account is closed and cannot be frozen.",
+                details={"field": "accountId", "status": self.status.value},
+            )
+        if self.status is AccountStatus.FROZEN:
+            raise IllegalTransitionError(
+                "That account is already frozen.",
+                details={"field": "accountId", "status": self.status.value},
+            )
+
+    def guard_can_unfreeze(self) -> None:
+        if self.status is not AccountStatus.FROZEN:
+            raise IllegalTransitionError(
+                f"That account is {self.status.value} and is not frozen.",
+                details={"field": "accountId", "status": self.status.value},
+            )
+
+    def guard_can_close(self) -> None:
+        if self.status is AccountStatus.CLOSED:
+            raise IllegalTransitionError(
+                "That account is already closed.",
+                details={"field": "accountId", "status": self.status.value},
             )
 
     def guard_not_self(self, other: "Account") -> None:
@@ -74,5 +103,9 @@ class Account(BaseModel):
             "kind": self.kind.value,
             "label": self.label,
             "status": self.status.value,
+            "statusReason": self.status_reason,
+            "statusChangedAt": self.status_changed_at.isoformat()
+            if self.status_changed_at
+            else None,
             "balance": {"minorUnits": balance_minor, "currency": self.currency},
         }

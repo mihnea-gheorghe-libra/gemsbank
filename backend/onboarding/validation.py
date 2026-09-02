@@ -1,5 +1,6 @@
 import re
 
+from backend.config import settings
 from backend.helpers.errors import ValidationError
 
 USERNAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$")
@@ -19,6 +20,8 @@ def normalise_username(raw: str) -> str:
             "Username must be 3-32 characters: lowercase letters, digits, dot, dash or underscore.",
             details={"field": "username"},
         )
+    if candidate == settings.admin_username.strip().lower():
+        raise ValidationError("That username is taken.", details={"field": "username"})
     return candidate
 
 

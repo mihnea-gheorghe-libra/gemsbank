@@ -84,3 +84,11 @@ CREDIT_PRODUCTS: tuple[CreditProduct, ...] = (
 
 def format_rate(rate_bps: int) -> str:
     return f"{rate_bps / 100:.2f}".replace(".", ",") + "%"
+
+
+def estimate_repayment(amount_minor: int, months: int, rate_bps: int) -> tuple[int, int, int]:
+    years = months / 12
+    interest = round(amount_minor * (rate_bps / 10_000) * years)
+    total = amount_minor + interest
+    monthly = round(total / months)
+    return monthly, total, interest
