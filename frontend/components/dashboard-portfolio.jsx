@@ -60,21 +60,48 @@
     if (!priced.length) return [];
 
     const days = new Set();
-    priced.forEach((holding) => holding.history.forEach((point) => days.add(point.on)));
+    priced.forEach((holding) => {
+      holding.history.forEach((point) => days.add(point.on));
+      const asOfStr = holding.asOf ? holding.asOf.split("T")[0] : null;
+      if (asOfStr && holding.unitPriceMinor != null) days.add(asOfStr);
+    });
 
-    const cursors = priced.map((holding) => ({
-      holding,
-      prices: new Map(holding.history.map((point) => [point.on, point.unitPriceMinor])),
-      last: null,
-    }));
+    const cursors = priced.map((holding) => {
+      const prices = new Map(holding.history.map((point) => [point.on, point.unitPriceMinor]));
+      const asOfStr = holding.asOf ? holding.asOf.split("T")[0] : null;
+      if (asOfStr && holding.unitPriceMinor != null) {
+        prices.set(asOfStr, holding.unitPriceMinor);
+      }
+      return { holding, prices, last: null, next: null };
+    });
 
     const series = [];
-    Array.from(days).sort().forEach((on) => {
+    const sortedDays = Array.from(days).sort();
+    
+    sortedDays.forEach((on, dayIndex) => {
       let total = cashMinor || 0;
       let complete = true;
       cursors.forEach((cursor) => {
         const price = cursor.prices.get(on);
-        if (price !== undefined) cursor.last = price;
+        if (price !== undefined) {
+          cursor.last = price;
+          // Find next available price for interpolation
+          cursor.next = null;
+          for (let i = dayIndex + 1; i < sortedDays.length; i++) {
+            const nextPrice = cursor.prices.get(sortedDays[i]);
+            if (nextPrice !== undefined) {
+              cursor.next = { on: sortedDays[i], price: nextPrice, dist: i - dayIndex };
+              break;
+            }
+          }
+        } else if (cursor.last !== null && cursor.next !== null) {
+          // Linear interpolation for missing days
+          const diff = cursor.next.price - cursor.last;
+          const step = diff / (cursor.next.dist + 1);
+          cursor.last += step;
+          cursor.next.dist -= 1;
+        }
+        
         if (cursor.last === null) complete = false;
         else total += Math.round(cursor.holding.units * cursor.last);
       });
@@ -85,7 +112,17 @@
 
   DASH.instrumentSeries = function instrumentSeries(holding) {
     if (!holding || !holding.history) return [];
-    return holding.history.map((point) => ({ on: point.on, valueMinor: point.unitPriceMinor }));
+    const series = holding.history.map((point) => ({ on: point.on, valueMinor: point.unitPriceMinor }));
+    const asOfStr = holding.asOf ? holding.asOf.split("T")[0] : null;
+    if (asOfStr && holding.unitPriceMinor != null) {
+      const lastPoint = series.length ? series[series.length - 1] : null;
+      if (!lastPoint || lastPoint.on < asOfStr) {
+        series.push({ on: asOfStr, valueMinor: holding.unitPriceMinor });
+      } else if (lastPoint && lastPoint.on === asOfStr) {
+        lastPoint.valueMinor = holding.unitPriceMinor;
+      }
+    }
+    return series;
   };
 
   DASH.seriesChangeBps = function seriesChangeBps(series) {

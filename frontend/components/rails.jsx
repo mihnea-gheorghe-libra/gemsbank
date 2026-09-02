@@ -52,25 +52,42 @@
   ONB.AgentPanel = function AgentPanel({ stepKey, lede }) {
     const message = t("agent.messages." + stepKey);
     const [isSpeaking, setIsSpeaking] = React.useState(false);
+    const audioPlayerRef = React.useRef(null);
+    const abortControllerRef = React.useRef(null);
 
     // Stop speaking when unmounted
     React.useEffect(() => {
       return () => {
+        if (audioPlayerRef.current) {
+          audioPlayerRef.current.pause();
+          audioPlayerRef.current.currentTime = 0;
+          audioPlayerRef.current = null;
+        }
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
         if (window.speechSynthesis) {
           window.speechSynthesis.cancel();
         }
       };
     }, []);
 
-    const handleSpeak = (text) => {
-      if (!window.speechSynthesis) return;
+    const handleSpeak = async (text) => {
       if (isSpeaking) {
-        window.speechSynthesis.cancel();
+        if (audioPlayerRef.current) audioPlayerRef.current.pause();
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
         setIsSpeaking(false);
       } else {
-        window.speechSynthesis.cancel();
         setIsSpeaking(true);
-        setTimeout(() => {
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+        
+        const fallbackSpeak = () => {
+          if (!window.speechSynthesis || controller.signal.aborted) {
+            setIsSpeaking(false);
+            return;
+          }
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.lang = GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB";
           utterance.onend = () => setIsSpeaking(false);
@@ -79,7 +96,21 @@
             setIsSpeaking(false);
           };
           window.speechSynthesis.speak(utterance);
-        }, 100);
+        };
+
+        try {
+          const blob = await GEMS.api.synthesizeSpeech(text, GEMS.i18n.locale, null, controller.signal);
+          if (controller.signal.aborted) return;
+          const blobUrl = URL.createObjectURL(blob);
+          const audio = new Audio(blobUrl);
+          audioPlayerRef.current = audio;
+          audio.onended = () => setIsSpeaking(false);
+          audio.onerror = fallbackSpeak;
+          await audio.play();
+        } catch (err) {
+          if (controller.signal.aborted) return;
+          fallbackSpeak();
+        }
       }
     };
 
