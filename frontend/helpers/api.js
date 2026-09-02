@@ -297,8 +297,6 @@
       send("/agents/payments/ask", { method: "POST", json: { question } }),
     askGems: (question, history, screen) =>
       send("/agents/ask", { method: "POST", json: { question, history, screen } }),
-    requestHandoff: (question, reason, history) =>
-      send("/agents/handoff", { method: "POST", json: { question, reason, history } }),
     transcribeVoice: (blob, language) => {
       const form = new FormData();
       form.append("audio", blob, "voice");

@@ -9,6 +9,7 @@
   const { useState, useCallback, useEffect, useMemo, useRef } = React;
 
   const SCREENS = ["home", "payments", "chat", "accounts", "portfolio", "cards", "analytics", "education", "settings"];
+  const MARKET_AUTO_REFRESH_MS = 60000;
 
   const ANSWER_KEYS = {
     pendingSign: "answerPendingSign",
@@ -293,9 +294,6 @@
     const recorderRef = useRef(null);
     const [draft, setDraft] = useState("");
     const [chatBusy, setChatBusy] = useState(false);
-    const [lastQuestion, setLastQuestion] = useState("");
-    const [handoffBusy, setHandoffBusy] = useState(false);
-    const [handoffSent, setHandoffSent] = useState(false);
     const [lastAgents, setLastAgents] = useState([]);
     const [dataLoaded, setDataLoaded] = useState(false);
     const [messages, setMessages] = useState([
@@ -470,6 +468,16 @@
       setTtsBusyIndex(null);
     }, []);
 
+    const speakWithBrowserVoice = useCallback((text, index) => {
+      if (!window.speechSynthesis) return;
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB";
+      utterance.onend = () => setPlayingMessageIndex(null);
+      utterance.onerror = () => setPlayingMessageIndex(null);
+      setPlayingMessageIndex(index);
+      window.speechSynthesis.speak(utterance);
+    }, []);
+
     const speakMessage = useCallback(async (text, index) => {
       const clean = (text || "").trim();
       if (!clean) return;
@@ -498,26 +506,17 @@
           audioPlayerRef.current = null;
         };
         audio.onerror = () => {
-          setPlayingMessageIndex(null);
           audioPlayerRef.current = null;
-          if (window.speechSynthesis && !controller.signal.aborted) {
-            const utterance = new SpeechSynthesisUtterance(clean);
-            utterance.lang = GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB";
-            window.speechSynthesis.speak(utterance);
-          }
+          if (!controller.signal.aborted) speakWithBrowserVoice(clean, index);
+          else setPlayingMessageIndex(null);
         };
         await audio.play();
       } catch (error) {
         if (controller.signal.aborted) return;
         setTtsBusyIndex(null);
-        setPlayingMessageIndex(null);
-        if (window.speechSynthesis) {
-          const utterance = new SpeechSynthesisUtterance(clean);
-          utterance.lang = GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB";
-          window.speechSynthesis.speak(utterance);
-        }
+        speakWithBrowserVoice(clean, index);
       }
-    }, [playingMessageIndex, ttsBusyIndex, stopSpeaking]);
+    }, [playingMessageIndex, ttsBusyIndex, stopSpeaking, speakWithBrowserVoice]);
 
     const pushExchange = useCallback((userText, reply) => {
       setMessages((list) => {
@@ -628,7 +627,6 @@
       const origin = screen;
       stopSpeaking();
       setMessages((list) => list.concat([{ role: "user", kind: "text", text }]));
-      setLastQuestion(text);
       setScreen("chat");
       setBalanceHidden(true);
       setChatBusy(true);
@@ -679,25 +677,6 @@
       setDraft("");
       sendQuestion(text);
     }, [draft, chatBusy, micOn, sendQuestion]);
-
-    const requestHuman = useCallback(() => {
-      if (handoffBusy || handoffSent) return;
-      setHandoffBusy(true);
-      api
-        .requestHandoff(lastQuestion || t("dashboard.chat.handoffFallbackQuestion"), null, transcriptOf(messages))
-        .then(() => {
-          setHandoffSent(true);
-          setMessages((list) =>
-            list.concat([{ role: "ai", kind: "text", text: t("dashboard.chat.handoffConfirmed") }])
-          );
-        })
-        .catch(() => {
-          setMessages((list) =>
-            list.concat([{ role: "ai", kind: "text", text: t("dashboard.chat.handoffFailed") }])
-          );
-        })
-        .finally(() => setHandoffBusy(false));
-    }, [handoffBusy, handoffSent, lastQuestion, messages]);
 
     const onDockPrompt = useCallback((key) => {
       const prompt = DATA.chatPrompts[key];
@@ -787,6 +766,19 @@
         loadMarket();
       }
     }, [screen, market, marketLoading, marketError, loadMarket]);
+
+    const marketLoadingRef = useRef(marketLoading);
+    useEffect(() => {
+      marketLoadingRef.current = marketLoading;
+    }, [marketLoading]);
+
+    useEffect(() => {
+      if (screen !== "portfolio") return undefined;
+      const interval = setInterval(() => {
+        if (!marketLoadingRef.current) loadMarket();
+      }, MARKET_AUTO_REFRESH_MS);
+      return () => clearInterval(interval);
+    }, [screen, loadMarket]);
 
     const pricedHoldings = useMemo(() => {
       if (!market || !market.quotes) return [];
@@ -1620,9 +1612,6 @@
                 onPromptClick={askSuggestion}
                 onConfirmTx={confirmTx}
                 onConfirmProposal={confirmProposal}
-                onRequestHuman={requestHuman}
-                handoffBusy={handoffBusy}
-                handoffSent={handoffSent}
                 username={firstName}
                 ttsOn={ttsOn}
                 onToggleTts={() => setTtsOn((value) => !value)}

@@ -4151,7 +4151,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
     );
   };
 
-  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, micBusy, micError, onToggleMic, onPromptClick, prompts, onConfirmTx, onConfirmProposal, onRequestHuman, handoffBusy, handoffSent, username, ttsOn, onToggleTts, playingMessageIndex, ttsBusyIndex, onSpeakMessage, onStopSpeaking, onClearChat }) {
+  SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, micBusy, micError, onToggleMic, onPromptClick, prompts, onConfirmTx, onConfirmProposal, username, ttsOn, onToggleTts, playingMessageIndex, ttsBusyIndex, onSpeakMessage, onStopSpeaking, onClearChat }) {
     const inputRef = useRef(null);
     const scrollRef = useRef(null);
 
@@ -4464,14 +4464,6 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
             ) : null}
             <div className="dash-chat-hint">
               <span>{t("dashboard.chat.orchestratorNote")}</span>
-              <button
-                type="button"
-                className="dash-handoff-link"
-                onClick={onRequestHuman}
-                disabled={handoffBusy || handoffSent}
-              >
-                {handoffSent ? t("dashboard.chat.handoffSent") : t("dashboard.chat.handoffAsk")}
-              </button>
             </div>
           </div>
         </div>
