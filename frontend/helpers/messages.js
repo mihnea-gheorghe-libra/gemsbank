@@ -1063,7 +1063,7 @@
       savePayee: "Save this payee for next time",
       acknowledgeMismatch: "I checked the name and want to send anyway",
       stepUpNote:
-        "Payments above 1.000,00 need a signature. GEMS will ask for a code before any money moves.",
+        "Payments above 500,00 need a signature. GEMS will ask for a code before any money moves.",
       cancel: "Cancel",
       continue: "Continue",
       sending: "Checking…",
