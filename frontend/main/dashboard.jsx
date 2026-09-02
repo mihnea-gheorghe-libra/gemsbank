@@ -1135,7 +1135,7 @@
               currency: payment.template.cur,
               reference: payment.template.reference,
             })
-            .then((created) => setTemplates((list) => list.concat([mapTemplateRow(created)])))
+            .then((created) => setTemplates((list) => list.concat([mapTemplateRow(created.data || created)])))
             .catch(() => {});
         }
         closePayment();
@@ -1198,7 +1198,7 @@
         const saved = known
           ? await api.updateTemplate(template.id, payload)
           : await api.createTemplate(payload);
-        const mapped = mapTemplateRow(saved);
+        const mapped = mapTemplateRow(saved.data || saved);
         setTemplates((list) =>
           known ? list.map((item) => (item.id === template.id ? mapped : item)) : list.concat([mapped])
         );
