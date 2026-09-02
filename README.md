@@ -422,7 +422,7 @@ The three seams that were empty before now carry traffic:
   limit, a rolling daily limit, and a step-up threshold. `mandates` exists as an empty collection;
   agent mandates will be evaluated through this same interface.
 - **Step-up / SCA** (`DevCodeStepUp`) logs the challenge and accepts one fixed dev code. Anything
-  over `PAYMENT_STEP_UP_THRESHOLD_MINOR` (default 1.000,00) goes through it.
+  over `PAYMENT_STEP_UP_THRESHOLD_MINOR` (default 500,00) goes through it.
 - **Verification of Payee** (`InternalPayeeVerifier`) compares the name you typed against the
   account holder's name. `no_match` refuses the payment until the caller re-sends it with
   `acknowledgePayeeMismatch`.

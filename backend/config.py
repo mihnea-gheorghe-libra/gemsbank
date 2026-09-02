@@ -61,7 +61,7 @@ class Settings(BaseSettings):
 
     payment_per_transaction_limit_minor: int = 5000000
     payment_daily_limit_minor: int = 10000000
-    payment_step_up_threshold_minor: int = 100000
+    payment_step_up_threshold_minor: int = 50000
     step_up_code_ttl_seconds: int = 300
     step_up_max_attempts: int = 3
     step_up_dev_code: str = "000000"
