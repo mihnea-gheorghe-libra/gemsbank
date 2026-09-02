@@ -78,6 +78,7 @@
       header: "ONBOARDING AGENT",
       suggested: "SUGGESTED",
       whyId: "Why do you need my ID?",
+      whyIdAnswer: "We need your ID to verify your identity as required by banking regulations.",
       readAloud: "Read this step aloud",
       stopReading: "Stop reading",
       messages: {
@@ -1226,6 +1227,7 @@
       header: "AGENT DE ÎNROLARE",
       suggested: "SUGESTII",
       whyId: "De ce aveți nevoie de actul meu?",
+      whyIdAnswer: "Avem nevoie de actul tău pentru a-ți verifica identitatea, conform normelor bancare.",
       readAloud: "Citește pasul cu voce tare",
       stopReading: "Oprește citirea",
       messages: {

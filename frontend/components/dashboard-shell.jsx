@@ -49,10 +49,7 @@
 
         <div className="dash-sidebar-foot">
           <div className="hr" />
-          <UI.Plate style={{ padding: 11 }}>
-            <UI.Kicker style={{ marginBottom: 4 }}>{t("dashboard.agentsOnline.title")}</UI.Kicker>
-            <div className="text-muted" style={{ fontSize: 12 }}>{t("dashboard.agentsOnline.note")}</div>
-          </UI.Plate>
+
           <UI.Button type="button" variant="ghost" style={{ alignSelf: "flex-start", padding: 0, gap: 6 }} onClick={onSignOut}>
             <UI.Icon name="LogOut" size={15} />
             {t("dashboard.signOut")}
