@@ -1026,7 +1026,13 @@
     }, [username, selectedCardId, applyCard]);
 
     const visibleCards = cards.filter((row) => row.state !== "blocked");
-    const deletedCards = cards.filter((row) => row.state === "blocked");
+    const deletedCards = cards
+      .filter((row) => row.state === "blocked")
+      .sort((a, b) => {
+        const dateA = a.deletedAt || a.updatedAt || a.createdAt || "";
+        const dateB = b.deletedAt || b.updatedAt || b.createdAt || "";
+        return dateB.localeCompare(dateA);
+      });
     const today = useCallback(
       () =>
         new Intl.DateTimeFormat("ro-RO", { day: "2-digit", month: "2-digit", year: "numeric" })

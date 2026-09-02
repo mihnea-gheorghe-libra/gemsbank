@@ -37,6 +37,7 @@ class Card(BaseModel):
     online_limit_minor: int
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    deleted_at: datetime | None = None
 
     def _touch(self) -> None:
         self.updated_at = datetime.now(timezone.utc)
@@ -66,6 +67,7 @@ class Card(BaseModel):
         if self.state == CardState.BLOCKED:
             raise IllegalTransitionError("This card is already blocked.")
         self.state = CardState.BLOCKED
+        self.deleted_at = datetime.now(timezone.utc)
         self._touch()
 
     def set_atm_limit(self, minor: int) -> None:
@@ -104,4 +106,6 @@ class Card(BaseModel):
             "state": self.state.value,
             "atmLimitMinor": self.atm_limit_minor,
             "onlineLimitMinor": self.online_limit_minor,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "deletedAt": self.deleted_at.isoformat() if self.deleted_at else (self.updated_at.isoformat() if self.state == CardState.BLOCKED else None),
         }
