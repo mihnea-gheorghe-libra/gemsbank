@@ -6,6 +6,7 @@ STARTER_ACCOUNTS: tuple[tuple[str, AccountKind, str], ...] = (
     ("RON", AccountKind.CURRENT, "Cont curent"),
     ("RON", AccountKind.SAVINGS, "Economii"),
     ("EUR", AccountKind.SAVINGS, "Economii EUR"),
+    ("USD", AccountKind.SAVINGS, "Economii USD"),
 )
 
 
