@@ -4153,6 +4153,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
 
   SCR.ChatScreen = function ChatScreen({ messages, busy, draft, onDraftChange, onSend, onKeyDown, micOn, micBusy, micError, onToggleMic, onPromptClick, prompts, onConfirmTx, onConfirmProposal, onRequestHuman, handoffBusy, handoffSent, username, ttsOn, onToggleTts, playingMessageIndex, ttsBusyIndex, onSpeakMessage, onStopSpeaking, onClearChat }) {
     const inputRef = useRef(null);
+    const scrollRef = useRef(null);
 
     useEffect(() => {
       if (busy || !inputRef.current) return;
@@ -4160,6 +4161,12 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
       if (active && active !== document.body && active !== inputRef.current) return;
       inputRef.current.focus();
     }, [busy]);
+
+    useEffect(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+    }, [messages, busy]);
 
 
     return (
@@ -4210,7 +4217,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
             </UI.Button>
           </div>
 
-          <div className="dash-chat-scroll">
+          <div className="dash-chat-scroll" ref={scrollRef}>
             {messages.map((message, index) => (
               <div className="dash-msg" key={index}>
                 {message.role === "user" ? (
