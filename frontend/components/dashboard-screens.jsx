@@ -127,7 +127,47 @@
   // One vendor story and one exchange-rate story. Everything else lives behind "view all".
   const INSIGHT_CARD_LIMIT = 1;
 
-  const HOME_ACCOUNT_PREVIEW_LIMIT = 3;
+  const HOME_ACCOUNT_PREVIEW_LIMIT = 4;
+
+  function featuredAccountsForDashboard(accounts) {
+    const preferredOrder = ["RON", "EUR", "USD"];
+    const normalized = (accounts || []).map((account) => ({
+      ...account,
+      currency: String(account.cur ?? account.currency ?? "").toUpperCase(),
+      minorValue: Number(account.minor ?? account.balance?.minorUnits ?? 0),
+    }));
+
+    const pickBestForCurrency = (currency, seenIds) => {
+      const best = normalized
+        .filter((account) => account.currency === currency && !seenIds.has(account.id))
+        .sort((left, right) => right.minorValue - left.minorValue)[0];
+      if (!best) return null;
+      seenIds.add(best.id);
+      return best;
+    };
+
+    const selected = [];
+    const seenIds = new Set();
+
+    for (const currency of preferredOrder) {
+      const best = pickBestForCurrency(currency, seenIds);
+      if (best) selected.push(best);
+      if (selected.length >= HOME_ACCOUNT_PREVIEW_LIMIT) break;
+    }
+
+    if (selected.length < HOME_ACCOUNT_PREVIEW_LIMIT) {
+      const remaining = normalized
+        .filter((account) => !seenIds.has(account.id))
+        .sort((left, right) => right.minorValue - left.minorValue);
+      for (const account of remaining) {
+        if (selected.length >= HOME_ACCOUNT_PREVIEW_LIMIT) break;
+        selected.push(account);
+        seenIds.add(account.id);
+      }
+    }
+
+    return selected.slice(0, HOME_ACCOUNT_PREVIEW_LIMIT);
+  }
 
   function hostOf(url) {
     if (!url) return "";
@@ -287,6 +327,7 @@
     const totalBalanceMinor = accounts
       .filter((account) => account.cur === "RON")
       .reduce((sum, account) => sum + account.minor, 0);
+    const featuredAccounts = featuredAccountsForDashboard(accounts);
 
     return (
       <div className="dash-grid-home">
@@ -331,7 +372,7 @@
             <a href="#" onClick={(event) => { event.preventDefault(); onOpenAccount(); }}>{t("dashboard.home.openAccount")}</a>
           </div>
           <div className="dash-accounts-tiles">
-            {accounts.slice(0, HOME_ACCOUNT_PREVIEW_LIMIT).map((account) => (
+            {featuredAccounts.map((account) => (
               <UI.Plate key={account.id} className="dash-account-tile">
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
                   {account.cur} · {account.label || t("dashboard.accountType." + account.typeKey)}
@@ -341,7 +382,7 @@
               </UI.Plate>
             ))}
           </div>
-          {accounts.length > HOME_ACCOUNT_PREVIEW_LIMIT ? (
+          {accounts.length > featuredAccounts.length ? (
             <a
               href="#"
               style={{ display: "inline-block", marginTop: 10, fontSize: 13 }}
