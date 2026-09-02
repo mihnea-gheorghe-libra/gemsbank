@@ -24,6 +24,7 @@ from backend.database.repositories import (
 from backend.exchange.service import ExchangeService, get_exchange_service
 from backend.helpers.context import ActorContext, log_event
 from backend.helpers.crypto import Argon2idHasher
+from backend.helpers.paging import decode_cursor, encode_cursor
 from backend.helpers.errors import DomainError, NotFoundError, ValidationError
 from backend.ledger.journal import (
     HouseAccount,
@@ -50,8 +51,6 @@ from backend.payments.payment import (
     SignatureChallenge,
 )
 from backend.payments.validation import (
-    decode_cursor,
-    encode_cursor,
     normalise_category,
     normalise_counterparty,
     normalise_direction,

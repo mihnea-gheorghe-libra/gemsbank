@@ -59,6 +59,7 @@ class JournalTransaction(BaseModel):
     correlation_id: str
     actor: str
     reverses: str | None = None
+    reason: str | None = None
 
     @model_validator(mode="after")
     def _balanced(self) -> "JournalTransaction":
@@ -76,6 +77,9 @@ class JournalTransaction(BaseModel):
                 details={"currency": self.currency, "residual": total},
             )
         return self
+
+    def reversal_legs(self) -> list[tuple[str, int]]:
+        return [(entry.account_id, -entry.amount) for entry in self.entries]
 
     def entry_for(self, account_id: str) -> JournalEntry | None:
         for entry in self.entries:
@@ -101,4 +105,6 @@ class JournalTransaction(BaseModel):
             "status": "booked",
             "direction": entry.side.value,
             "amount": {"minorUnits": entry.amount, "currency": self.currency},
+            "reverses": self.reverses,
+            "reason": self.reason,
         }

@@ -26,7 +26,24 @@
     return value.trim().toLowerCase();
   }
 
-  AUTH.SignInPage = function SignInPage({ onSwitchToRegister, onSignedIn, theme, onTheme, lang, onLang }) {
+  async function asAdmin(form, customerError) {
+    if (!customerError || customerError.status !== 401) return null;
+    try {
+      return await GEMS.adminApi.login(form.username, form.pin);
+    } catch (adminError) {
+      return null;
+    }
+  }
+
+  AUTH.SignInPage = function SignInPage({
+    onSwitchToRegister,
+    onSignedIn,
+    onSignedInAsAdmin,
+    theme,
+    onTheme,
+    lang,
+    onLang,
+  }) {
     const DASHBOARD = GEMS.dashboard;
     const [view, setView] = useState(VIEWS.SIGN_IN);
     const [session, setSession] = useState(null);
@@ -82,6 +99,11 @@
           setPinMissing(false);
           onSignedIn(response.username, response.prefs);
         } catch (err) {
+          const admin = await asAdmin(form, err);
+          if (admin) {
+            onSignedInAsAdmin(admin);
+            return;
+          }
           if (err.details && err.details.pinLocked) {
             setPinLockedUsername(normaliseUsername(form.username));
             setView(VIEWS.PASSWORD);

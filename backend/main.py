@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.accounts.service import get_accounts_service
+from backend.admin.service import get_admin_service
 from backend.auth.service import get_auth_service
 from backend.capabilities.service import get_capabilities_service
 from backend.cards.service import get_cards_service
@@ -71,6 +72,7 @@ async def lifespan(app: FastAPI):
     get_goals_service()
     get_exchange_service()
     get_escalations_service()
+    get_admin_service()
     await ensure_indexes()
     standing_orders_task = asyncio.create_task(_standing_orders_loop())
     index_reassert_task = asyncio.create_task(_index_reassert_loop())

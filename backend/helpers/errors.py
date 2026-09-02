@@ -43,6 +43,11 @@ class AuthenticationError(DomainError):
     http_status = 401
 
 
+class AuthorizationError(DomainError):
+    code = "forbidden"
+    http_status = 403
+
+
 class DeliveryError(DomainError):
     code = "delivery_failed"
     http_status = 502

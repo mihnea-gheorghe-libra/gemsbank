@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 CORRELATION_HEADER = "X-Correlation-Id"
 
-ActorKind = Literal["user", "system", "agent"]
+ActorKind = Literal["user", "system", "agent", "admin"]
 
 _correlation_id: ContextVar[str] = ContextVar("correlation_id", default="")
 
@@ -47,8 +47,16 @@ class Actor(BaseModel):
         return cls(kind="system", id="public-auth")
 
     @classmethod
+    def public_admin(cls) -> "Actor":
+        return cls(kind="system", id="public-admin")
+
+    @classmethod
     def user(cls, user_id: str) -> "Actor":
         return cls(kind="user", id=user_id)
+
+    @classmethod
+    def admin(cls, admin_id: str) -> "Actor":
+        return cls(kind="admin", id=admin_id)
 
     def label(self) -> str:
         return f"{self.kind}:{self.id}"

@@ -151,6 +151,15 @@ previous version.
 Without `PIN_ENCRYPTION_KEY` the PIN cipher falls back to a well-known demo key and logs
 `pin_cipher.dev_key_in_use` at startup. Fine locally, never anywhere else.
 
+The back office has no page of its own. Sign in at `/app/` with `ADMIN_USERNAME` (default
+`admin`) and `ADMIN_PASSWORD` (default `000000`, typed into the six PIN boxes) and you land in
+the back office instead of the dashboard. `000000` is a well-known demo credential in the same
+spirit as `STEP_UP_DEV_CODE`, and it is a real default in `config.py`, so a fresh clone has a
+**wide-open back office** — deliberate for a demo, unacceptable anywhere else. Setting
+`ADMIN_PASSWORD=` (empty) makes `POST /admin/login` refuse every attempt; the customer app is
+unaffected either way. `admin` is reserved: onboarding refuses it as a customer username, so
+nobody can register the name and shadow the door.
+
 Schema migrations in `ops/` are applied by hand, in order:
 
 ```bash
@@ -162,6 +171,12 @@ MSYS_NO_PATHCONV=1 docker exec gems-mongo mongosh --quiet /tmp/m.js
 `journalTransactions`, `payments`, `beneficiaries` and the empty `mandates`, and it installs the
 validator that makes the database refuse an unbalanced journal transaction. Without it the app
 runs and the ledger loses its second line of defence.
+
+`016_admin_backoffice.js` is what makes "reverse once" a database guarantee. It creates
+`adminSessions`, widens the `accounts`, `journalTransactions` and `creditApplications`
+validators for the admin fields, and — together with the `uq_reverses` unique partial index
+asserted at startup — makes a second reversal of the same transaction impossible even if the
+Python guard were removed.
 
 Indexes are not migrations — `backend/database/mongo.py` creates them at startup.
 
@@ -207,10 +222,16 @@ backend/
     deposit.py       the TermDeposit aggregate
     service.py       create/top-up/withdraw/close, rate looked up from products.catalogue by term
     validation.py    name, term-months whitelist, movement amount
-  credits/           credit applications — a record only, no money movement, no approval
-    application.py   the CreditApplication aggregate
-    service.py       submit/withdraw, amount and term validated against products.catalogue
+  credits/           credit applications — a record, decided by an administrator, no money
+                     movement either way
+    application.py   the CreditApplication aggregate; review → approved | rejected | withdrawn
+    service.py       submit/withdraw, the decide() transition admin/ calls, admin queue reads
     validation.py    amount/term/purpose bounds
+  admin/             the back office — one role, its own session, no granular permissions
+    session.py       the AdminIdentity and AdminSession aggregates
+    service.py       sign in/out, reverse, freeze/unfreeze, approve/reject, directory reads
+    validation.py    mandatory-reason, search, page-size and status bounds
+    adapters.py      clock
   investments/       market data only — read-only, no money movement
     instrument.py    Instrument, Quote, HistoryPoint, ExchangeRate, MarketSnapshot
     service.py       catalogue reads, TTL cache, last-known-good fallback, FX conversion
@@ -310,18 +331,21 @@ backend/
     service.py       RequestHandoff — a normal command through bus.execute
     validation.py    question and reason bounds
   helpers/
-    context.py       ids, Actor, correlation id, JSON logging
+    context.py       ids, Actor (user | system | agent | admin), correlation id, JSON logging
     crypto.py        Argon2id hasher, AES-GCM PIN cipher
     errors.py        error taxonomy → HTTP status
+    paging.py        the opaque cursor codec shared by payments and admin
 
 frontend/            no build step; index.html script order is the module graph
   index.html
+  main/admin.jsx     back-office screen state: users, user detail, credit queue
   main/app.jsx       chooses sign in vs register, mounts the app
   main/signin.jsx    sign in, PIN recovery, password reset, welcome, hands off to the dashboard
   main/register.jsx  onboarding page state and flow orchestration
   main/dashboard.jsx post-login dashboard mockup: screen state, chat state, accounts,
                      transactions, templates and split bills, mock-data wiring
-  components/        ui.jsx (primitives) · rails.jsx (step rail, agent panel) · steps.jsx ·
+  components/        ui.jsx (primitives) · admin.jsx (back-office tables, cards, reason
+                     dialog) · rails.jsx (step rail, agent panel) · steps.jsx ·
                      auth.jsx (sign-in forms, PIN panel, welcome) ·
                      dashboard-widgets.jsx (segmented control, bars, donut, progress, amount,
                      minor-unit format/parse/split helpers) ·
@@ -335,6 +359,7 @@ frontend/            no build step; index.html script order is the module graph
                      people.js (name formatting for display) ·
                      dashboard-data.js (hand-authored demo data for the dashboard mockup)
   styles/            tokens.css (the only place a hex value may appear) · app.css · dashboard.css ·
+                     admin.css (back office) ·
                      motion.css (elevation, contour and interaction state; loaded last)
 
 design/              Claude Design export — source of truth for tokens
@@ -343,7 +368,10 @@ ops/                 Mongo schema migrations
 
 React 18 and Babel standalone load from unpkg and transform the `.jsx` in the browser. Each file
 attaches its exports to `window.GEMS`, so adding a file means adding a `<script>` tag in the right
-place in `index.html`.
+place in `index.html`. There is one page and one `App`, which picks a mode: sign in, register,
+dashboard, or back office. The two roles share `api.js` but never a token — `GEMS.session` holds
+the customer token, `GEMS.adminApi` sends only `GEMS.adminSession`, and neither can be attached
+to the other's requests.
 
 ## How a write works
 
@@ -373,9 +401,12 @@ otherwise erase the evidence of the failure. `onboarding` does the same for OTP 
 
 One collection, `journalTransactions`, holds the whole ledger. Each document is one transaction
 in one currency with an embedded `entries` array, and it is written by exactly one function —
-`ledger.post_transaction`. Two callers reach it, both explicitly approved: `payments` (transfers,
-opening deposits) and `exchange` (currency conversion) — see "Exchange — real currency conversion"
-below for why a second caller was let in, and how it still keeps every transaction single-currency.
+`ledger.post_transaction`. Three callers reach it, all explicitly approved: `payments` (transfers,
+opening deposits), `exchange` (currency conversion) — see "Exchange — real currency conversion"
+below for why a second caller was let in, and how it still keeps every transaction
+single-currency — and `admin` (reversals), which reaches it only through `LedgerService.reverse`
+and can therefore only ever post the mirror image of a transaction that already exists. See
+"The admin back office" below.
 
 Entry amounts are **signed integer minor units, from the account holder's point of view**: the
 account that receives gets `+`, the account that pays gets `−`. A customer balance is therefore
@@ -396,7 +427,9 @@ ACCEPTED  three legs balanced    REJECTED  single leg
 ```
 
 The journal is append-only: `MongoJournalRepository` has `append` and reads, and no update path.
-Do not add one — corrections are reversal entries (`TransactionKind.REVERSAL`, unused so far).
+Do not add one — corrections are reversal entries. `TransactionKind.REVERSAL` is no longer
+unused: it is what an administrator posts when refusing a transaction, and it is the only new
+kind of row the back office can create.
 
 A payment is a separate aggregate with its own state machine, so the ledger stays ignorant of
 intent:
@@ -617,6 +650,203 @@ handle larger amounts later.
 accounts that don't share a currency. Exchange is the one sanctioned place an account's currency
 boundary is crossed, and it does that as two single-currency postings, never a mixed-currency
 journal entry.
+
+## The admin back office
+
+`backend/admin/`, plus one more mode in the web app. The not-in-v0 list in `PROMPT.md` §4 names
+"admin back-office" explicitly; this is a deliberate, explicitly requested and approved deviation
+from it, and §4 now says so. What follows is the whole of it — everything not listed here was
+deliberately not built.
+
+### One role, and a session that is not a customer session
+
+There is one administrator and one role. No permission matrix, no roles table, no per-action
+grants: for a demo, a second role would be structure with nothing in it.
+
+The credential comes from the environment (`ADMIN_USERNAME`, `ADMIN_PASSWORD`, defaulting to
+`admin` / `000000`) and is compared with `secrets.compare_digest`. There is no admin row in
+`users`, so an administrator cannot be enrolled, cannot recover a PIN, and cannot appear in the
+directory they administer — and `normalise_username` refuses `ADMIN_USERNAME` at registration,
+so no customer can take the name. Setting `ADMIN_PASSWORD=` empty makes `POST /admin/login`
+refuse everything.
+
+The customer OTP flow is untouched. An admin session is a different object in a different place:
+
+|                   | customer                        | administrator                    |
+| ----------------- | ------------------------------- | -------------------------------- |
+| credential        | username + PIN, or password     | username + password from env     |
+| recovery          | email code, PIN reveal          | none                             |
+| session store     | `sessions`                      | `adminSessions`                  |
+| resolver          | `AuthService.resolve_actor`     | `AdminService.resolve_actor`     |
+| actor             | `Actor.user(id)` → `kind="user"`| `Actor.admin(id)` → `kind="admin"`|
+| TTL               | `SESSION_TTL_SECONDS`           | `ADMIN_SESSION_TTL_SECONDS`      |
+| route dependency  | `CurrentActor`                  | `CurrentAdmin`                   |
+
+Because the two resolvers read different collections, a customer token presented to `/admin/*` is
+simply not found, and an admin token presented to `/payments/*` is simply not found. Neither is a
+check that could be forgotten; it falls out of the storage.
+
+`kind="admin"` is the fourth `ActorKind`, alongside `user`, `system` and `agent`. It is what makes
+every admin write legible in `auditLog` — `actorKind: "admin"`, `actorId: "admin"` — and it is
+what each command handler re-checks: the route dependency refuses an unauthenticated caller, and
+`_require_admin` inside the handler refuses a non-admin actor again, because the handler is the
+enforcement boundary everywhere else in this codebase too.
+
+### One form, two doors
+
+The administrator signs in on the ordinary sign-in screen — same username box, same six PIN boxes —
+by typing `admin` and `000000`. There is no admin page, no admin link and no second form. What
+changes is only where the credentials are *sent*:
+
+```
+submit ─► POST /auth/login  {username, pin}
+             ├─ 200 → customer token → dashboard
+             └─ 401 → POST /admin/login  {username, password: pin}
+                          ├─ 200 → admin token → back office
+                          └─ 401 → show the customer error, unchanged
+```
+
+The customer door is tried first, so every customer is answered by the endpoint built for them, and
+the fallback only runs on a sign-in that had already failed. On the second failure the *first*
+error is what surfaces, including its `pinLocked` detail, so the PIN-lockout and password-recovery
+flows behave exactly as before.
+
+Two things this deliberately does not do:
+
+- **It does not ask the server which username is privileged.** A `GET` that answered "the admin is
+  called `admin`" would tell every visitor which single account is worth attacking. The frontend
+  hardcodes nothing and learns nothing; it just tries the other door.
+- **It does not merge the two identities.** `/auth/login` still knows nothing about administrators
+  and `/admin/login` still knows nothing about customers. Separate stores, separate resolvers,
+  separate `Actor` kinds — see the table above. Only the *form* is shared.
+
+The cost of that choice, stated plainly: a customer who mistypes their PIN sends those six digits to
+`/admin/login` as well. That endpoint compares them with `secrets.compare_digest`, never logs them,
+never stores them and never touches the customer's record — but the request is made. The alternative
+was to publish which username is privileged, and between the two this is the smaller leak.
+
+`admin` is reserved at registration (`normalise_username` refuses `ADMIN_USERNAME`), so a customer
+cannot take the name and shadow the door.
+
+### It is a new caller, never a new pathway
+
+Every admin write goes through `bus.execute` like everything else, so it is idempotent, audited,
+and emits an outbox event in the same transaction. The seven seams are unchanged:
+
+```
+POST /admin/... ──► bus.execute(command, Actor.admin(...), Idempotency-Key)
+                       │
+                       ├─ handler: _require_admin → aggregate guard → repository write
+                       ├─ write_audit   (actorKind=admin, before/after, correlation id)
+                       ├─ write_events  (outbox)
+                       └─ store_response (idempotency)
+                    all inside one Mongo transaction
+```
+
+### Reading: the user directory
+
+- `GET /admin/users?search=&cursor=&limit=` — cursor-paginated, newest first, with a `total`.
+  `search` is a case-insensitive match on full name, username, email or phone.
+- `GET /admin/users/{id}` — the user, their accounts with balances derived from the ledger, and
+  their credit applications.
+- `GET /admin/users/{id}/transactions?cursor=&direction=&search=` — read straight from
+  `journalTransactions` across every account the user holds, through the same
+  `LedgerService.movements` the customer's own screen uses.
+
+These are reads only. There is **no endpoint that edits a user's personal data** — no name, email,
+phone, PIN or password. The back office can see a customer and act on their money and their
+applications; it cannot become them or rewrite who they are.
+
+### Refusing a transaction: a new entry, never an edit
+
+Rule 3 says the journal is append-only and corrections are reversals. So "the admin refuses a
+transaction" means: post a new, balanced `TransactionKind.REVERSAL` whose entries are the exact
+mirror of the original, carrying `reverses = <original id>` and the mandatory `reason`. The
+original document is never read-modify-written. The money lands back where it came from because
+the mirrored legs say so, not because anything was recalculated.
+
+```
+original   internal_transfer   A −125,00   B +125,00
+reversal   reversal            A +125,00   B −125,00     reverses=<original>  reason="..."
+```
+
+**Idempotent, twice over.** `LedgerService.reverse` looks for an existing reversal of that
+transaction and raises `ConflictError` if it finds one — and `journalTransactions` carries a
+unique partial index on `reverses` (`uq_reverses`, over `{reverses: {$type: "string"}}`), so a
+second reversal is refused by Mongo even if the Python guard were deleted. Same shape as the
+balanced-entries rule: enforced in the database, not only in the aggregate. The command bus's own
+idempotency key protects against a double-submit of the same request; these two protect against
+two different requests.
+
+**No eligibility rules.** Any transaction in the journal can be selected — including a reversal,
+which can itself be reversed once, undoing the refusal. That is deliberate and was asked for
+explicitly: what may and may not be refused is a policy question to be answered separately, and
+guessing at it now would bake in rules nobody has agreed.
+
+**The reason is mandatory** (5–280 characters, whitespace-normalised) and is stored on the
+reversal itself in `journalTransactions.reason`, not only in the audit log — so anyone reading the
+journal sees why the entry exists without having to join anything.
+
+### Freezing an account — the scope, decided and documented
+
+`AccountStatus.FROZEN` already existed and was unreachable. The back office is what reaches it.
+The scope is:
+
+| | frozen? |
+| --- | --- |
+| **Outgoing money** — transfers, exchange, goal and deposit funding, investment buys | **blocked** |
+| **Incoming money** — transfers in, refunds, reversals landing back, deposit maturities | allowed |
+| **Sign-in and read access** — the customer sees accounts, balances, statements | allowed |
+| **Closing the account** | blocked (`accounts.close` requires `active`) |
+
+Why this line and not a wider one:
+
+- **Incoming money still lands** because refusing it would not protect anyone — it would strand
+  someone else's payment in an error, and it would make a reversal of an outgoing transaction
+  impossible exactly when it is most needed. A frozen account that cannot receive cannot be made
+  whole.
+- **Sign-in is untouched** because freezing is an account-level control, and locking someone out
+  of the app is how you guarantee they never learn why. They can still see the account, its
+  `frozen` badge and the reason. Blocking access to the whole app is a different, heavier action
+  (`AuthUser.status`), it is not what "block an account" means, and the back office does not do it.
+- **Enforcement is where it already was**: `Account.guard_can_send`, called by `payments`,
+  `exchange`, `goals`, `deposits` and `investments`. Freezing therefore covers every outgoing path
+  automatically, including any added later, and no feature needed to learn about the back office.
+
+`freeze` and `unfreeze` both take a mandatory reason, stored on the account as `statusReason` with
+`statusChangedAt` and `statusChangedBy`. Those three are the *current* state; the full history is
+in `auditLog`, which has the before and after of every transition. Freezing twice is a conflict, so
+is unfreezing something that is not frozen, and a closed account cannot be frozen at all.
+
+### Deciding a credit application
+
+`backend/credits/` already had the pending entity — `CreditApplication`, status `review` — so
+nothing new was built for it. The status enum gained `approved` and `rejected` beside `review` and
+`withdrawn`, and the aggregate gained `decision_reason`, `decided_at`, `decided_by`.
+
+The decision transition lives in `CreditsService.decide`, because the application owns its own
+state machine; `admin` is only the caller and the authoriser. It is final: `guard_decidable`
+refuses a second decision in Python, and the repository update is filtered on `status: "review"`
+so a race loses rather than double-writing. A decided application can no longer be withdrawn by
+the customer either.
+
+No scoring engine runs, no terms are recalculated, and **no money moves** — approving does not
+disburse anything. `GET /admin/credits/applications?status=review` is the queue, and the reason is
+mandatory on both approve and reject.
+
+### The pages
+
+There is no admin page and no admin URL. `GEMS.admin.BackOffice` is a fourth mode of the one
+`App` in `main/app.jsx`, beside sign in, register and dashboard, rendered when the sign-in form
+returns an administrator. Nothing links to it and nothing hints that it exists. Every string goes
+through `t()` and exists in both `en` and `ro`; every colour comes from `tokens.css` through
+`styles/admin.css`.
+
+Two screens plus a detail view: **Users** (search, cursor pagination, click through), **user
+detail** (read-only profile, account cards with freeze/unfreeze, the journal with a per-row
+"refuse and reverse", their credit applications) and **Credit applications** (the queue, filtered
+by status). Every action that changes anything opens the same dialog first: it states what will
+happen, requires the reason, and will not submit without it.
 
 ## Personal details come from the ID document
 

@@ -57,6 +57,11 @@ class Settings(BaseSettings):
 
     session_ttl_seconds: int = 3600
 
+    admin_username: str = "admin"
+    admin_password: str = "000000"
+    admin_session_ttl_seconds: int = 1800
+    admin_users_page_size: int = 20
+
     demo_opening_balance_minor: int = 250000
 
     payment_per_transaction_limit_minor: int = 5000000

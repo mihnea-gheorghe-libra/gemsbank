@@ -174,6 +174,8 @@
       payoutAccountId: application.payoutAccountId,
       status: application.status,
       submitted: (application.submittedAt || "").slice(0, 10),
+      decisionReason: application.decisionReason,
+      decidedAt: (application.decidedAt || "").slice(0, 10),
     };
   }
 

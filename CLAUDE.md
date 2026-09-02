@@ -37,9 +37,11 @@ Schema migrations in `ops/` are applied by hand — see `README.md`.
    enforced by a DB constraint, not just Python.
 3. **The journal is append-only.** Corrections are reversals. Never update or delete an entry.
 4. **Balances are derived** from journal lines. Snapshots are read models that must be rebuildable.
-5. **One money door**: the ledger's `post_transaction`. Only `payments` and `exchange` call it —
-   both go through the same function, so there is still exactly one place money moves from. A new
-   feature does not get to call it without the same explicit approval `exchange` got; see README.
+5. **One money door**: the ledger's `post_transaction`. Only `payments`, `exchange` and `admin`
+   call it — all three go through the same function, so there is still exactly one place money
+   moves from. `admin` reaches it through `LedgerService.reverse`, which only ever mirrors an
+   existing transaction. A new feature does not get to call it without the same explicit approval
+   `exchange` and `admin` got; see README.
 6. **One write path**: `bus.execute(command, actor, idempotency_key)` in `backend/command_bus.py`.
    HTTP handlers are thin callers. So will agents be.
 7. **Every write is idempotent** (DB-unique key, stored response replayed) and **audited** (actor,
@@ -62,7 +64,9 @@ Never add a dependency without saying why. Budget: ≤15 direct backend, ≤20 d
 `actors` · `commandbus` · `policy` · `audit` · `outbox` · `capabilities` · `observability`.
 
 They live in `backend/helpers/context.py`, `backend/command_bus.py` and
-`backend/database/records.py`, and are exercised by the human-driven flows. When you add a
+`backend/database/records.py`, and are exercised by the human-driven flows. `actors` now has a
+fourth kind, `admin`, alongside `user`, `system` and `agent` — the back office is a new caller
+on the same seven seams, never a second pathway. When you add a
 feature, ask: does it route through all seven? If a write path skips one, that path is wrong. The
 agent layer must be a new *caller*, never a new *pathway*.
 

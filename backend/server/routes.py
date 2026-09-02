@@ -9,6 +9,20 @@ from backend.accounts.service import (
     OpenAccount,
     get_accounts_service,
 )
+from backend.admin.service import (
+    AdminService,
+    AdminSignIn,
+    AdminSignOut,
+    ApproveCreditApplication,
+    CloseAccount as AdminCloseAccount,
+    FreezeAccount,
+    LockUser,
+    RejectCreditApplication,
+    ReverseTransaction,
+    UnfreezeAccount,
+    UnlockUser,
+    get_admin_service,
+)
 from backend.agents.analytics_service import AnalyticsService, get_analytics_service
 from backend.agents.orchestrator_service import (
     OrchestratorService,
@@ -364,6 +378,15 @@ class CreditApplicationRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class AdminSignInRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class AdminReasonRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=280)
+
+
 class StandingOrderRequest(BaseModel):
     source_account_id: str | None = Field(
         default=None, alias="sourceAccountId", max_length=64
@@ -407,6 +430,7 @@ TranscriptionDep = Annotated[
 SynthesisDep = Annotated[SynthesisService, Depends(get_synthesis_service)]
 EscalationsDep = Annotated[EscalationsService, Depends(get_escalations_service)]
 ExchangeDep = Annotated[ExchangeService, Depends(get_exchange_service)]
+AdminDep = Annotated[AdminService, Depends(get_admin_service)]
 
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key")]
 BearerToken = Annotated[str | None, Header(alias="Authorization")]
@@ -425,6 +449,7 @@ deposits_router = APIRouter(prefix="/deposits", tags=["deposits"])
 credits_router = APIRouter(prefix="/credits", tags=["credits"])
 education_router = APIRouter(prefix="/education", tags=["education"])
 agents_router = APIRouter(prefix="/agents", tags=["agents"])
+admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 def _actor() -> Actor:
@@ -459,7 +484,14 @@ async def current_actor(
     return await auth.resolve_actor(token)
 
 
+async def current_admin(
+    admin: AdminDep, token: Annotated[str, Depends(bearer_token)]
+) -> Actor:
+    return await admin.resolve_actor(token)
+
+
 CurrentActor = Annotated[Actor, Depends(current_actor)]
+CurrentAdmin = Annotated[Actor, Depends(current_admin)]
 SessionToken = Annotated[str, Depends(bearer_token)]
 ClientIp = Annotated[str | None, Depends(client_ip)]
 ClientUserAgent = Annotated[str | None, Depends(client_user_agent)]
@@ -1469,6 +1501,176 @@ async def withdraw_credit_application(
     return await bus.execute(command, actor, idempotency_key)
 
 
+@admin_router.post("/login")
+async def admin_login(
+    payload: AdminSignInRequest,
+    ip: ClientIp,
+    user_agent: ClientUserAgent,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = AdminSignIn(username=payload.username, password=payload.password)
+    return await bus.execute(
+        command, Actor.public_admin(), idempotency_key, ip=ip, user_agent=user_agent
+    )
+
+
+@admin_router.post("/logout")
+async def admin_logout(
+    actor: CurrentAdmin,
+    token: SessionToken,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    return await bus.execute(AdminSignOut(session_token=token), actor, idempotency_key)
+
+
+@admin_router.get("/me")
+async def admin_me(admin: AdminDep, token: SessionToken) -> dict[str, Any]:
+    return (await admin.resolve_admin(token)).public_view()
+
+
+@admin_router.get("/users")
+async def admin_list_users(
+    actor: CurrentAdmin,
+    admin: AdminDep,
+    search: Annotated[str | None, Query(max_length=64)] = None,
+    cursor: Annotated[str | None, Query(max_length=256)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=100)] = None,
+) -> dict[str, Any]:
+    return await admin.list_customers(search, cursor, limit)
+
+
+@admin_router.get("/users/{user_id}")
+async def admin_read_user(
+    actor: CurrentAdmin, admin: AdminDep, user_id: str
+) -> dict[str, Any]:
+    return await admin.customer_detail(user_id)
+
+
+@admin_router.get("/users/{user_id}/transactions")
+async def admin_list_user_transactions(
+    actor: CurrentAdmin,
+    admin: AdminDep,
+    user_id: str,
+    direction: Annotated[str | None, Query(pattern="^(debit|credit)$")] = None,
+    search: Annotated[str | None, Query(max_length=64)] = None,
+    cursor: Annotated[str | None, Query(max_length=256)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=100)] = None,
+) -> dict[str, Any]:
+    return await admin.customer_transactions(
+        user_id, direction=direction, search=search, cursor=cursor, limit=limit
+    )
+
+
+@admin_router.post("/users/{user_id}/lock")
+async def admin_lock_user(
+    actor: CurrentAdmin,
+    user_id: str,
+    payload: AdminReasonRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = LockUser(user_id=user_id, reason=payload.reason)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@admin_router.post("/users/{user_id}/unlock")
+async def admin_unlock_user(
+    actor: CurrentAdmin,
+    user_id: str,
+    payload: AdminReasonRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = UnlockUser(user_id=user_id, reason=payload.reason)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@admin_router.get("/transactions/{transaction_id}")
+async def admin_read_transaction(
+    actor: CurrentAdmin, admin: AdminDep, transaction_id: str
+) -> dict[str, Any]:
+    return await admin.transaction_detail(transaction_id)
+
+
+@admin_router.post("/transactions/{transaction_id}/reverse")
+async def admin_reverse_transaction(
+    actor: CurrentAdmin,
+    transaction_id: str,
+    payload: AdminReasonRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = ReverseTransaction(transaction_id=transaction_id, reason=payload.reason)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@admin_router.post("/accounts/{account_id}/freeze")
+async def admin_freeze_account(
+    actor: CurrentAdmin,
+    account_id: str,
+    payload: AdminReasonRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = FreezeAccount(account_id=account_id, reason=payload.reason)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@admin_router.post("/accounts/{account_id}/unfreeze")
+async def admin_unfreeze_account(
+    actor: CurrentAdmin,
+    account_id: str,
+    payload: AdminReasonRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = UnfreezeAccount(account_id=account_id, reason=payload.reason)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@admin_router.post("/accounts/{account_id}/close")
+async def admin_close_account(
+    actor: CurrentAdmin,
+    account_id: str,
+    payload: AdminReasonRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = AdminCloseAccount(account_id=account_id, reason=payload.reason)
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@admin_router.get("/credits/applications")
+async def admin_list_credit_applications(
+    actor: CurrentAdmin,
+    admin: AdminDep,
+    status: Annotated[str | None, Query(max_length=16)] = None,
+    cursor: Annotated[str | None, Query(max_length=256)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=100)] = None,
+) -> dict[str, Any]:
+    return await admin.list_applications(status, cursor, limit)
+
+
+@admin_router.post("/credits/applications/{application_id}/approve")
+async def admin_approve_credit_application(
+    actor: CurrentAdmin,
+    application_id: str,
+    payload: AdminReasonRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = ApproveCreditApplication(
+        application_id=application_id, reason=payload.reason
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
+@admin_router.post("/credits/applications/{application_id}/reject")
+async def admin_reject_credit_application(
+    actor: CurrentAdmin,
+    application_id: str,
+    payload: AdminReasonRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = RejectCreditApplication(
+        application_id=application_id, reason=payload.reason
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
 api_router.include_router(onboarding_router)
 api_router.include_router(auth_router)
 api_router.include_router(accounts_router)
@@ -1482,3 +1684,4 @@ api_router.include_router(credits_router)
 api_router.include_router(education_router)
 api_router.include_router(agents_router)
 api_router.include_router(exchange_router)
+api_router.include_router(admin_router)

@@ -98,6 +98,106 @@
     return text ? "?" + text : "";
   }
 
+  let adminToken = null;
+
+  GEMS.adminSession = {
+    set(token) {
+      adminToken = token || null;
+    },
+    clear() {
+      adminToken = null;
+    },
+    has() {
+      return Boolean(adminToken);
+    },
+  };
+
+  async function sendAdmin(path, { method = "GET", json } = {}) {
+    const headers = {};
+    let body;
+    if (json !== undefined) {
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify(json);
+    }
+    if (method !== "GET") {
+      headers["Idempotency-Key"] = newIdempotencyKey();
+    }
+    if (adminToken) {
+      headers["Authorization"] = "Bearer " + adminToken;
+    }
+    const response = await fetch("/admin" + path, { method, headers, body });
+    return parse(response);
+  }
+
+  GEMS.adminApi = {
+    login: async (username, password) => {
+      const response = await sendAdmin("/login", {
+        method: "POST",
+        json: { username, password },
+      });
+      GEMS.adminSession.set(response.sessionToken);
+      return response;
+    },
+    logout: async () => {
+      try {
+        await sendAdmin("/logout", { method: "POST", json: {} });
+      } finally {
+        GEMS.adminSession.clear();
+      }
+    },
+    me: () => sendAdmin("/me"),
+
+    listUsers: (params) => sendAdmin("/users" + query(params)),
+    readUser: (userId) => sendAdmin("/users/" + encodeURIComponent(userId)),
+    lockUser: (userId, reason) =>
+      sendAdmin("/users/" + encodeURIComponent(userId) + "/lock", {
+        method: "POST",
+        json: { reason },
+      }),
+    unlockUser: (userId, reason) =>
+      sendAdmin("/users/" + encodeURIComponent(userId) + "/unlock", {
+        method: "POST",
+        json: { reason },
+      }),
+    listUserTransactions: (userId, params) =>
+      sendAdmin("/users/" + encodeURIComponent(userId) + "/transactions" + query(params)),
+    readTransaction: (transactionId) =>
+      sendAdmin("/transactions/" + encodeURIComponent(transactionId)),
+
+    reverseTransaction: (transactionId, reason) =>
+      sendAdmin("/transactions/" + encodeURIComponent(transactionId) + "/reverse", {
+        method: "POST",
+        json: { reason },
+      }),
+    freezeAccount: (accountId, reason) =>
+      sendAdmin("/accounts/" + encodeURIComponent(accountId) + "/freeze", {
+        method: "POST",
+        json: { reason },
+      }),
+    unfreezeAccount: (accountId, reason) =>
+      sendAdmin("/accounts/" + encodeURIComponent(accountId) + "/unfreeze", {
+        method: "POST",
+        json: { reason },
+      }),
+    closeAccount: (accountId, reason) =>
+      sendAdmin("/accounts/" + encodeURIComponent(accountId) + "/close", {
+        method: "POST",
+        json: { reason },
+      }),
+
+    listCreditApplications: (params) => sendAdmin("/credits/applications" + query(params)),
+    approveCreditApplication: (applicationId, reason) =>
+      sendAdmin("/credits/applications/" + encodeURIComponent(applicationId) + "/approve", {
+        method: "POST",
+        json: { reason },
+      }),
+    rejectCreditApplication: (applicationId, reason) =>
+      sendAdmin("/credits/applications/" + encodeURIComponent(applicationId) + "/reject", {
+        method: "POST",
+        json: { reason },
+      }),
+  };
+
   GEMS.ApiError = ApiError;
   GEMS.api = {
     startOnboarding: () => send("/onboarding", { method: "POST" }),

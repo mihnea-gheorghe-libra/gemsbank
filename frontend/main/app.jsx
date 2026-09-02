@@ -8,7 +8,8 @@
   function App() {
     const [mode, setMode] = useState("signIn");
     const [username, setUsername] = useState("");
-    
+    const [admin, setAdmin] = useState(null);
+
     const [theme, setTheme] = useState(() => window.localStorage.getItem("gems.theme") || "light");
     const [lang, setLang] = useState(GEMS.i18n.locale);
 
@@ -20,7 +21,7 @@
 
     const handleThemeChange = (newTheme) => {
       setTheme(newTheme);
-      if (username) {
+      if (username && !admin) {
         GEMS.api.updatePreferences({ theme: newTheme, lang }).catch(() => {});
       }
     };
@@ -28,10 +29,27 @@
     const handleLangChange = (newLang) => {
       GEMS.i18n.setLocale(newLang);
       setLang(newLang);
-      if (username) {
+      if (username && !admin) {
         GEMS.api.updatePreferences({ theme, lang: newLang }).catch(() => {});
       }
     };
+
+    if (mode === "admin") {
+      return (
+        <GEMS.admin.BackOffice
+          admin={admin}
+          theme={theme}
+          onTheme={handleThemeChange}
+          lang={lang}
+          onLang={handleLangChange}
+          onSignOut={() => {
+            GEMS.adminApi.logout().catch(() => {});
+            setAdmin(null);
+            setMode("signIn");
+          }}
+        />
+      );
+    }
 
     if (mode === "dashboard") {
       return (
@@ -78,6 +96,11 @@
         lang={lang}
         onLang={handleLangChange}
         onSwitchToRegister={() => setMode("register")}
+        onSignedInAsAdmin={(identity) => {
+          setAdmin(identity);
+          setUsername("");
+          setMode("admin");
+        }}
         onSignedIn={(name, prefs) => {
           setUsername(name);
           if (prefs) {

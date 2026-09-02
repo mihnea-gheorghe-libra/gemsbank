@@ -816,7 +816,11 @@
     onTopUpAccount,
     onWithdrawAccount,
   }) {
-    const activeApplications = creditApplications.filter((application) => application.status === "review");
+    const approvedCredits = creditApplications.filter((application) => application.status === "approved");
+    const reviewApplications = creditApplications.filter((application) => application.status === "review");
+    const decidedApplications = creditApplications.filter(
+      (application) => application.status === "rejected" || application.status === "withdrawn"
+    );
     const cashAccounts = accounts.filter((account) => account.typeKey === "current" || account.typeKey === "invest");
     const depositPotIds = new Set(termDeposits.map((deposit) => deposit.accountId));
     const savingsAccounts = accounts.filter(
@@ -941,54 +945,151 @@
               </div>
             ) : null}
 
-            {!activeApplications.length ? (
+            {!creditApplications.length ? (
               <div className="text-muted" style={{ fontSize: 13 }}>{t("dashboard.credit.empty")}</div>
-            ) : null}
-
-            {activeApplications.length ? (
-              <div style={{ marginTop: 18 }}>
-                <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.credit.applicationsTitle")}</UI.Kicker>
-                <div className="dash-product-list dash-scroll-credits">
-                  {activeApplications.map((application) => (
-                    <div className="dash-product-row" key={application.id}>
-                      <div className="dash-product-head">
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontFamily: "var(--font-heading)", fontSize: 15 }}>
-                            {t("dashboard.credit.name." + application.productId)}
+            ) : (
+              <div className="dash-credits-cols">
+                {/* Column 1: Credite Active */}
+                <div className="dash-credits-col">
+                  <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.credit.activeTitle")}</UI.Kicker>
+                  {approvedCredits.length ? (
+                    <div className="dash-product-list dash-scroll-credits">
+                      {approvedCredits.map((application) => (
+                        <div className="dash-product-row" key={application.id}>
+                          <div className="dash-product-head">
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontFamily: "var(--font-heading)", fontSize: 15, wordBreak: "break-word" }}>
+                                {t("dashboard.credit.name." + application.productId)}
+                              </div>
+                              <div className="text-muted" style={{ fontSize: 11 }}>
+                                {t("dashboard.credit.applicationMeta", {
+                                  rate: DASH.formatRate(application.rateBps),
+                                  term: application.termMonths
+                                    ? t("dashboard.deposit.months", { n: application.termMonths })
+                                    : t("dashboard.credit.revolving"),
+                                  date: GEMS.i18n.isoToDisplayDate(application.submitted),
+                                })}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 8 }}>
+                              <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>
+                                {formatMinor(application.amountMinor)} {application.cur}
+                              </div>
+                              <UI.Tag variant="positive">{t("dashboard.credit.status.approved")}</UI.Tag>
+                            </div>
                           </div>
-                          <div className="text-muted" style={{ fontSize: 11 }}>
-                            {t("dashboard.credit.applicationMeta", {
-                              rate: DASH.formatRate(application.rateBps),
-                              term: application.termMonths
-                                ? t("dashboard.deposit.months", { n: application.termMonths })
-                                : t("dashboard.credit.revolving"),
-                              date: GEMS.i18n.isoToDisplayDate(application.submitted),
-                            })}
-                          </div>
+                          {application.purpose ? (
+                            <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+                              {t("dashboard.credit.purpose")}: {application.purpose}
+                            </div>
+                          ) : null}
+                          {application.decisionReason ? (
+                            <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+                              {t("dashboard.credit.decisionReason", { reason: application.decisionReason })}
+                            </div>
+                          ) : null}
                         </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontFamily: "var(--font-heading)", fontSize: 17 }}>
-                            {formatMinor(application.amountMinor)} {application.cur}
-                          </div>
-                          <UI.Tag variant="outline">{t("dashboard.credit.status.review")}</UI.Tag>
-                        </div>
-                        <UI.Button
-                          type="button"
-                          variant="secondary"
-                          aria-label={t("dashboard.credit.withdrawLabel")}
-                          onClick={() => onWithdrawApplication(application.id)}
-                        >
-                          {"×"}
-                        </UI.Button>
-                      </div>
-                      <div className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
-                        {t("dashboard.credit.awaitingAgent")}
-                      </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    <div className="dash-credits-col-empty">{t("dashboard.credit.noActive")}</div>
+                  )}
+                </div>
+
+                {/* Column 2: Cereri în Analiză */}
+                <div className="dash-credits-col">
+                  <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.credit.applicationsTitle")}</UI.Kicker>
+                  {reviewApplications.length ? (
+                    <div className="dash-product-list dash-scroll-credits">
+                      {reviewApplications.map((application) => (
+                        <div className="dash-product-row" key={application.id}>
+                          <div className="dash-product-head">
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontFamily: "var(--font-heading)", fontSize: 15, wordBreak: "break-word" }}>
+                                {t("dashboard.credit.name." + application.productId)}
+                              </div>
+                              <div className="text-muted" style={{ fontSize: 11 }}>
+                                {t("dashboard.credit.applicationMeta", {
+                                  rate: DASH.formatRate(application.rateBps),
+                                  term: application.termMonths
+                                    ? t("dashboard.deposit.months", { n: application.termMonths })
+                                    : t("dashboard.credit.revolving"),
+                                  date: GEMS.i18n.isoToDisplayDate(application.submitted),
+                                })}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 8 }}>
+                              <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>
+                                {formatMinor(application.amountMinor)} {application.cur}
+                              </div>
+                              <UI.Tag variant="outline">{t("dashboard.credit.status.review")}</UI.Tag>
+                            </div>
+                            <UI.Button
+                              type="button"
+                              variant="secondary"
+                              aria-label={t("dashboard.credit.withdrawLabel")}
+                              onClick={() => onWithdrawApplication(application.id)}
+                              style={{ padding: "2px 8px", marginLeft: 4 }}
+                            >
+                              {"×"}
+                            </UI.Button>
+                          </div>
+                          <div className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
+                            {t("dashboard.credit.awaitingAgent")}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="dash-credits-col-empty">{t("dashboard.credit.noReview")}</div>
+                  )}
+                </div>
+
+                {/* Column 3: Istoric Cereri */}
+                <div className="dash-credits-col">
+                  <UI.Kicker style={{ marginBottom: 10 }}>{t("dashboard.credit.decidedTitle")}</UI.Kicker>
+                  {decidedApplications.length ? (
+                    <div className="dash-product-list dash-scroll-credits">
+                      {decidedApplications.map((application) => (
+                        <div className="dash-product-row" key={application.id}>
+                          <div className="dash-product-head">
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontFamily: "var(--font-heading)", fontSize: 15, wordBreak: "break-word" }}>
+                                {t("dashboard.credit.name." + application.productId)}
+                              </div>
+                              <div className="text-muted" style={{ fontSize: 11 }}>
+                                {t("dashboard.credit.applicationMeta", {
+                                  rate: DASH.formatRate(application.rateBps),
+                                  term: application.termMonths
+                                    ? t("dashboard.deposit.months", { n: application.termMonths })
+                                    : t("dashboard.credit.revolving"),
+                                  date: GEMS.i18n.isoToDisplayDate(application.submitted),
+                                })}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 8 }}>
+                              <div style={{ fontFamily: "var(--font-heading)", fontSize: 16 }}>
+                                {formatMinor(application.amountMinor)} {application.cur}
+                              </div>
+                              <UI.Tag variant={application.status === "rejected" ? "critical" : "neutral"}>
+                                {t("dashboard.credit.status." + application.status)}
+                              </UI.Tag>
+                            </div>
+                          </div>
+                          {application.decisionReason ? (
+                            <div className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
+                              {t("dashboard.credit.decisionReason", { reason: application.decisionReason })}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="dash-credits-col-empty">{t("dashboard.credit.noDecided")}</div>
+                  )}
                 </div>
               </div>
-            ) : null}
+            )}
         </UI.Plate>
       </div>
     );

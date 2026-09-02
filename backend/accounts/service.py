@@ -24,6 +24,7 @@ from motor.motor_asyncio import AsyncIOMotorClientSession
 __all__ = [
     "Account",
     "AccountKind",
+    "AccountStatus",
     "AccountsService",
     "CloseAccount",
     "OpenAccount",
@@ -48,6 +49,9 @@ class AccountRepository(Protocol):
         account_id: str,
         status: AccountStatus,
         session: AsyncIOMotorClientSession | None = None,
+        reason: str | None = None,
+        changed_at: datetime | None = None,
+        changed_by: str | None = None,
     ) -> bool: ...
 
 
@@ -146,6 +150,51 @@ class AccountsService:
                 "That account does not belong to you.", details={"field": "sourceAccountId"}
             )
         return account
+
+    async def get_any(self, account_id: str) -> Account:
+        account = await self._accounts.get(account_id)
+        if account is None:
+            raise NotFoundError(
+                "There is no such account.", details={"field": "accountId"}
+            )
+        return account
+
+    async def get_optional(self, account_id: str) -> Account | None:
+        return await self._accounts.get(account_id)
+
+    async def set_status_with_reason(
+        self,
+        account: Account,
+        status: AccountStatus,
+        reason: str,
+        changed_by: str,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> Account:
+        changed_at = self._clock.now()
+        updated = await self._accounts.set_status(
+            account.id,
+            status,
+            session=session,
+            reason=reason,
+            changed_at=changed_at,
+            changed_by=changed_by,
+        )
+        if not updated:
+            raise IllegalTransitionError(
+                "That account could not be updated. Reload and try again.",
+                details={"field": "accountId"},
+            )
+        return account.model_copy(
+            update={
+                "status": status,
+                "status_reason": reason,
+                "status_changed_at": changed_at,
+                "status_changed_by": changed_by,
+            }
+        )
+
+    async def view_of(self, account: Account) -> dict[str, Any]:
+        return account.public_view(await self._ledger.balance_of(account.id))
 
     async def resolve_iban(self, raw_iban: str) -> Account | None:
         return await self._accounts.get_by_iban(normalise_iban(raw_iban))

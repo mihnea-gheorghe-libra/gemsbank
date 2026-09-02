@@ -57,6 +57,10 @@ def sessions_collection() -> AsyncIOMotorCollection:
     return get_db()["sessions"]
 
 
+def admin_sessions_collection() -> AsyncIOMotorCollection:
+    return get_db()["adminSessions"]
+
+
 def accounts_collection() -> AsyncIOMotorCollection:
     return get_db()["accounts"]
 
@@ -146,6 +150,14 @@ async def ensure_indexes() -> None:
         [("expiresAt", ASCENDING)], expireAfterSeconds=0, name="ttl_expires"
     )
 
+    await admin_sessions_collection().create_index(
+        [("tokenHash", ASCENDING)], unique=True, name="uq_token"
+    )
+    await admin_sessions_collection().create_index([("adminId", ASCENDING)], name="ix_admin")
+    await admin_sessions_collection().create_index(
+        [("expiresAt", ASCENDING)], expireAfterSeconds=0, name="ttl_expires"
+    )
+
     await accounts_collection().create_index([("iban", ASCENDING)], unique=True, name="uq_iban")
     await accounts_collection().create_index(
         [("userId", ASCENDING), ("openedAt", ASCENDING)], name="ix_user_opened"
@@ -159,6 +171,12 @@ async def ensure_indexes() -> None:
     )
     await journal_collection().create_index(
         [("correlationId", ASCENDING)], name="ix_correlation"
+    )
+    await journal_collection().create_index(
+        [("reverses", ASCENDING)],
+        unique=True,
+        name="uq_reverses",
+        partialFilterExpression={"reverses": {"$type": "string"}},
     )
 
     await payments_collection().create_index(
@@ -212,5 +230,13 @@ async def ensure_indexes() -> None:
 
     await credit_applications_collection().create_index(
         [("userId", ASCENDING), ("submittedAt", DESCENDING)], name="ix_user_submitted"
+    )
+    await credit_applications_collection().create_index(
+        [("status", ASCENDING), ("submittedAt", DESCENDING), ("_id", DESCENDING)],
+        name="ix_status_submitted",
+    )
+
+    await users_collection().create_index(
+        [("createdAt", DESCENDING), ("_id", DESCENDING)], name="ix_created_cursor"
     )
 
