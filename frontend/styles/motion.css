@@ -21,6 +21,16 @@
   0% { box-shadow: var(--shadow-md), 0 0 0 0 color-mix(in srgb, var(--color-primary) 34%, transparent); }
   70%, 100% { box-shadow: var(--shadow-md), 0 0 0 16px transparent; }
 }
+@keyframes gemsMoneyChange {
+  0% { opacity: 0; transform: translateY(8px) scale(0.94); filter: blur(5px); }
+  55% { opacity: 1; transform: translateY(-2px) scale(1.025); filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+@keyframes gemsDigitRoll {
+  0% { opacity: 0; transform: rotateX(-90deg) translateY(-0.18em); }
+  65% { opacity: 1; transform: rotateX(14deg) translateY(0.02em); }
+  100% { opacity: 1; transform: rotateX(0) translateY(0); }
+}
 
 /* ── ground ──────────────────────────────────────────────── */
 html { scroll-behavior: smooth; }
@@ -498,6 +508,23 @@ body,
   transition: transform var(--dur-3) var(--ease-spring), color var(--dur-2) var(--ease-out);
 }
 .dash-balance-figure:hover { transform: scale(1.015); }
+.dash-money-change {
+  display: inline-block;
+  transform-origin: left center;
+  animation: gemsMoneyChange 620ms var(--ease-out) both;
+}
+.dash-money-digits {
+  display: inline-flex;
+  gap: 0;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.dash-money-digit {
+  display: inline-block;
+  min-width: 0.5em;
+  transform-origin: center bottom;
+  animation: gemsDigitRoll 180ms var(--ease-out) both;
+}
 .dash-copy-btn { transition: opacity var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-spring); }
 .dash-copy-btn:hover { transform: scale(1.12); }
 .dash-copy-btn:active { transform: scale(0.9); }
@@ -517,5 +544,7 @@ a { transition: color var(--dur-2) var(--ease-out); }
   .onb-dot { animation: none; }
   .auth-watermark { animation: none; }
   .dash-goals-loading::before { animation: none; }
+  .dash-money-change { animation: none; }
+  .dash-money-digit { animation: none; }
   .btn:not(:disabled):hover::after { animation: none; }
 }

@@ -17,6 +17,51 @@
 
   const formatMinor = DASH.formatMinor;
 
+  function RollingAmount({ value, amountMinor, suffix }) {
+    const visible = amountMinor != null;
+    const [shownMinor, setShownMinor] = useState(amountMinor);
+
+    useEffect(() => {
+      if (!visible || amountMinor == null) {
+        setShownMinor(amountMinor);
+        return undefined;
+      }
+      if (shownMinor == null || shownMinor === amountMinor) {
+        setShownMinor(amountMinor);
+        return undefined;
+      }
+
+      const start = shownMinor;
+      const difference = amountMinor - start;
+      const startedAt = performance.now();
+      const duration = 1100;
+      let frameId;
+      const animate = (now) => {
+        const progress = Math.min((now - startedAt) / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        setShownMinor(Math.round(start + difference * eased));
+        if (progress < 1) frameId = window.requestAnimationFrame(animate);
+      };
+      frameId = window.requestAnimationFrame(animate);
+      return () => window.cancelAnimationFrame(frameId);
+    }, [amountMinor, visible]);
+
+    const displayValue = visible && shownMinor != null
+      ? formatMinor(shownMinor) + (suffix || "")
+      : value;
+    return (
+      <span className="dash-money-digits" aria-label={displayValue}>
+        {String(displayValue).split("").map((character, index) => (
+          /\d/.test(character) ? (
+            <span className="dash-money-digit" key={index + ":" + character}>{character}</span>
+          ) : (
+            <span key={index}>{character}</span>
+          )
+        ))}
+      </span>
+    );
+  }
+
   const TX_FILTERS = {
     all: () => true,
     income: (row) => row.direction === "in",
@@ -354,7 +399,13 @@
             </UI.Button>
           </div>
           <div className="dash-balance-figure">
-            {balanceHidden ? "•••••••• RON" : formatMinor(totalBalanceMinor) + " RON"}
+            <span className="dash-money-change" key={String(balanceHidden)}>
+              <RollingAmount
+                value="•••••••• RON"
+                amountMinor={balanceHidden ? null : totalBalanceMinor}
+                suffix=" RON"
+              />
+            </span>
           </div>
 
 
@@ -391,7 +442,14 @@
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
                   {account.cur} · {account.label || t("dashboard.accountType." + account.typeKey)}
                 </div>
-                <div className="dash-account-amount">{balanceHidden ? "••••••" : formatMinor(account.minor)}</div>
+                <div className="dash-account-amount">
+                  <span className="dash-money-change" key={String(balanceHidden)}>
+                    <RollingAmount
+                      value="••••••"
+                      amountMinor={balanceHidden ? null : account.minor}
+                    />
+                  </span>
+                </div>
                 <div className="text-muted" style={{ fontSize: 11 }}>{account.ibanShort}</div>
               </UI.Plate>
             ))}
@@ -2048,6 +2106,30 @@
     });
   }
 
+  const THINKING_KEYS = [
+    "thinkingAnalyze",
+    "thinkingCreate",
+    "thinkingReason",
+    "thinkingCheck",
+    "thinkingSearch",
+    "thinkingPrepare",
+    "thinkingCompare",
+    "thinkingCalculate",
+  ];
+
+  function ThinkingStatus() {
+    const [step, setStep] = useState(0);
+
+    useEffect(() => {
+      const timer = window.setInterval(() => {
+        setStep((current) => (current + 1) % THINKING_KEYS.length);
+      }, 1200);
+      return () => window.clearInterval(timer);
+    }, []);
+
+    return <span>{t("dashboard.chat." + THINKING_KEYS[step])}</span>;
+  }
+
   function EducationChatPanel({ onGoalCreated }) {
     const [messages, setMessages] = useState([
       { role: "ai", kind: "text", text: t("dashboard.education.chat.seed") },
@@ -2160,7 +2242,7 @@
             <div className="dash-msg">
               <div className="dash-msg-ai">
                 <span className="dash-msg-ai-dot" aria-hidden="true" />
-                <div className="dash-msg-ai-body text-muted">{t("dashboard.chat.thinking")}</div>
+                <div className="dash-msg-ai-body text-muted"><ThinkingStatus /></div>
               </div>
             </div>
           ) : null}
@@ -4573,7 +4655,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
               <div className="dash-msg">
                 <div className="dash-msg-ai">
                   <span className="dash-msg-ai-dot" aria-hidden="true" />
-                  <div className="dash-msg-ai-body text-muted">{t("dashboard.chat.thinking")}</div>
+                  <div className="dash-msg-ai-body text-muted"><ThinkingStatus /></div>
                 </div>
               </div>
             ) : null}
