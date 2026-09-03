@@ -1573,6 +1573,8 @@
             screen={screen}
             username={firstName}
             me={me}
+            theme={theme}
+            onTheme={onTheme}
             ttsOn={ttsOn}
             onToggleTts={() => setTtsOn((value) => !value)}
             onOpenSettings={() => navigate("settings")}
