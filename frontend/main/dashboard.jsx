@@ -10,6 +10,7 @@
 
   const SCREENS = ["home", "payments", "chat", "accounts", "portfolio", "cards", "analytics", "education", "settings"];
   const MARKET_AUTO_REFRESH_MS = 60000;
+  const NOTIFICATIONS_POLL_MS = 30000;
 
   const ANSWER_KEYS = {
     pendingSign: "answerPendingSign",
@@ -311,6 +312,8 @@
     const [insightHistory, setInsightHistory] = useState([]);
     const [fxInsights, setFxInsights] = useState([]);
     const [fxInsightHistory, setFxInsightHistory] = useState([]);
+    const [notifications, setNotifications] = useState([]);
+    const [unreadNotifications, setUnreadNotifications] = useState(0);
     const [payBusy, setPayBusy] = useState(false);
     const [payFormError, setPayFormError] = useState(null);
     const [signingPayment, setSigningPayment] = useState(null);
@@ -379,6 +382,30 @@
         cancelled = true;
       };
     }, [username]);
+
+    const loadNotifications = useCallback(async () => {
+      try {
+        const response = await api.listNotifications();
+        setNotifications((response && response.notifications) || []);
+        setUnreadNotifications((response && response.unreadCount) || 0);
+      } catch (err) {
+        // notifications are a convenience surface; a failed poll should not disrupt the dashboard
+      }
+    }, []);
+
+    useEffect(() => {
+      loadNotifications();
+      const interval = setInterval(loadNotifications, NOTIFICATIONS_POLL_MS);
+      return () => clearInterval(interval);
+    }, [loadNotifications]);
+
+    const handleOpenNotifications = useCallback(() => {
+      if (unreadNotifications === 0) return;
+      api
+        .markNotificationsSeen()
+        .then(loadNotifications)
+        .catch(() => {});
+    }, [unreadNotifications, loadNotifications]);
 
     const loadPortfolio = useCallback(async () => {
       try {
@@ -1556,6 +1583,9 @@
             onToggleTts={() => setTtsOn((value) => !value)}
             onOpenSettings={() => navigate("settings")}
             onSignOut={onSignOut}
+            notifications={notifications}
+            unreadNotifications={unreadNotifications}
+            onOpenNotifications={handleOpenNotifications}
           />
 
           <main key={screen} className="dash-content" aria-label={t("dashboard.tag." + screen)}>

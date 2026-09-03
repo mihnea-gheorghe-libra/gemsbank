@@ -289,15 +289,20 @@ body,
   backdrop-filter: saturate(1.15) blur(6px);
 }
 .dash-avatar,
-.pay-avatar { transition: box-shadow var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-spring); }
+.pay-avatar,
+.dash-notif-btn { transition: box-shadow var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-spring); }
 .dash-avatar:hover,
-.pay-avatar:hover { transform: translateY(-1px) scale(1.05); box-shadow: var(--shadow-md); }
-.dash-avatar:active { transform: scale(0.95); }
-.dash-avatar-dot { animation: gemsBreathe 2.4s var(--ease-in-out) infinite; }
+.pay-avatar:hover,
+.dash-notif-btn:hover { transform: translateY(-1px) scale(1.05); box-shadow: var(--shadow-md); }
+.dash-avatar:active,
+.dash-notif-btn:active { transform: scale(0.95); }
+.dash-avatar-dot,
+.dash-notif-badge { animation: gemsBreathe 2.4s var(--ease-in-out) infinite; }
 
 /* ── popovers ────────────────────────────────────────────── */
 .dash-profile-menu,
 .dash-period-menu,
+.dash-notif-panel,
 .dash-tile-menu-list {
   animation: gemsPop var(--dur-2) var(--ease-out) both;
   transform-origin: top right;

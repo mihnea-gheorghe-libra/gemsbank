@@ -32,7 +32,17 @@ class _FakeAccountRepository:
         return next((a for a in self._accounts.values() if a.iban == iban), None)
 
     async def list_for_user(self, user_id: str) -> list[Account]:
-        return [a for a in self._accounts.values() if a.user_id == user_id]
+        return [
+            a for a in self._accounts.values()
+            if a.user_id == user_id or user_id in a.owner_ids
+        ]
+
+    async def add_owner(self, account_id: str, user_id: str, session=None) -> None:
+        account = self._accounts.get(account_id)
+        if account is not None and user_id not in account.owner_ids:
+            self._accounts[account_id] = account.model_copy(
+                update={"owner_ids": [*account.owner_ids, user_id]}
+            )
 
     async def set_status(self, account_id: str, status, session=None) -> bool:
         return True

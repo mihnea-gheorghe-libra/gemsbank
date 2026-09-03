@@ -246,6 +246,24 @@ For each of these: build nothing. A feature folder appears the day its first lin
   adds a small new feature not named anywhere in this file, explicitly requested and approved. It
   changes nothing about eligibility: no application is ever approved or refused here, matching the
   agent-layer design in §7 — a future agent is still the seam for that decision.
+- **In-app notifications** — `backend/notifications/` and a bell icon in the dashboard topbar
+  surface a whitelisted slice of events already sitting in the SEAM 5 outbox (credit
+  approved/rejected, a transfer posted, an account frozen by admin, a card frozen, a savings goal
+  reached) to the customer they belong to. This is a deliberate, explicitly requested and approved
+  deviation from "notifications and push" above, scoped narrowly to in-app only — no push, no
+  email, and no new write path: it reads the outbox `PROMPT.md` §7.5 already promised would "later
+  ... fan out to ... notifications," it does not add one. See README.md ("Notifications — a bell
+  over the outbox, not a new pathway") for the mechanics and what was deliberately left out.
+- **Joint accounts, scoped to a shared savings goal** — `AccountKind.JOINT` plus `owner_ids` on
+  `Account`, and `backend/goals/invite.py`. This is a deliberate, explicitly requested and approved
+  deviation from "joint accounts" above, scoped narrowly: a joint account is only ever a shared
+  goal's pot, never opened directly through `POST /accounts`. A collaborator is invited by
+  username with a stated contribution preference (a fixed amount or a percentage of the target),
+  accepts or declines through the same topbar notification bell described above, and — once
+  accepted — sees the goal in their own Financial education screen and can deposit into the shared
+  pot from one of their own accounts. Only the creator can withdraw from or close it, and only the
+  creator can attach a standing order, both deliberate scope cuts. See README.md ("Obiectiv comun —
+  a joint pot account, explicitly approved") for the full mechanics.
 
 ### Definition of done for v0
 

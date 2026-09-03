@@ -1,5 +1,5 @@
 from datetime import date, datetime, time, timezone
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from backend.accounts.account import AccountStatus
 from backend.accounts.service import (
@@ -108,10 +108,12 @@ from backend.fx.service import FxInsightsService, get_fx_insights_service
 from backend.goals.service import (
     CancelStandingOrder,
     CloseGoal,
+    CollaboratorInput,
     CreateGoal,
     CreateStandingOrder,
     DepositToGoal,
     PauseStandingOrder,
+    RespondToGoalInvite,
     ResumeStandingOrder,
     UpdateStandingOrderAmount,
     WithdrawFromGoal,
@@ -124,6 +126,10 @@ from backend.investments.service import (
     InvestmentsService,
     SellInstrument,
     get_investments_service,
+)
+from backend.notifications.service import (
+    NotificationsService,
+    get_notifications_service,
 )
 from backend.onboarding.service import (
     CompleteOnboarding,
@@ -339,18 +345,32 @@ class HandoffRequest(BaseModel):
     history: list[ChatTurn] = Field(default_factory=list, max_length=40)
 
 
+class CollaboratorRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    share_kind: Literal["fixed", "percent"] = Field(alias="shareKind")
+    amount_minor: int | None = Field(default=None, alias="amountMinorUnits", gt=0)
+    percent_bp: int | None = Field(default=None, alias="percentBp", ge=1, le=10000)
+    model_config = {"populate_by_name": True}
+
+
 class GoalRequest(BaseModel):
     parent_account_id: str = Field(alias="parentAccountId", min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=80)
     target_minor: int = Field(alias="targetMinorUnits", gt=0)
     target_date: date = Field(alias="targetDate")
     initial_deposit_minor: int = Field(default=0, alias="initialDepositMinorUnits", ge=0)
+    collaborators: list[CollaboratorRequest] = Field(default_factory=list)
     model_config = {"populate_by_name": True}
 
 
 class GoalMovementRequest(BaseModel):
     amount_minor: int = Field(alias="amountMinorUnits", gt=0)
+    source_account_id: str | None = Field(default=None, alias="sourceAccountId", min_length=1, max_length=64)
     model_config = {"populate_by_name": True}
+
+
+class GoalInviteResponseRequest(BaseModel):
+    accept: bool
 
 
 class TermDepositRequest(BaseModel):
@@ -420,6 +440,9 @@ VendorInsightsDep = Annotated[
     VendorInsightsService, Depends(get_vendor_insights_service)
 ]
 FxInsightsDep = Annotated[FxInsightsService, Depends(get_fx_insights_service)]
+NotificationsDep = Annotated[
+    NotificationsService, Depends(get_notifications_service)
+]
 SupportDep = Annotated[SupportService, Depends(get_support_service)]
 AnalyticsDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
 PaymentsAgentDep = Annotated[PaymentsAgentService, Depends(get_payments_agent_service)]
@@ -444,6 +467,7 @@ cards_router = APIRouter(prefix="/cards", tags=["cards"])
 exchange_router = APIRouter(prefix="/exchange", tags=["exchange"])
 investments_router = APIRouter(prefix="/investments", tags=["investments"])
 insights_router = APIRouter(prefix="/insights", tags=["insights"])
+notifications_router = APIRouter(prefix="/notifications", tags=["notifications"])
 goals_router = APIRouter(prefix="/goals", tags=["goals"])
 deposits_router = APIRouter(prefix="/deposits", tags=["deposits"])
 credits_router = APIRouter(prefix="/credits", tags=["credits"])
@@ -1122,6 +1146,27 @@ async def list_insights(
     board = await service.board_for_user(actor.id, limit)
     fx_board = await fx.board_for_user(actor.id, limit)
     return {**board.model_dump(), "fx": fx_board.model_dump()}
+
+
+@notifications_router.get("")
+async def list_notifications(
+    actor: CurrentActor, service: NotificationsDep, limit: int | None = None
+) -> dict[str, Any]:
+    board = await service.board_for_user(actor, limit)
+    return board.model_dump()
+
+
+@notifications_router.post("/seen")
+async def mark_notifications_seen(
+    actor: CurrentActor, idempotency_key: IdempotencyKey = None
+) -> dict[str, Any]:
+    command = UpdatePreferences(
+        user_id=actor.id,
+        prefs={"notificationsSeenAt": datetime.now(timezone.utc).isoformat()},
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
 @agents_router.post("/support/ask")
 async def ask_support(
     actor: CurrentActor, support: SupportDep, payload: AskAgentRequest
@@ -1228,13 +1273,24 @@ async def create_goal(
         target_minor=payload.target_minor,
         target_date=payload.target_date,
         initial_deposit_minor=payload.initial_deposit_minor,
+        collaborators=[
+            CollaboratorInput(
+                username=collaborator.username,
+                share_kind=collaborator.share_kind,
+                amount_minor=collaborator.amount_minor,
+                percent_bp=collaborator.percent_bp,
+            )
+            for collaborator in payload.collaborators
+        ],
     )
     return await bus.execute(command, actor, idempotency_key)
 
 
 @goals_router.get("")
 async def list_goals(actor: CurrentActor) -> dict[str, Any]:
-    progress = await get_goals_service().list_active_progress_for_user(actor.subject_id())
+    goals_service = get_goals_service()
+    user_id = actor.subject_id()
+    progress = await goals_service.list_active_progress_for_user(user_id)
     capability = get_capabilities_service().get("analytics.goal_gap.get")
     goals = []
     for item in progress:
@@ -1242,27 +1298,44 @@ async def list_goals(actor: CurrentActor) -> dict[str, Any]:
             actor, analytics_capabilities.GoalGapInput(goalId=item.goal.id)
         )
         projection = gap.model_dump(by_alias=True)
-        goals.append(
-            {
-                "goalId": item.goal.id,
-                "name": item.goal.name,
-                "accountId": item.goal.account_id,
-                "parentAccountId": item.goal.parent_account_id,
-                "targetMinorUnits": item.goal.target_minor,
-                "currency": item.goal.currency,
-                "targetDate": item.goal.target_date.isoformat(),
-                "createdAt": item.goal.created_at.isoformat(),
-                "progressMinorUnits": item.progress_minor,
-                "streakWeeks": item.streak_weeks,
-                "streakLastWeek": item.streak_last_week,
-                "sharedParentAccount": item.goal.uses_shared_parent_account(),
-                "requiredMinorUnitsPerMonth": projection.get("requiredMinorUnitsPerMonth"),
-                "actualMinorUnitsPerMonth": projection.get("actualMinorUnitsPerMonth"),
-                "gapMinorUnitsPerMonth": projection.get("gapMinorUnitsPerMonth"),
-                "projectedCompletionDate": projection.get("projectedCompletionDate"),
-            }
-        )
+        is_creator = item.goal.user_id == user_id
+        entry = {
+            "goalId": item.goal.id,
+            "name": item.goal.name,
+            "accountId": item.goal.account_id,
+            "parentAccountId": item.goal.parent_account_id,
+            "targetMinorUnits": item.goal.target_minor,
+            "currency": item.goal.currency,
+            "targetDate": item.goal.target_date.isoformat(),
+            "createdAt": item.goal.created_at.isoformat(),
+            "progressMinorUnits": item.progress_minor,
+            "streakWeeks": item.streak_weeks,
+            "streakLastWeek": item.streak_last_week,
+            "sharedParentAccount": item.goal.uses_shared_parent_account(),
+            "requiredMinorUnitsPerMonth": projection.get("requiredMinorUnitsPerMonth"),
+            "actualMinorUnitsPerMonth": projection.get("actualMinorUnitsPerMonth"),
+            "gapMinorUnitsPerMonth": projection.get("gapMinorUnitsPerMonth"),
+            "projectedCompletionDate": projection.get("projectedCompletionDate"),
+            "isShared": item.goal.is_shared(),
+            "isCreator": is_creator,
+        }
+        if item.goal.is_shared():
+            entry["collaborators"] = await goals_service.collaborators_view(item.goal)
+        if is_creator:
+            entry["pendingInvites"] = await goals_service.pending_invites_view(item.goal.id)
+        goals.append(entry)
     return {"goals": goals}
+
+
+@goals_router.post("/invites/{invite_id}/respond")
+async def respond_to_goal_invite(
+    actor: CurrentActor,
+    invite_id: str,
+    payload: GoalInviteResponseRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = RespondToGoalInvite(invite_id=invite_id, accept=payload.accept)
+    return await bus.execute(command, actor, idempotency_key)
 
 
 @goals_router.get("/progress")
@@ -1296,7 +1369,11 @@ async def deposit_to_goal(
     payload: GoalMovementRequest,
     idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
-    command = DepositToGoal(goal_id=goal_id, amount_minor=payload.amount_minor)
+    command = DepositToGoal(
+        goal_id=goal_id,
+        amount_minor=payload.amount_minor,
+        source_account_id=payload.source_account_id,
+    )
     return await bus.execute(command, actor, idempotency_key)
 
 
@@ -1678,6 +1755,7 @@ api_router.include_router(payments_router)
 api_router.include_router(cards_router)
 api_router.include_router(investments_router)
 api_router.include_router(insights_router)
+api_router.include_router(notifications_router)
 api_router.include_router(goals_router)
 api_router.include_router(deposits_router)
 api_router.include_router(credits_router)

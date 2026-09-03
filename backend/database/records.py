@@ -69,6 +69,7 @@ async def write_audit(
 
 async def write_events(
     events: list[DomainEvent],
+    actor: Actor,
     correlation_id: str,
     session: AsyncIOMotorClientSession | None = None,
 ) -> None:
@@ -81,6 +82,9 @@ async def write_events(
             "aggregateType": event.aggregate_type,
             "aggregateId": event.aggregate_id,
             "payload": event.payload,
+            "actorKind": actor.kind,
+            "actorId": actor.id,
+            "onBehalfOf": actor.on_behalf_of,
             "correlationId": correlation_id,
             "occurredAt": datetime.now(timezone.utc),
             "dispatchedAt": None,
