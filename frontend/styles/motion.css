@@ -27,8 +27,8 @@
   100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
 }
 @keyframes gemsDigitRoll {
-  0% { opacity: 0; transform: rotateX(-90deg) translateY(-0.18em); }
-  65% { opacity: 1; transform: rotateX(14deg) translateY(0.02em); }
+  0% { opacity: 0; transform: rotateX(-72deg) translateY(-0.12em); }
+  65% { opacity: 1; transform: rotateX(10deg) translateY(0.01em); }
   100% { opacity: 1; transform: rotateX(0) translateY(0); }
 }
 
@@ -518,12 +518,15 @@ body,
   gap: 0;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
+  perspective: 280px;
 }
 .dash-money-digit {
   display: inline-block;
   min-width: 0.5em;
   transform-origin: center bottom;
-  animation: gemsDigitRoll 180ms var(--ease-out) both;
+  animation: gemsDigitRoll 420ms var(--ease-out) both;
+  animation-delay: calc(var(--digit-index) * 24ms);
+  will-change: transform, opacity;
 }
 .dash-copy-btn { transition: opacity var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-spring); }
 .dash-copy-btn:hover { transform: scale(1.12); }

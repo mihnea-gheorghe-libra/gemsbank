@@ -20,6 +20,15 @@
   function RollingAmount({ value, amountMinor, suffix }) {
     const visible = amountMinor != null;
     const [shownMinor, setShownMinor] = useState(amountMinor);
+    const [digitCycle, setDigitCycle] = useState(0);
+    const previousAmount = useRef(amountMinor);
+
+    useEffect(() => {
+      if (amountMinor != null && previousAmount.current != null && previousAmount.current !== amountMinor) {
+        setDigitCycle((cycle) => cycle + 1);
+      }
+      previousAmount.current = amountMinor;
+    }, [amountMinor]);
 
     useEffect(() => {
       if (!visible || amountMinor == null) {
@@ -53,7 +62,13 @@
       <span className="dash-money-digits" aria-label={displayValue}>
         {String(displayValue).split("").map((character, index) => (
           /\d/.test(character) ? (
-            <span className="dash-money-digit" key={index + ":" + character}>{character}</span>
+            <span
+              className="dash-money-digit"
+              key={index + ":" + digitCycle}
+              style={{ "--digit-index": index }}
+            >
+              {character}
+            </span>
           ) : (
             <span key={index}>{character}</span>
           )
