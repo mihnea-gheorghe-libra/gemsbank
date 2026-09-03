@@ -59,7 +59,7 @@
     );
   };
 
-  DASH.Topbar = function Topbar({ screen, username, me, onOpenSettings, onSignOut }) {
+  DASH.Topbar = function Topbar({ screen, username, me, theme, onTheme, onOpenSettings, onSignOut }) {
     const [menuOpen, setMenuOpen] = useState(false);
     const containerRef = useRef(null);
 
@@ -88,7 +88,12 @@
           <div className="dash-topbar-tag">{t("dashboard.tag." + screen)}</div>
         </div>
 
-        <div className="dash-profile" ref={containerRef}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <UI.Button type="button" variant="ghost" onClick={() => onTheme(theme === "dark" ? "light" : "dark")}>
+            <UI.Icon name={theme === "dark" ? "Sun" : "Moon"} size={16} />
+          </UI.Button>
+
+          <div className="dash-profile" ref={containerRef}>
           <button
             type="button"
             className="dash-avatar"
@@ -127,6 +132,7 @@
               </UI.Button>
             </div>
           ) : null}
+          </div>
         </div>
       </header>
     );

@@ -186,10 +186,9 @@
               <UI.Button type="button" variant={lang === "ro" ? "primary" : "ghost"} onClick={() => onLang("ro")}>RO</UI.Button>
               <UI.Button type="button" variant={lang === "en" ? "primary" : "ghost"} onClick={() => onLang("en")}>EN</UI.Button>
             </div>
-            <div style={{ display: "flex", gap: 4 }}>
-              <UI.Button type="button" variant={theme === "light" ? "primary" : "ghost"} onClick={() => onTheme("light")}>Light</UI.Button>
-              <UI.Button type="button" variant={theme === "dark" ? "primary" : "ghost"} onClick={() => onTheme("dark")}>Dark</UI.Button>
-            </div>
+            <UI.Button type="button" onClick={() => onTheme(theme === "dark" ? "light" : "dark")}>
+              <UI.Icon name={theme === "dark" ? "Sun" : "Moon"} size={16} />
+            </UI.Button>
             <UI.Button type="button" onClick={onSwitchToRegister}>
               {t("auth.createAccount")}
             </UI.Button>

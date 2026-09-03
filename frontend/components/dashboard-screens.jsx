@@ -1247,8 +1247,8 @@
     const windowChangeBps = DASH.seriesChangeBps(totalSeries);
     const chartChangeBps = DASH.seriesChangeBps(series);
     const currentPoint = rawSeries.length ? rawSeries[rawSeries.length - 1] : null;
-    const currentDelta = rawSeries.length > 1
-      ? currentPoint.valueMinor - rawSeries[rawSeries.length - 2].valueMinor
+    const currentDelta = series.length > 1
+      ? series[series.length - 1].valueMinor - series[0].valueMinor
       : null;
 
     const rangeOptions = [
