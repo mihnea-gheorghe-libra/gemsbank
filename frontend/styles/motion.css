@@ -111,9 +111,12 @@ body,
   .pay-pending
 ):hover {
   transform: var(--lift-2);
-  border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-border));
-  box-shadow: var(--shadow-md), var(--shadow-sm), var(--relief-highlight), var(--edge-soft);
+  border-color: color-mix(in srgb, var(--color-primary) 24%, var(--color-border));
+  box-shadow: var(--shadow-hover), var(--relief-highlight), var(--edge-soft);
 }
+
+/* Every white card face answers the pointer with the same restrained lift. */
+.plate:hover { box-shadow: var(--shadow-hover), var(--relief-highlight), var(--edge-soft); }
 
 /* ── entrance choreography ───────────────────────────────── */
 .dash-content > * { animation: gemsFade var(--dur-3) var(--ease-out) both; }
@@ -208,8 +211,8 @@ body,
 .btn-ghost { border-radius: var(--radius-pill); }
 .btn-ghost:not(:disabled):hover { transform: none; }
 
-/* The plum hover ramp is a light-theme cue. In dark mode the button face is lime
-   and its foreground is dark plum, so a plum-700 hover would land dark on dark. */
+/* The plum hover ramp is a light-theme cue. In dark mode the button face is pale
+   plum and its foreground is dark plum, so a plum-700 hover would land dark on dark. */
 :root[data-theme="dark"] .btn-primary:not(:disabled):hover,
 :root[data-theme="dark"] .btn-primary:not(:disabled):active {
   background: color-mix(in srgb, var(--color-primary) 82%, var(--color-on-primary));
@@ -282,10 +285,10 @@ body,
   width: 3px;
   height: 0;
   border-radius: var(--radius-pill);
-  background: var(--color-lime-500);
+  background: var(--color-ivory-100);
   transition: height var(--dur-3) var(--ease-spring);
 }
-.dash-nav-item.is-active::before { height: 56%; }
+
 .dash-nav-item.is-active { box-shadow: var(--shadow-sm), var(--relief-highlight); }
 .dash-nav-item .icon { transition: transform var(--dur-2) var(--ease-spring), opacity var(--dur-2) var(--ease-out); }
 .dash-nav-item:hover .icon { transform: scale(1.14); opacity: 1; }
@@ -371,13 +374,14 @@ body,
   pointer-events: none;
   background: linear-gradient(
     140deg,
-    color-mix(in srgb, var(--color-neutral-100) 42%, transparent) 0%,
+    color-mix(in srgb, var(--color-ivory-100) 18%, transparent) 0%,
     transparent 46%,
-    color-mix(in srgb, var(--color-plum-900) 9%, transparent) 100%
+    color-mix(in srgb, var(--color-plum-900) 22%, transparent) 100%
   );
 }
 .dash-card-tile:hover { transform: translateY(-4px) scale(1.012); }
-.dash-card-face-back { background-image: linear-gradient(140deg, color-mix(in srgb, var(--color-neutral-100) 34%, transparent) 0%, transparent 52%); }
+.dash-card-face-back { background-image: linear-gradient(140deg, color-mix(in srgb, var(--color-ivory-100) 16%, transparent) 0%, transparent 52%), var(--gradient-card-active, var(--gradient-brand)); }
+.dash-card-flip.is-frozen .dash-card-face-back { background-image: linear-gradient(140deg, color-mix(in srgb, var(--color-ivory-100) 16%, transparent) 0%, transparent 52%), var(--gradient-card-frozen, var(--gradient-brand)); }
 .dash-card-flip-inner { transition: transform 0.6s var(--ease-in-out); }
 
 /* ── progress, rings, bars ───────────────────────────────── */
@@ -385,14 +389,14 @@ body,
 .dash-progress > span {
   transform-origin: left center;
   animation: gemsBarIn var(--dur-4) var(--ease-out) both;
-  background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-lime-600) 72%, var(--color-lime-800)), var(--color-lime-400));
+  background-image: linear-gradient(90deg, var(--color-plum-900), var(--color-plum-500));
   transition: width var(--dur-4) var(--ease-out);
 }
 .dash-progress-negative > span { background-image: linear-gradient(90deg, var(--color-negative), color-mix(in srgb, var(--color-negative) 62%, transparent)); }
 .dash-bar-fill {
   transform-origin: bottom center;
   animation: gemsBarGrow var(--dur-4) var(--ease-out) both;
-  background-image: linear-gradient(180deg, var(--color-lime-400), var(--color-lime-600));
+  background-image: linear-gradient(180deg, var(--color-plum-400), var(--color-plum-800));
   transition: filter var(--dur-2) var(--ease-out);
 }
 .dash-bar-col:hover .dash-bar-fill { filter: brightness(1.08); }

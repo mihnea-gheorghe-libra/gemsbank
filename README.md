@@ -966,7 +966,7 @@ frozen card gets a translucent blue veil over the whole tile, front or back
 (`--color-info`, added to `frontend/styles/tokens.css` for this — the extracted design archive has
 no blue; `PROMPT.md` §3's fidelity rule says structure wins where the archive and the brief
 disagree, logged here per that rule). A Mastercard-kind card's front shows a small two-circle
-network mark bottom-right, drawn in the app's own plum/lime tokens rather than the real trademarked
+network mark bottom-right, drawn in the app's own plum/ivory tokens rather than the real trademarked
 mark (colours, shape and IP are Mastercard's, not ours to reproduce).
 
 There is no session token (see above), so every card endpoint takes `username` in the request body

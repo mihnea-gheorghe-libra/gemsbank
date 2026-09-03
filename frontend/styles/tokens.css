@@ -1,18 +1,23 @@
-/* GEMS design tokens — generated from design/tokens.extracted.json.
-   SOURCE OF TRUTH: design/export/gems-theme.css + industry.css.
+/* GEMS design tokens — generated from design/tokens.extracted.json, then
+   narrowed by an explicit brand decision: the palette is plum, white and ivory
+   only. The archive lime ramp is retired; design/export/ still carries it and is
+   therefore no longer byte-for-byte reproducible from this file.
    Do not hardcode a hex value anywhere else in frontend/ — CLAUDE.md rule 10. */
 
-@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;700&family=Barlow+Condensed:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Afacad+Flux:wght@100..1000&display=swap');
 
 :root {
-  /* ── surfaces ─────────────────────────────────────────────── */
-  --color-bg: #FDFDF9;
-  --color-surface: #F5FBDA;
-  --color-surface-muted: #F3F1E9;
+  /* ── surfaces ─────────────────────────────────────────────────
+     Three grounds only: plum, pure white, cool gray. The page sits on #F0F2F5;
+     every card face is pure white so it lifts off that ground. */
+  --color-bg: #F0F2F5;
+  --color-card: #FFFFFF;
+  --color-surface: #F0F2F5;
+  --color-surface-muted: #E4E7EC;
 
   /* Relief cue reused by .plate/.elev-* — a hairline top highlight, tinted
      from the current text colour so it self-adjusts per theme. */
-  --relief-highlight: inset 0 1px 0 color-mix(in srgb, var(--color-text) 8%, transparent);
+  --relief-highlight: inset 0 1px 0 color-mix(in srgb, var(--color-text) 6%, transparent);
 
   /* ── content ──────────────────────────────────────────────── */
   --color-text: #280725;
@@ -27,27 +32,28 @@
   --color-on-light-primary: #450C3F;
   --color-on-light-muted: color-mix(in srgb, #280725 55%, transparent);
   --color-on-light-border: color-mix(in srgb, #450C3F 18%, transparent);
-  --color-on-light-negative: #9F144B;
+  --color-on-light-negative: #8E1A56;
 
   /* ── brand ────────────────────────────────────────────────── */
   --color-primary: #450C3F;
-  --color-on-primary: #FDFDF9;
-  --color-accent: #8BA646;
-  --color-border: color-mix(in srgb, #450C3F 11%, transparent);
+  --color-on-primary: #FFFFFF;
+  --color-accent: #852275;
+  --color-border: color-mix(in srgb, #450C3F 10%, transparent);
 
   /* ── semantic money states ────────────────────────────────────
      DERIVED, not in the design archive (DESIGN_NOTES §4.2).
-     Never the sole signal for debit vs credit — WCAG 2.2 AA 1.4.1
-     requires a sign glyph or label alongside. */
-  --color-positive: #2F6B3F;   /* credit / money in   — 6.25:1 on bg */
-  --color-negative: #A3232B;   /* debit  / money out  — 7.27:1 on bg */
-  --color-warning:  #8A5A00;   /* pending, VoP close_match — 5.81:1 on bg */
-  --color-info:     #1D4ED8;   /* card frozen indicator — 6.57:1 on bg */
+     The palette is plum-only, so hue no longer separates these four —
+     WCAG 2.2 AA 1.4.1 already required a sign glyph or label alongside,
+     and that label is now the whole signal. */
+  --color-positive: #450C3F;   /* credit / money in   — 14.75:1 on bg */
+  --color-negative: #8E1A56;   /* debit  / money out  —  8.35:1 on bg */
+  --color-warning:  #6C1A5F;   /* pending, VoP close_match — 10.42:1 on bg */
+  --color-info:     #852275;   /* card frozen indicator —  8.18:1 on bg */
 
   /* ── ramps ────────────────────────────────────────────────── */
-  --color-neutral-100: #FDFDF9; --color-neutral-200: #F3F1E9;
-  --color-neutral-300: #E3DFD6; --color-neutral-400: #C9C3BB;
-  --color-neutral-500: #A79FA4; --color-neutral-600: #857C83;
+  --color-neutral-100: #FFFFFF; --color-neutral-200: #F0F2F5;
+  --color-neutral-300: #E4E7EC; --color-neutral-400: #D0D5DD;
+  --color-neutral-500: #B6AAB2; --color-neutral-600: #8B7D89;
   --color-neutral-700: #635A61; --color-neutral-800: #453B44;
   --color-neutral-900: #2B212A;
 
@@ -55,16 +61,21 @@
   --color-plum-400: #C68CBC; --color-plum-500: #A75C9A; --color-plum-600: #852275;
   --color-plum-700: #6C1A5F; --color-plum-800: #58124D; --color-plum-900: #450C3F;
 
-  /* lime 600–800 fail AA for normal text on light grounds — decorative only */
-  --color-lime-100: #F5FBDA; --color-lime-200: #E9F5C1; --color-lime-300: #D9EFBD;
-  --color-lime-400: #C6E092; --color-lime-500: #B9D175; --color-lime-600: #A3BE5C;
-  --color-lime-700: #8BA646; --color-lime-800: #6E8437; --color-lime-900: #52632A;
+  /* Cool light ramp — replaces the old warm ivory ramp */
+  --color-ivory-100: #FFFFFF; --color-ivory-200: #F0F2F5; --color-ivory-300: #E4E7EC;
+  --color-ivory-400: #D0D5DD; --color-ivory-500: #98A2B3;
 
   /* ── type ─────────────────────────────────────────────────── */
-  --font-heading: "Barlow Condensed", system-ui, sans-serif;
-  --font-heading-weight: 600;
-  --font-body: "Barlow", system-ui, sans-serif;
+  --font-heading: "Afacad Flux", system-ui, sans-serif;
+  --font-body: "Afacad Flux", system-ui, sans-serif;
   --font-mono: ui-monospace, Menlo, Consolas, monospace;
+
+  /* Weight carries the hierarchy the palette no longer can. */
+  --weight-title: 800;
+  --weight-subtitle: 650;
+  --weight-description: 550;
+  --weight-body: 450;
+  --font-heading-weight: var(--weight-title);
 
   --text-kicker: 0.625rem;  /* 10px */
   --text-caption: 0.6875rem;/* 11px */
@@ -87,16 +98,17 @@
   --space-6: 1.25rem;  /* 20px */
   --space-8: 1.75rem;  /* 28px */
 
-  /* ── geometry ─────────────────────────────────────────────── */
-  --radius-sm: 8px;
+  /* ── geometry — 24 on a container, 12 on anything nested in one, pill on controls ── */
+  --radius-sm: 12px;
   --radius-md: 12px;
-  --radius-lg: 20px;
+  --radius-lg: 24px;
   --radius-pill: 999px;
 
-  --shadow-sm: 0 1px 3px color-mix(in srgb, #450C3F 12%, transparent);
-  --shadow-md: 0 6px 18px color-mix(in srgb, #450C3F 14%, transparent);
-  --shadow-lg: 0 18px 44px color-mix(in srgb, #450C3F 22%, transparent);
-  --shadow-inset: inset 0 1px 3px color-mix(in srgb, #450C3F 10%, transparent);
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #450C3F 7%, transparent);
+  --shadow-md: 0 4px 14px color-mix(in srgb, #450C3F 9%, transparent);
+  --shadow-lg: 0 16px 40px color-mix(in srgb, #450C3F 14%, transparent);
+  --shadow-hover: 0 10px 30px color-mix(in srgb, #450C3F 13%, transparent);
+  --shadow-inset: inset 0 1px 3px color-mix(in srgb, #450C3F 7%, transparent);
 
   /* ── motion ───────────────────────────────────────────────── */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -112,11 +124,22 @@
 
   --ring: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
   --ring-strong: 0 0 0 4px color-mix(in srgb, var(--color-primary) 30%, transparent);
-  --edge-soft: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 5%, transparent);
+  --edge-soft: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 4%, transparent);
 
   --surface-wash:
-    radial-gradient(1100px 620px at 8% -12%, color-mix(in srgb, var(--color-lime-500) 13%, transparent), transparent 68%),
-    radial-gradient(900px 560px at 96% 2%, color-mix(in srgb, var(--color-plum-500) 11%, transparent), transparent 70%);
+    radial-gradient(1100px 620px at 8% -12%, color-mix(in srgb, var(--color-plum-500) 7%, transparent), transparent 68%),
+    radial-gradient(900px 560px at 96% 2%, color-mix(in srgb, var(--color-plum-900) 6%, transparent), transparent 70%);
+
+  /* The only gradient the palette allows: plum banded with a lighter and a darker
+     plum. Reserved for sections that carry weight — never for decoration. */
+  --gradient-brand: linear-gradient(135deg, #58124D 0%, #450C3F 46%, #2E0A2B 100%);
+  --gradient-brand-soft: linear-gradient(135deg, color-mix(in srgb, #450C3F 7%, var(--color-card)) 0%, var(--color-card) 62%);
+  --gradient-brand-rule: linear-gradient(90deg, var(--color-plum-400), var(--color-plum-900));
+
+  /* Card gradients — frozen cards are a lighter shade in light mode, mirrored in dark mode */
+  --gradient-card-active: linear-gradient(135deg, #58124D 0%, #450C3F 46%, #2E0A2B 100%);
+  --gradient-card-frozen: linear-gradient(135deg, #852275 0%, #6C1A5F 46%, #58124D 100%);
+  --color-card-frozen-veil: color-mix(in srgb, #FFFFFF 22%, transparent);
 
   /* ── a11y ─────────────────────────────────────────────────── */
   --focus-ring: 2px solid var(--color-primary);
@@ -125,52 +148,69 @@
 }
 
 /* Dark theme. The archive swaps 9 variables at runtime in applyTheme();
-   we express the same swap declaratively for both `system` and explicit choice. */
+   we express the same swap declaratively for both `system` and explicit choice.
+   Dark mode mirrors light mode: light text/borders on dark grounds, and
+   card states mirrored. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --color-bg: #1C0D30;
-    --color-surface: color-mix(in srgb, #F5FBDA 10%, #1C0D30);
-    --color-surface-muted: color-mix(in srgb, #F5FBDA 6%, #1C0D30);
-    --color-text: #F5FBDA;
-    --color-heading: #B9D175;
-    --color-muted: color-mix(in srgb, #F5FBDA 60%, transparent);
-    --color-primary: #B9D175;
+    --color-bg: #1C0718;
+    --color-card: #2A0F26;
+    --color-surface: #33142E;
+    --color-surface-muted: #230C20;
+    --color-text: #F0F2F5;
+    --color-heading: #F0F2F5;
+    --color-muted: color-mix(in srgb, #F0F2F5 60%, transparent);
+    --color-primary: #DFB6D8;
     --color-on-primary: #280725;
-    --color-border: color-mix(in srgb, #F5FBDA 13%, transparent);
-    --color-positive: #9ED9A8;
-    --color-negative: #FFB3B8;
-    --color-warning: #F0C26B;
-    --color-info: #93C5FD;
+    --color-border: color-mix(in srgb, #F0F2F5 12%, transparent);
+    --color-positive: #DFB6D8;
+    --color-negative: #F0A9C6;
+    --color-warning: #C68CBC;
+    --color-info: #E3C4DC;
     --shadow-sm: 0 1px 3px color-mix(in srgb, black 45%, transparent);
     --shadow-md: 0 10px 24px color-mix(in srgb, black 50%, transparent);
     --shadow-lg: 0 24px 56px color-mix(in srgb, black 60%, transparent);
+    --shadow-hover: 0 14px 34px color-mix(in srgb, black 55%, transparent);
     --shadow-inset: inset 0 1px 3px color-mix(in srgb, black 40%, transparent);
+    --gradient-brand: linear-gradient(135deg, #58124D 0%, #360A31 50%, #1C0718 100%);
+    --gradient-brand-soft: linear-gradient(135deg, color-mix(in srgb, #DFB6D8 7%, var(--color-card)) 0%, var(--color-card) 62%);
+    --gradient-card-active: linear-gradient(135deg, #58124D 0%, #360A31 50%, #1C0718 100%);
+    --gradient-card-frozen: linear-gradient(135deg, #240920 0%, #170415 50%, #0E020D 100%);
+    --color-card-frozen-veil: color-mix(in srgb, black 38%, transparent);
   }
 }
 :root[data-theme="dark"] {
-  --color-bg: #1C0D30;
-  --color-surface: color-mix(in srgb, #F5FBDA 10%, #1C0D30);
-  --color-surface-muted: color-mix(in srgb, #F5FBDA 6%, #1C0D30);
-  --color-text: #F5FBDA;
-  --color-heading: #B9D175;
-  --color-muted: color-mix(in srgb, #F5FBDA 60%, transparent);
-  --color-primary: #B9D175;
+  --color-bg: #1C0718;
+  --color-card: #2A0F26;
+  --color-surface: #33142E;
+  --color-surface-muted: #230C20;
+  --color-text: #F0F2F5;
+  --color-heading: #F0F2F5;
+  --color-muted: color-mix(in srgb, #F0F2F5 60%, transparent);
+  --color-primary: #DFB6D8;
   --color-on-primary: #280725;
-  --color-border: color-mix(in srgb, #F5FBDA 13%, transparent);
-  --color-positive: #9ED9A8;
-  --color-negative: #FFB3B8;
-  --color-warning: #F0C26B;
-  --color-info: #93C5FD;
+  --color-border: color-mix(in srgb, #F0F2F5 12%, transparent);
+  --color-positive: #DFB6D8;
+  --color-negative: #F0A9C6;
+  --color-warning: #C68CBC;
+  --color-info: #E3C4DC;
   --shadow-sm: 0 1px 3px color-mix(in srgb, black 45%, transparent);
   --shadow-md: 0 10px 24px color-mix(in srgb, black 50%, transparent);
   --shadow-lg: 0 24px 56px color-mix(in srgb, black 60%, transparent);
+  --shadow-hover: 0 14px 34px color-mix(in srgb, black 55%, transparent);
   --shadow-inset: inset 0 1px 3px color-mix(in srgb, black 40%, transparent);
+  --gradient-brand: linear-gradient(135deg, #58124D 0%, #360A31 50%, #1C0718 100%);
+  --gradient-brand-soft: linear-gradient(135deg, color-mix(in srgb, #DFB6D8 7%, var(--color-card)) 0%, var(--color-card) 62%);
+  --gradient-card-active: linear-gradient(135deg, #58124D 0%, #360A31 50%, #1C0718 100%);
+  --gradient-card-frozen: linear-gradient(135deg, #240920 0%, #170415 50%, #0E020D 100%);
+  --color-card-frozen-veil: color-mix(in srgb, black 38%, transparent);
 }
 
 /* Tailwind v4 — expose the tokens as utilities. Tailwind reads --color-*,
    --font-*, --text-*, --radius-*, --shadow-* and --breakpoint-* from @theme. */
 @theme inline {
   --color-bg: var(--color-bg);
+  --color-card: var(--color-card);
   --color-surface: var(--color-surface);
   --color-surface-muted: var(--color-surface-muted);
   --color-text: var(--color-text);
@@ -211,14 +251,17 @@ body {
   color: var(--color-text);
   font-family: var(--font-body);
   font-size: var(--text-base);
+  font-weight: var(--weight-body);
   line-height: var(--leading-body);
 }
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);
-  font-weight: var(--font-heading-weight);
+  font-weight: var(--weight-title);
   line-height: var(--leading-heading);
+  letter-spacing: -0.015em;
   color: var(--color-heading);
 }
+h4, h5, h6 { font-weight: var(--weight-subtitle); letter-spacing: -0.005em; }
 :focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 
 @media (prefers-reduced-motion: reduce) {
