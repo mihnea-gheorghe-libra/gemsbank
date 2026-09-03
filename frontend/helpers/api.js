@@ -311,6 +311,9 @@
       send("/cards/" + cardId + "/limits/online", { method: "POST", json: { limitMinor } }),
 
     listInsights: () => send("/insights"),
+    getFinancialHealth: () => send("/analytics/health-score"),
+    getBudget503020: () => send("/analytics/budget-50-30-20"),
+    getIdleCashOptimization: () => send("/analytics/idle-cash"),
     listGoals: () => send("/goals"),
     getEducationLessons: () => send("/education/lessons"),
     getGoalProgress: () => send("/goals/progress"),
@@ -344,6 +347,11 @@
       send("/goals/" + encodeURIComponent(goalId) + "/standing-order", {
         method: "POST",
         json: { sourceAccountId, amountMinorUnits, frequency, createdVia: createdVia || "user" },
+      }),
+    updateStandingOrder: (standingOrderId, { sourceAccountId, amountMinorUnits, frequency }) =>
+      send("/goals/standing-order/" + encodeURIComponent(standingOrderId) + "/update", {
+        method: "POST",
+        json: { sourceAccountId, amountMinorUnits, frequency },
       }),
     updateStandingOrderAmount: (standingOrderId, amountMinorUnits) =>
       send("/goals/standing-order/" + encodeURIComponent(standingOrderId) + "/amount", {

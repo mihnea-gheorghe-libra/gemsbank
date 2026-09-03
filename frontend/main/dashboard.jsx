@@ -8,7 +8,21 @@
   const DATA = GEMS.dashboardData;
   const { useState, useCallback, useEffect, useMemo, useRef } = React;
 
-  const SCREENS = ["home", "payments", "chat", "accounts", "portfolio", "cards", "analytics", "education", "settings"];
+  const SCREENS = [
+    "home",
+    "payments",
+    "chat",
+    "accounts",
+    "portfolio",
+    "cards",
+    "analytics",
+    "education",
+    "education_health",
+    "education_goals",
+    "education_chat",
+    "education_lessons",
+    "settings",
+  ];
   const MARKET_AUTO_REFRESH_MS = 60000;
 
   const ANSWER_KEYS = {
@@ -38,6 +52,11 @@
     analytics: "analytics",
     cards: "cards",
     portfolio: "investments",
+    education: "deposits",
+    education_health: "deposits",
+    education_goals: "deposits",
+    education_chat: "deposits",
+    education_lessons: "deposits",
     settings: "support",
   };
 
@@ -1728,7 +1747,21 @@
               />
             ) : null}
             {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} accounts={accounts} /> : null}
-            {screen === "education" ? <SCR.EducationScreen accounts={accounts} /> : null}
+            {screen.startsWith("education") ? (
+              <SCR.EducationScreen
+                accounts={accounts}
+                activeTab={
+                  screen === "education_goals"
+                    ? "goals"
+                    : screen === "education_chat"
+                    ? "chat"
+                    : screen === "education_lessons"
+                    ? "lessons"
+                    : "health"
+                }
+                onTabChange={(tabKey) => setScreen("education_" + tabKey)}
+              />
+            ) : null}
             {screen === "settings" ? (
               <SCR.SettingsScreen
                 lang={lang}

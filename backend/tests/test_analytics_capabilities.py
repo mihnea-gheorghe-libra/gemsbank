@@ -37,13 +37,18 @@ class _FakePayments:
 
 
 class _FakeAccounts:
-    def __init__(self, balances: dict[str, int], currency: str = "RON") -> None:
+    def __init__(self, balances: dict[str, int], currency: str = "RON", kind: str = "current") -> None:
         self._balances = balances
         self._currency = currency
+        self._kind = kind
 
     async def list_for_user(self, user_id):
         return [
-            {"currency": self._currency, "balance": {"minorUnits": minor, "currency": self._currency}}
+            {
+                "kind": self._kind,
+                "currency": self._currency,
+                "balance": {"minorUnits": minor, "currency": self._currency},
+            }
             for minor in self._balances.values()
         ]
 
@@ -507,3 +512,78 @@ async def test_what_changed_detects_a_brand_new_merchant_as_the_cause(monkeypatc
     entertainment = next(c for c in output.changes if c.category == "entertainment")
     assert entertainment.cause == "new_merchant"
     assert "NewStreamCo" in entertainment.top_contributors
+
+
+async def test_financial_health_diagnostic_calculates_all_four_pillars(monkeypatch) -> None:
+    now = datetime.now(timezone.utc)
+    _, start_last = _last_two_month_starts(now)
+    rows = [
+        _row(start_last + timedelta(days=1), "Employer", "income", 1_000_000),
+        _row(start_last + timedelta(days=2), "Mega Image", "groceries", -200_000),
+        _row(start_last + timedelta(days=5), "Enel", "utilities", -100_000),
+        _row(start_last + timedelta(days=10), "Cinema", "entertainment", -100_000),
+    ]
+    monkeypatch.setattr(analytics, "get_payments_service", lambda: _FakePayments(rows))
+    monkeypatch.setattr(
+        analytics,
+        "get_accounts_service",
+        lambda: _FakeAccounts({"acc-1": 1_500_000}, currency="RON", kind="current"),
+    )
+
+    output = await analytics.resolve_financial_health(
+        _ACTOR, analytics.FinancialHealthInput()
+    )
+
+    assert output.status == "ok"
+    assert 0 <= output.overall_score <= 100
+    assert output.tier in ("excellent", "good", "fair", "needs_attention")
+    assert output.emergency_buffer.score >= 0
+    assert output.savings_rate.score >= 0
+    assert output.expense_control.score >= 0
+    assert output.idle_cash_efficiency.score >= 0
+    assert output.top_action is not None
+
+
+async def test_budget_503020_calculates_correct_proportions(monkeypatch) -> None:
+    now = datetime.now(timezone.utc)
+    _, start_last = _last_two_month_starts(now)
+    rows = [
+        _row(start_last + timedelta(days=1), "Salary", "income", 1_000_000),
+        _row(start_last + timedelta(days=2), "Supermarket", "groceries", -400_000),
+        _row(start_last + timedelta(days=5), "Restaurant", "dining", -250_000),
+    ]
+    monkeypatch.setattr(analytics, "get_payments_service", lambda: _FakePayments(rows))
+
+    output = await analytics.resolve_budget_503020(
+        _ACTOR, analytics.Budget503020Input()
+    )
+
+    assert output.status == "ok"
+    assert output.needs.amount_minor == 400_000
+    assert output.wants.amount_minor == 250_000
+    assert output.savings.amount_minor == 350_000
+    assert output.evaluation is not None
+
+
+async def test_idle_cash_identifies_surplus_and_calculates_yield(monkeypatch) -> None:
+    now = datetime.now(timezone.utc)
+    _, start_last = _last_two_month_starts(now)
+    rows = [
+        _row(start_last + timedelta(days=2), "Supermarket", "groceries", -200_000),
+    ]
+    monkeypatch.setattr(analytics, "get_payments_service", lambda: _FakePayments(rows))
+    # Checking balance 20,000 RON with monthly spend ~2,000 RON => large surplus idle cash
+    monkeypatch.setattr(
+        analytics,
+        "get_accounts_service",
+        lambda: _FakeAccounts({"acc-1": 2_000_000}, currency="RON", kind="current"),
+    )
+
+    output = await analytics.resolve_idle_cash(_ACTOR, analytics.IdleCashInput())
+
+    assert output.status == "ok"
+    assert output.idle_minor > 0
+    assert output.suggested_term_months == 12
+    assert output.suggested_rate_bps > 0
+    assert output.estimated_annual_interest_minor > 0
+    assert "Disponibil" in output.action_prompt or "deschide" in output.action_prompt.lower()
