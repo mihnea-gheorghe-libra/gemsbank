@@ -126,7 +126,7 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--color-muted);
-  font-weight: 400;
+  font-weight: var(--weight-body);
   padding: 0 var(--space-2) var(--space-2);
   white-space: nowrap;
 }

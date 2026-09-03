@@ -105,11 +105,11 @@
     if (parts.length === 2) {
       return (
         <React.Fragment>
-          <strong style={{ fontWeight: 700 }}>{parts[0]}</strong> · {parts[1]}
+          <strong style={{ fontWeight: "var(--weight-subtitle)" }}>{parts[0]}</strong> · {parts[1]}
         </React.Fragment>
       );
     }
-    return <strong style={{ fontWeight: 700 }}>{text}</strong>;
+    return <strong style={{ fontWeight: "var(--weight-subtitle)" }}>{text}</strong>;
   }
 
   function formatExpiry(iso) {
@@ -134,9 +134,9 @@
   function MastercardMark() {
     return (
       <svg className="dash-card-logo" viewBox="0 0 152 108" aria-hidden="true">
-        <circle cx="46" cy="54" r="42" fill="#EB001B" />
-        <circle cx="106" cy="54" r="42" fill="#F79E1B" />
-        <path fill="#FF5F00" d="M76,24.61 A42,42 0 0,1 76,83.39 A42,42 0 0,1 76,24.61 Z" />
+        <circle cx="46" cy="54" r="42" style={{ fill: "var(--color-ivory-100)", fillOpacity: 0.92 }} />
+        <circle cx="106" cy="54" r="42" style={{ fill: "var(--color-plum-300)", fillOpacity: 0.9 }} />
+        <path style={{ fill: "var(--color-plum-400)" }} d="M76,24.61 A42,42 0 0,1 76,83.39 A42,42 0 0,1 76,24.61 Z" />
       </svg>
     );
   }
@@ -2557,12 +2557,12 @@
                       width: `${Math.min(100, Math.max(5, overallScore))}%`,
                       backgroundColor:
                         overallScore >= 80
-                          ? "var(--accent-emerald)"
+                          ? "var(--color-primary)"
                           : overallScore >= 60
-                          ? "var(--accent-cyan)"
+                          ? "color-mix(in srgb, var(--color-primary) 75%, transparent)"
                           : overallScore >= 40
-                          ? "var(--accent-amber)"
-                          : "var(--accent-rose)",
+                          ? "color-mix(in srgb, var(--color-primary) 50%, transparent)"
+                          : "color-mix(in srgb, var(--color-primary) 30%, transparent)",
                     }}
                   />
                 </div>
@@ -2575,12 +2575,12 @@
               const pct = Math.round((pillar.score / pillar.maxScore) * 100);
               const barColor =
                 pillar.score >= 20
-                  ? "var(--accent-emerald)"
+                  ? "var(--color-primary)"
                   : pillar.score >= 15
-                  ? "var(--accent-cyan)"
+                  ? "color-mix(in srgb, var(--color-primary) 75%, transparent)"
                   : pillar.score >= 10
-                  ? "var(--accent-amber)"
-                  : "var(--accent-rose)";
+                  ? "color-mix(in srgb, var(--color-primary) 50%, transparent)"
+                  : "color-mix(in srgb, var(--color-primary) 30%, transparent)";
               return (
                 <div className="dash-health-pillar-card" key={pillar.id}>
                   <div className="dash-pillar-head">
@@ -4224,8 +4224,8 @@
                     formatter={(value) => t(CHART_SERIES_LABEL[value] || value)}
                     wrapperStyle={{ fontSize: 12, color: "var(--color-muted)" }}
                   />
-                  <RC.Bar dataKey="income" name="income" fill="var(--color-lime-500)" radius={[6, 6, 0, 0]} />
-                  <RC.Bar dataKey="spend" name="spend" fill="var(--color-plum-400)" radius={[6, 6, 0, 0]} />
+                  <RC.Bar dataKey="income" name="income" fill="var(--color-plum-900)" radius={[12, 12, 0, 0]} />
+                  <RC.Bar dataKey="spend" name="spend" fill="var(--color-plum-400)" radius={[12, 12, 0, 0]} />
                 </RC.BarChart>
               </RC.ResponsiveContainer>
             )}

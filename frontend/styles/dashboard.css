@@ -16,7 +16,7 @@
 .dash-sidebar {
   width: 228px;
   flex: none;
-  box-shadow: 1px 0 0 var(--color-border), 8px 0 24px -18px color-mix(in srgb, var(--color-primary) 40%, transparent);
+  box-shadow: 8px 0 24px -18px color-mix(in srgb, var(--color-primary) 40%, transparent);
   display: flex;
   flex-direction: column;
   padding: 20px 0;
@@ -48,7 +48,7 @@
   min-height: var(--target-min);
 }
 .dash-nav-item:hover { background: color-mix(in srgb, var(--color-primary) 8%, transparent); transform: translateX(2px); }
-.dash-nav-item.is-active { background: var(--color-plum-900); color: var(--color-lime-100); box-shadow: var(--shadow-sm); }
+.dash-nav-item.is-active { background: var(--color-plum-900); color: var(--color-ivory-100); box-shadow: var(--shadow-sm); }
 :root[data-theme="dark"] .dash-nav-item.is-active { background: #4D2954; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .dash-nav-item.is-active { background: #4D2954; }
@@ -80,7 +80,7 @@
   }
 }
 .dash-nav-item .icon { flex: none; opacity: 0.6; }
-.dash-nav-item.is-active .icon { opacity: 1; color: var(--color-lime-500); }
+.dash-nav-item.is-active .icon { opacity: 1; color: var(--color-ivory-100); }
 .dash-nav-dot { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--color-lime-500); display: block; }
 .dash-sidebar-foot { margin-top: auto; padding: 0 22px; display: flex; flex-direction: column; gap: 14px; }
 
@@ -138,7 +138,7 @@
   position: relative;
   border: 0; padding: 0; margin: 0; cursor: pointer; font: inherit;
   width: 34px; height: 34px; border-radius: 50%; flex: none;
-  background: var(--color-plum-900); color: var(--color-lime-100);
+  background: var(--color-plum-900); color: var(--color-ivory-100);
   display: grid; place-items: center; font-family: var(--font-heading); font-size: 13px;
   box-shadow: var(--shadow-sm);
   transition: box-shadow 0.15s ease, transform 0.15s ease;
@@ -343,7 +343,7 @@
 .dash-change.is-down { color: var(--color-negative); }
 .dash-chart-empty { display: flex; align-items: center; justify-content: center; min-height: 160px; font-size: 12px; }
 
-.dash-chart-plate { padding: 14px; background: var(--color-surface); }
+.dash-chart-plate { padding: 14px; background: var(--color-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
 .dash-chart-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
 .dash-chart-title-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .dash-chart-title { font-family: var(--font-heading); font-size: 16px; color: var(--color-heading); }
@@ -364,7 +364,7 @@
 .dash-chart-line { fill: none; stroke: var(--color-primary); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .dash-chart-crosshair { stroke: var(--color-primary); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.7; }
 .dash-chart-current-line { stroke: var(--color-muted); stroke-width: 1; stroke-dasharray: 4 4; opacity: 0.6; }
-.dash-chart-dot { fill: var(--color-primary); stroke: var(--color-surface); stroke-width: 2; }
+.dash-chart-dot { fill: var(--color-primary); stroke: var(--color-card); stroke-width: 2; }
 .dash-chart-tick { fill: var(--color-muted); font-size: 10px; font-family: var(--font-mono); }
 
 .dash-chart-tip {
@@ -465,23 +465,27 @@
 .dash-card-tile {
   all: unset; box-sizing: border-box; cursor: pointer; display: block; position: relative;
   aspect-ratio: 1.6; padding: 16px; display: flex; flex-direction: column; justify-content: space-between;
-  background: var(--color-lime-200); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
-  color: var(--color-text);
+  background: var(--gradient-card-active, var(--gradient-brand)); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+  color: var(--color-ivory-100);
   box-shadow: var(--shadow-md), var(--relief-highlight);
   transition: box-shadow 0.15s ease, transform 0.15s ease, background 0.15s ease;
 }
-.dash-card-tile:hover { background: color-mix(in srgb, var(--color-primary) 10%, transparent); box-shadow: var(--shadow-lg), var(--relief-highlight); transform: translateY(-2px); }
+.dash-card-tile:hover { box-shadow: var(--shadow-lg), var(--relief-highlight); transform: translateY(-2px); }
 .dash-card-tile:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 
 /* ── frozen state: a blue veil over the card, front or back ──
    Hosted on .dash-card-tile itself (not its .dash-card-face-front
    wrapper) so the veil scales and lifts together with the tile on
    hover instead of staying behind at the wrapper's unscaled size. */
+.dash-card-tile.is-frozen,
+.dash-card-flip.is-frozen .dash-card-tile {
+  background: var(--gradient-card-frozen, var(--gradient-brand));
+}
 .dash-card-tile.is-frozen::after,
 .dash-card-flip.is-frozen .dash-card-face-front .dash-card-tile::after,
 .dash-card-flip.is-frozen .dash-card-face-back::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: color-mix(in srgb, var(--color-info) 42%, transparent);
+  background: var(--color-card-frozen-veil);
   border-radius: var(--radius-lg);
 }
 .dash-card-kind { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.16em; }
@@ -492,7 +496,7 @@
 .dash-settings-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .dash-settings-label { display: inline-flex; align-items: center; gap: 8px; }
 .dash-settings-label .icon { color: var(--color-primary); flex: none; }
-.dash-quick-settings-panel { background: var(--color-surface); color: var(--color-text); }
+.dash-quick-settings-panel { background: var(--color-card); color: var(--color-text); }
 
 /* ── card flip (Show details → CVV on the back) ─────────────── */
 .dash-card-flip {
@@ -502,7 +506,7 @@
   cursor: pointer;
   aspect-ratio: 1.6;
   perspective: 1200px;
-  background: var(--color-bg);
+  background: transparent;
 }
 .dash-card-flip:focus-visible {
   outline: var(--focus-ring);
@@ -547,8 +551,8 @@
 
 .dash-streak-badge {
   display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 4px 10px;
-  border-radius: 999px; background: color-mix(in srgb, var(--color-warning) 16%, transparent);
-  color: var(--color-warning); font-size: 12px; font-weight: 600; width: fit-content;
+  border-radius: 999px; background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-primary); font-size: 12px; font-weight: 600; width: fit-content;
 }
 
 /* ── financial education: page rhythm ────────────────────── */
@@ -596,7 +600,7 @@
 
 .dash-goal-reached {
   display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600;
-  color: var(--color-positive);
+  color: var(--color-primary);
 }
 
 .dash-projector { display: flex; flex-direction: column; gap: 6px; }
@@ -611,12 +615,12 @@
   border: 1px solid var(--color-border); background: var(--color-surface-muted);
 }
 .dash-projector-result.is-on-track {
-  border-color: color-mix(in srgb, var(--color-positive) 45%, var(--color-border));
-  background: color-mix(in srgb, var(--color-positive) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 .dash-projector-result.is-behind {
-  border-color: color-mix(in srgb, var(--color-warning) 45%, var(--color-border));
-  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  border-color: var(--color-border);
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
 }
 .dash-projector-hint {
   align-self: flex-start; margin-top: 2px; padding: 0; border: 0; background: none; cursor: pointer;
@@ -657,8 +661,8 @@
 
 .dash-streak-badge {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
-  border-radius: 999px; background: color-mix(in srgb, var(--color-warning) 16%, transparent);
-  color: var(--color-warning); font-size: 12px; font-weight: 600; width: fit-content;
+  border-radius: 999px; background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-primary); font-size: 12px; font-weight: 600; width: fit-content;
 }
 
 /* ── recommendations ─────────────────────────────────────── */
@@ -703,16 +707,16 @@
   border: 1px solid var(--color-border); background: var(--color-surface-muted);
 }
 .dash-quiz-score.is-perfect {
-  border-color: color-mix(in srgb, var(--color-positive) 45%, var(--color-border));
-  background: color-mix(in srgb, var(--color-positive) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary) 60%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
 }
 .dash-quiz-score.is-ok {
   border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
-  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 9%, transparent);
 }
 .dash-quiz-score.is-low {
-  border-color: color-mix(in srgb, var(--color-warning) 45%, var(--color-border));
-  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border-color: var(--color-border);
+  background: color-mix(in srgb, var(--color-primary) 4%, transparent);
 }
 .dash-quiz-score-value { font-family: var(--font-heading); font-size: 26px; color: var(--color-heading); }
 .dash-quiz-score-label { font-size: 13px; color: var(--color-muted); }
@@ -735,16 +739,18 @@
 .dash-quiz-option:hover { background: var(--color-surface-muted); }
 .dash-quiz-option.is-selected { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
 .dash-quiz-option.is-correct {
-  border-color: var(--color-positive);
-  background: color-mix(in srgb, var(--color-positive) 12%, transparent);
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
 }
 .dash-quiz-option.is-wrong {
-  border-color: var(--color-negative);
-  background: color-mix(in srgb, var(--color-negative) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  background: transparent;
+  text-decoration: line-through;
+  opacity: 0.7;
 }
 .dash-quiz-option input { margin-top: 2px; flex: none; accent-color: var(--color-primary); }
 .dash-quiz-tag {
-  margin-left: auto; flex: none; font-size: 11px; font-weight: 700; color: var(--color-positive);
+  margin-left: auto; flex: none; font-size: 11px; font-weight: 700; color: var(--color-primary);
   text-transform: uppercase; letter-spacing: 0.04em;
 }
 .dash-quiz-explanation {
@@ -785,7 +791,7 @@
 .dash-mic-live { color: var(--color-negative); box-shadow: inset 0 0 0 1px var(--color-negative); }
 .dash-chat-side { box-shadow: -1px 0 0 var(--color-border); padding-left: 18px; display: flex; flex-direction: column; gap: 16px; }
 .dash-chat-log { font-family: var(--font-mono); font-size: 10px; line-height: 1.9; opacity: 0.6; }
-.dash-tx-card { margin-top: 12px; padding: 16px; max-width: 420px; background: var(--color-surface); color: var(--color-text); }
+.dash-tx-card { margin-top: 12px; padding: 16px; max-width: 420px; background: var(--color-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-text); }
 .dash-tx-amount { font-family: var(--font-heading); font-size: 34px; margin: 8px 0 4px; color: var(--color-heading); }
 .dash-tx-grid { display: grid; grid-template-columns: auto 1fr; gap: 5px 16px; font-size: 13px; margin: 10px 0 14px; }
 .dash-chat-hint { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -831,13 +837,13 @@
 }
 .dash-edu-panel::before {
   content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-  background: linear-gradient(90deg, var(--color-lime-500), var(--color-primary));
+  background: var(--gradient-brand-rule);
 }
 .dash-edu-panel-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 .dash-edu-avatar {
   width: 36px; height: 36px; border-radius: 50%; flex: none;
   display: flex; align-items: center; justify-content: center;
-  background: var(--color-lime-500); color: var(--color-plum-900);
+  background: var(--color-primary); color: var(--color-on-primary);
 }
 .dash-edu-title { font-family: var(--font-heading); font-size: 16px; font-weight: 600; color: var(--color-heading); line-height: 1.3; }
 .dash-edu-subtitle { font-size: 11px; color: var(--color-muted); margin-top: 2px; }
@@ -895,24 +901,33 @@
 .dash-copy-btn:hover { opacity: 1; background: var(--color-surface); }
 
 :root {
-  --chart-1: #2563eb;
-  --chart-2: #ea580c;
-  --chart-3: #16a34a;
-  --chart-4: #9333ea;
-  --chart-5: #db2777;
-  --chart-6: #0891b2;
-  --chart-7: #64748b;
+  --chart-1: #450C3F;
+  --chart-2: #6C1A5F;
+  --chart-3: #852275;
+  --chart-4: #A75C9A;
+  --chart-5: #C68CBC;
+  --chart-6: #DFB6D8;
+  --chart-7: #D0D5DD;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --chart-1: #60a5fa;
-    --chart-2: #fb923c;
-    --chart-3: #4ade80;
-    --chart-4: #c084fc;
-    --chart-5: #f472b6;
-    --chart-6: #22d3ee;
-    --chart-7: #94a3b8;
+  :root:not([data-theme="light"]) {
+    --chart-1: #F0DAEC;
+    --chart-2: #DFB6D8;
+    --chart-3: #C68CBC;
+    --chart-4: #A75C9A;
+    --chart-5: #8E4A83;
+    --chart-6: #6C1A5F;
+    --chart-7: #A75C9A;
   }
+}
+:root[data-theme="dark"] {
+  --chart-1: #F0DAEC;
+  --chart-2: #DFB6D8;
+  --chart-3: #C68CBC;
+  --chart-4: #A75C9A;
+  --chart-5: #8E4A83;
+  --chart-6: #6C1A5F;
+  --chart-7: #A75C9A;
 }
 
 
@@ -955,13 +970,13 @@
   height: 72px;
   border-radius: 50%;
   background: var(--color-surface);
-  border: 3px solid var(--accent-emerald, #10b981);
+  border: 3px solid var(--color-primary);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 0 16px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--color-primary) 22%, transparent);
 }
 .dash-health-score-number {
   font-size: 24px;
@@ -1000,24 +1015,24 @@
   letter-spacing: 0.5px;
 }
 .dash-tier-badge-green {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  border: 1px solid var(--color-primary);
 }
 .dash-tier-badge-blue {
-  background: rgba(6, 182, 212, 0.15);
-  color: #06b6d4;
-  border: 1px solid rgba(6, 182, 212, 0.3);
+  background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+  color: var(--color-primary);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
 }
 .dash-tier-badge-amber {
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
 }
 .dash-tier-badge-red {
-  background: rgba(244, 63, 94, 0.15);
-  color: #f43f5e;
-  border: 1px solid rgba(244, 63, 94, 0.3);
+  background: transparent;
+  color: var(--color-muted);
+  border: 1px solid var(--color-border);
 }
 .dash-health-progress-outer {
   width: 100%;
@@ -1063,7 +1078,7 @@
 .dash-pillar-bar-outer {
   width: 100%;
   height: 6px;
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -1082,8 +1097,8 @@
   gap: 10px;
   padding: 12px 16px;
   border-radius: var(--radius-sm);
-  background: rgba(245, 158, 11, 0.08);
-  border-left: 3px solid #f59e0b;
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  border-left: 3px solid var(--color-primary);
   color: var(--color-text);
   font-size: 13px;
   line-height: 1.4;
@@ -1109,20 +1124,20 @@
   border-radius: 7px;
   overflow: hidden;
   background: var(--color-surface);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-inset);
 }
 .dash-budget-segment {
   height: 100%;
   transition: width 0.4s ease;
 }
 .dash-seg-needs {
-  background: #0ea5e9;
+  background: color-mix(in srgb, var(--color-primary) 32%, transparent);
 }
 .dash-seg-wants {
-  background: #a855f7;
+  background: color-mix(in srgb, var(--color-primary) 62%, transparent);
 }
 .dash-seg-savings {
-  background: #10b981;
+  background: var(--color-primary);
 }
 .dash-budget-splits-row {
   display: grid;
@@ -1169,7 +1184,7 @@
   font-size: 10px;
   padding: 2px 6px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 .dash-budget-eval-box {
   display: flex;
@@ -1177,8 +1192,8 @@
   gap: 10px;
   padding: 10px 14px;
   border-radius: var(--radius-sm);
-  background: rgba(14, 165, 233, 0.08);
-  border-left: 3px solid #0ea5e9;
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  border-left: 3px solid var(--color-primary);
   font-size: 13px;
   color: var(--color-text);
 }
@@ -1193,8 +1208,8 @@
 .dash-idle-plate {
   padding: 24px;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(16, 185, 129, 0.25);
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.03) 0%, rgba(6, 182, 212, 0.03) 100%);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 4%, transparent);
 }
 .dash-idle-main-row {
   display: flex;
@@ -1219,15 +1234,15 @@
   letter-spacing: 0.5px;
   padding: 4px 10px;
   border-radius: 12px;
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  color: var(--color-primary);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
 }
 .dash-idle-gain-text {
   margin: 0;
   font-size: 26px;
   font-weight: 800;
-  color: #10b981;
+  color: var(--color-primary);
   letter-spacing: -0.5px;
 }
 .dash-idle-prompt {
@@ -1258,7 +1273,7 @@
   color: var(--color-text);
 }
 .dash-idle-val-accent {
-  color: #06b6d4;
+  color: var(--color-primary);
 }
 
 @media (max-width: 700px) {
@@ -1297,7 +1312,7 @@
   gap: 3px;
   margin: 4px 14px 8px 24px;
   padding-left: 12px;
-  border-left: 2px solid rgba(255, 255, 255, 0.1);
+  border-left: 2px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
   animation: dashFadeSlideDown 0.2s ease-out;
 }
 @keyframes dashFadeSlideDown {
@@ -1343,14 +1358,14 @@
 }
 .dash-nav-subitem.is-active .dash-nav-subicon {
   opacity: 1;
-  color: var(--color-lime-500, #a3e635);
+  color: var(--color-primary);
 }
 .dash-nav-subitem .dash-nav-dot {
   margin-left: auto;
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--color-lime-500, #a3e635);
+  background: var(--color-primary);
 }
 
 /* ==========================================================================

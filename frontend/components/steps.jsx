@@ -131,7 +131,7 @@
                     id="extracted-name"
                     readOnly
                     value={extracted.fullName}
-                    style={{ background: "var(--color-surface-2)" }}
+                    style={{ background: "var(--color-surface-muted)" }}
                   />
                 </UI.Field>
 
@@ -140,7 +140,7 @@
                     id="extracted-cnp"
                     readOnly
                     value={extracted.cnp || extracted.cnpMasked}
-                    style={{ fontFamily: "var(--font-mono)", background: "var(--color-surface-2)" }}
+                    style={{ fontFamily: "var(--font-mono)", background: "var(--color-surface-muted)" }}
                   />
                 </UI.Field>
 
@@ -149,7 +149,7 @@
                     id="extracted-birth"
                     readOnly
                     value={formatDate(extracted.birthDate)}
-                    style={{ background: "var(--color-surface-2)" }}
+                    style={{ background: "var(--color-surface-muted)" }}
                   />
                 </UI.Field>
 
@@ -158,7 +158,7 @@
                     id="extracted-expiry"
                     readOnly
                     value={formatDate(extracted.expiresOn)}
-                    style={{ background: "var(--color-surface-2)" }}
+                    style={{ background: "var(--color-surface-muted)" }}
                   />
                 </UI.Field>
 
@@ -167,7 +167,7 @@
                     id="extracted-docno"
                     readOnly
                     value={extracted.documentNumberMasked}
-                    style={{ fontFamily: "var(--font-mono)", background: "var(--color-surface-2)" }}
+                    style={{ fontFamily: "var(--font-mono)", background: "var(--color-surface-muted)" }}
                   />
                 </UI.Field>
               </div>
