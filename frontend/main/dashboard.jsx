@@ -130,7 +130,14 @@
   function formatApiDate(iso) {
     const moment = new Date(iso);
     if (isNaN(moment.getTime())) return iso;
-    return new Intl.DateTimeFormat("ro-RO", { day: "2-digit", month: "2-digit", year: "numeric" })
+    return new Intl.DateTimeFormat("ro-RO", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
       .format(moment)
       .replace(/\//g, ".");
   }
@@ -193,6 +200,7 @@
       direction: row.direction === "credit" ? "in" : "out",
       channel: "transfer",
       accountId: row.accountId,
+      repeatable: row.direction === "debit" && Boolean(row.iban),
     };
   }
 
@@ -1183,6 +1191,19 @@
       });
     }, [accounts, openPayment]);
 
+    const repeatPayment = useCallback((transaction) => {
+      const account = accounts.find((item) => item.id === transaction.accountId);
+      if (!account || !transaction.repeatable) return;
+      openPayment({
+        payType: "iban",
+        fromId: account.id,
+        beneficiary: transaction.who,
+        iban: transaction.iban,
+        reference: transaction.ref,
+        amount: DASH.formatMinor(transaction.minor),
+      });
+    }, [accounts, openPayment]);
+
     const saveTemplate = useCallback(async (template) => {
       const known = templates.some((item) => item.id === template.id);
       const payload = {
@@ -1599,6 +1620,7 @@
                 onEditTemplate={(template) => { setTemplateDraft(template); setTemplatesDialogError(null); setTemplateOpen(true); }}
                 onDeleteTemplate={deleteTemplate}
                 onUseTemplate={useTemplate}
+                onRepeat={repeatPayment}
                 onSettleShare={settleShare}
                 onDeleteSplit={deleteSplitBill}
                 onSign={(payment) => { setSignFormError(null); setSigningPayment(payment); }}

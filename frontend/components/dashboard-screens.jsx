@@ -85,7 +85,7 @@
     return iban || "—";
   }
 
-  function TxTable({ rows, compact }) {
+  function TxTable({ rows, compact, onRepeat }) {
     return (
       <div style={{ overflowX: "auto" }}>
         <table className="dash-table">
@@ -98,6 +98,7 @@
               <th>{t("dashboard.table.category")}</th>
               <th>{t("dashboard.table.status")}</th>
               <th className="amount-col">{t("dashboard.table.amount")}</th>
+              {compact ? null : <th aria-label={t("dashboard.table.actions")}></th>}
             </tr>
           </thead>
           <tbody>
@@ -116,6 +117,19 @@
                 <td className="amount-col">
                   <DASH.Amount minor={row.minor} direction={row.direction} currency={row.currency || "RON"} />
                 </td>
+                {compact ? null : (
+                  <td>
+                    <UI.Button
+                      type="button"
+                      variant="ghost"
+                      aria-label={t("dashboard.payments.repeat", { name: row.who })}
+                      disabled={!row.repeatable}
+                      onClick={() => onRepeat(row)}
+                    >
+                      <UI.Icon name="ArrowLeftRight" size={15} />
+                    </UI.Button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -478,6 +492,7 @@
     onSettleShare,
     onDeleteSplit,
     onSign,
+    onRepeat,
   }) {
     const filters = Object.keys(TX_FILTERS);
     const visible = transactions.filter((row) => TX_FILTERS[filter](row) && matchesQuery(row, query));
@@ -682,7 +697,7 @@
                   </UI.Button>
                 </div>
               </div>
-              <TxTable rows={pageRows} />
+              <TxTable rows={pageRows} onRepeat={onRepeat} />
             </React.Fragment>
           ) : (
             <div className="text-muted" style={{ fontSize: 13, padding: "18px 8px" }}>
@@ -1487,7 +1502,7 @@
       .filter((row) => {
         if (row.channel !== "card" || row.direction !== "out" || row.statusKey !== "booked") return false;
         if (row.accountId !== accountId) return false;
-        const [day, month, year] = row.date.split(".").map(Number);
+        const [day, month, year] = row.date.split(" ")[0].split(".").map(Number);
         return month === now.getMonth() + 1 && year === now.getFullYear();
       })
       .reduce((sum, row) => sum + row.minor, 0);
