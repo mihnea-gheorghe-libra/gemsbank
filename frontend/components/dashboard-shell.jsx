@@ -888,6 +888,12 @@
   };
 
   DASH.CardHistoryDialog = function CardHistoryDialog({ cards, onClose }) {
+    const sortedCards = [...(cards || [])].sort((a, b) => {
+      const dateA = a.deletedAt || a.updatedAt || a.createdAt || "";
+      const dateB = b.deletedAt || b.updatedAt || b.createdAt || "";
+      return dateB.localeCompare(dateA);
+    });
+
     return (
       <div className="dash-dialog-backdrop" onClick={onClose}>
         <UI.Plate
@@ -899,15 +905,26 @@
         >
           <h2 id="card-history-dialog-title" style={{ margin: 0 }}>{t("dashboard.cards.historyDialog.title")}</h2>
 
-          {cards.length === 0 ? (
+          {sortedCards.length === 0 ? (
             <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>{t("dashboard.cards.historyDialog.empty")}</p>
           ) : (
             <div className="dash-history-list">
-              {cards.map((card) => (
-                <div key={card.cardId} className="dash-history-row" style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.1em" }}>
-                  {DASH.mockFullNumber(card.cardId, card.numberMasked.slice(-4), card.kind)}
-                </div>
-              ))}
+              {sortedCards.map((card) => {
+                const rawDate = card.deletedAt || card.updatedAt;
+                const formattedDate = rawDate && GEMS.i18n ? GEMS.i18n.isoToDisplayDate(rawDate.slice(0, 10)) : "";
+                return (
+                  <div key={card.cardId} className="dash-history-row">
+                    <span style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.1em" }}>
+                      {DASH.mockFullNumber(card.cardId, card.numberMasked.slice(-4), card.kind)}
+                    </span>
+                    {formattedDate ? (
+                      <span className="text-muted" style={{ fontSize: 13, fontFamily: "var(--font-mono)", letterSpacing: "normal", whiteSpace: "nowrap" }}>
+                        {t("dashboard.cards.historyDialog.deletedOn", { date: formattedDate })}
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           )}
 

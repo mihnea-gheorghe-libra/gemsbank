@@ -142,7 +142,8 @@ async def resolve_cards_list(
     actor: Actor, payload: BaseModel, cards_service: CardsService | None = None
 ) -> BaseModel:
     assert isinstance(payload, CardsListInput)
-    rows = await _cards_for(actor, cards_service or get_cards_service())
+    all_rows = await _cards_for(actor, cards_service or get_cards_service())
+    rows = [row for row in all_rows if row.get("state") != "blocked"]
     if not rows:
         return CardsListOutput(status="no_cards")
     return CardsListOutput(status="ok", cards=[_card_view(row) for row in rows])
@@ -152,7 +153,8 @@ async def resolve_card_action(
     actor: Actor, payload: BaseModel, cards_service: CardsService | None = None
 ) -> BaseModel:
     assert isinstance(payload, CardActionInput)
-    rows = await _cards_for(actor, cards_service or get_cards_service())
+    all_rows = await _cards_for(actor, cards_service or get_cards_service())
+    active_rows = [row for row in all_rows if row.get("state") != "blocked"]
     action = payload.action
 
     if action in _NEEDS_LIMIT and payload.limit_minor is None:
@@ -174,7 +176,7 @@ async def resolve_card_action(
             requiresHumanConfirmation=True,
         )
 
-    if not rows:
+    if not all_rows:
         return CardActionOutput(
             status="blocked",
             action=action,
@@ -184,10 +186,18 @@ async def resolve_card_action(
         )
 
     if not payload.card_id:
+        if not active_rows:
+            return CardActionOutput(
+                status="blocked",
+                action=action,
+                blockers=[
+                    ActionBlocker(code="no_cards", message="This customer holds no active cards.")
+                ],
+            )
         return CardActionOutput(
             status="needs_clarification",
             action=action,
-            candidates=[_card_view(row) for row in rows],
+            candidates=[_card_view(row) for row in active_rows],
             blockers=[
                 ActionBlocker(
                     code="card_not_named",
@@ -196,12 +206,12 @@ async def resolve_card_action(
             ],
         )
 
-    card = next((row for row in rows if row["cardId"] == payload.card_id), None)
+    card = next((row for row in all_rows if row["cardId"] == payload.card_id), None)
     if card is None:
         return CardActionOutput(
             status="needs_clarification",
             action=action,
-            candidates=[_card_view(row) for row in rows],
+            candidates=[_card_view(row) for row in active_rows],
             blockers=[
                 ActionBlocker(
                     code="card_not_found",

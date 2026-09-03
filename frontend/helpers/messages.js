@@ -606,6 +606,7 @@
         historyDialog: {
           title: "Deleted cards",
           empty: "No cards deleted yet.",
+          deletedOn: "Deleted on {date}",
           close: "Close",
         },
         pinDialog: {
@@ -1941,6 +1942,7 @@
         historyDialog: {
           title: "Carduri șterse",
           empty: "Niciun card șters încă.",
+          deletedOn: "Șters la {date}",
           close: "Închide",
         },
       },

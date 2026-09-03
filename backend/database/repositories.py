@@ -1351,6 +1351,7 @@ def _card_to_bson(card: Card) -> dict[str, Any]:
         "onlineLimitMinor": card.online_limit_minor,
         "createdAt": card.created_at,
         "updatedAt": card.updated_at,
+        "deletedAt": card.deleted_at,
     }
 
 
@@ -1371,6 +1372,7 @@ def _card_from_bson(raw: dict[str, Any]) -> Card:
         online_limit_minor=raw["onlineLimitMinor"],
         created_at=raw["createdAt"],
         updated_at=raw["updatedAt"],
+        deleted_at=raw.get("deletedAt"),
     )
 
 

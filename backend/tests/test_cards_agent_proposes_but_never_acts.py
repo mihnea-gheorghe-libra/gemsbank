@@ -237,3 +237,60 @@ def test_the_cards_agent_can_never_reach_the_money_door() -> None:
 def test_the_card_action_is_declared_a_proposal_not_a_plain_read() -> None:
     assert "cards.action.propose" in PROPOSAL_TOOL_NAMES
     assert "cards.action.propose" not in TOOL_NAMES
+
+
+def test_deleted_cards_are_excluded_from_cards_list() -> None:
+    rows = [
+        card("card-1001", state="active"),
+        card("card-1002", state="frozen"),
+        card("card-dead", state="blocked"),
+    ]
+    result = _list(rows=rows)
+    assert result.status == "ok"
+    card_ids = [c.card_id for c in result.cards]
+    assert "card-1001" in card_ids
+    assert "card-1002" in card_ids
+    assert "card-dead" not in card_ids
+
+
+def test_only_blocked_cards_returns_no_cards() -> None:
+    rows = [card("card-dead1", state="blocked"), card("card-dead2", state="blocked")]
+    assert _list(rows=rows).status == "no_cards"
+
+
+def test_candidates_in_action_proposal_exclude_blocked_cards() -> None:
+    rows = [
+        card("card-1001", state="active"),
+        card("card-dead", state="blocked"),
+    ]
+    result = _propose(rows=rows, action="freeze")
+    assert result.status == "needs_clarification"
+    candidate_ids = [c.card_id for c in result.candidates]
+    assert candidate_ids == ["card-1001"]
+
+
+def test_card_model_sets_deleted_at_on_permanent_block() -> None:
+    from datetime import date
+    from backend.cards.card import Card, CardKind, CardState
+
+    c = Card(
+        user_id="user-1",
+        account_id="acc-1",
+        kind=CardKind.VIRTUAL_MASTERCARD,
+        last4="1234",
+        owner_name="ION POPESCU",
+        expires_on=date(2030, 1, 1),
+        pin_encrypted="enc_pin",
+        atm_limit_minor=200000,
+        online_limit_minor=400000,
+    )
+    assert c.deleted_at is None
+    assert c.public_view()["deletedAt"] is None
+
+    c.block_permanently()
+    assert c.state == CardState.BLOCKED
+    assert c.deleted_at is not None
+    view = c.public_view()
+    assert view["deletedAt"] is not None
+    assert view["deletedAt"] == c.deleted_at.isoformat()
+
