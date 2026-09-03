@@ -213,10 +213,10 @@ async def ensure_indexes() -> None:
         [("userId", ASCENDING), ("status", ASCENDING)], name="ix_user_status"
     )
 
+    await _drop_unique_indexes(standing_orders_collection())
     await standing_orders_collection().create_index(
         [("goalId", ASCENDING)],
-        unique=True,
-        name="uq_goal_open",
+        name="ix_goal_open",
         partialFilterExpression={"status": {"$in": ["active", "paused"]}},
     )
     await standing_orders_collection().create_index(

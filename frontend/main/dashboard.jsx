@@ -8,7 +8,21 @@
   const DATA = GEMS.dashboardData;
   const { useState, useCallback, useEffect, useMemo, useRef } = React;
 
-  const SCREENS = ["home", "payments", "chat", "accounts", "portfolio", "cards", "analytics", "education", "settings"];
+  const SCREENS = [
+    "home",
+    "payments",
+    "chat",
+    "accounts",
+    "portfolio",
+    "cards",
+    "analytics",
+    "education",
+    "education_health",
+    "education_goals",
+    "education_chat",
+    "education_lessons",
+    "settings",
+  ];
   const MARKET_AUTO_REFRESH_MS = 60000;
   const NOTIFICATIONS_POLL_MS = 30000;
 
@@ -39,6 +53,11 @@
     analytics: "analytics",
     cards: "cards",
     portfolio: "investments",
+    education: "deposits",
+    education_health: "deposits",
+    education_goals: "deposits",
+    education_chat: "deposits",
+    education_lessons: "deposits",
     settings: "support",
   };
 
@@ -131,7 +150,14 @@
   function formatApiDate(iso) {
     const moment = new Date(iso);
     if (isNaN(moment.getTime())) return iso;
-    return new Intl.DateTimeFormat("ro-RO", { day: "2-digit", month: "2-digit", year: "numeric" })
+    return new Intl.DateTimeFormat("ro-RO", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
       .format(moment)
       .replace(/\//g, ".");
   }
@@ -194,6 +220,7 @@
       direction: row.direction === "credit" ? "in" : "out",
       channel: "transfer",
       accountId: row.accountId,
+      repeatable: row.direction === "debit" && Boolean(row.iban),
     };
   }
 
@@ -1210,6 +1237,19 @@
       });
     }, [accounts, openPayment]);
 
+    const repeatPayment = useCallback((transaction) => {
+      const account = accounts.find((item) => item.id === transaction.accountId);
+      if (!account || !transaction.repeatable) return;
+      openPayment({
+        payType: "iban",
+        fromId: account.id,
+        beneficiary: transaction.who,
+        iban: transaction.iban,
+        reference: transaction.ref,
+        amount: DASH.formatMinor(transaction.minor),
+      });
+    }, [accounts, openPayment]);
+
     const saveTemplate = useCallback(async (template) => {
       const known = templates.some((item) => item.id === template.id);
       const payload = {
@@ -1579,6 +1619,8 @@
             screen={screen}
             username={firstName}
             me={me}
+            theme={theme}
+            onTheme={onTheme}
             ttsOn={ttsOn}
             onToggleTts={() => setTtsOn((value) => !value)}
             onOpenSettings={() => navigate("settings")}
@@ -1629,6 +1671,7 @@
                 onEditTemplate={(template) => { setTemplateDraft(template); setTemplatesDialogError(null); setTemplateOpen(true); }}
                 onDeleteTemplate={deleteTemplate}
                 onUseTemplate={useTemplate}
+                onRepeat={repeatPayment}
                 onSettleShare={settleShare}
                 onDeleteSplit={deleteSplitBill}
                 onSign={(payment) => { setSignFormError(null); setSigningPayment(payment); }}
@@ -1734,7 +1777,21 @@
               />
             ) : null}
             {screen === "analytics" ? <SCR.AnalyticsScreen range={range} onRange={setRange} accounts={accounts} /> : null}
-            {screen === "education" ? <SCR.EducationScreen accounts={accounts} /> : null}
+            {screen.startsWith("education") ? (
+              <SCR.EducationScreen
+                accounts={accounts}
+                activeTab={
+                  screen === "education_goals"
+                    ? "goals"
+                    : screen === "education_chat"
+                    ? "chat"
+                    : screen === "education_lessons"
+                    ? "lessons"
+                    : "health"
+                }
+                onTabChange={(tabKey) => setScreen("education_" + tabKey)}
+              />
+            ) : null}
             {screen === "settings" ? (
               <SCR.SettingsScreen
                 lang={lang}

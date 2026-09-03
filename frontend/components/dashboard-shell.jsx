@@ -22,15 +22,91 @@
     cards: "CreditCard",
     analytics: "BarChart3",
     education: "GraduationCap",
+    education_health: "Activity",
+    education_goals: "Target",
+    education_chat: "Bot",
+    education_lessons: "BookOpen",
     settings: "Settings",
   };
 
+  const EDUCATION_SUBITEMS = [
+    { key: "education_health", icon: "Activity", labelKey: "dashboard.nav.education_health" },
+    { key: "education_goals", icon: "Target", labelKey: "dashboard.nav.education_goals" },
+    { key: "education_chat", icon: "Bot", labelKey: "dashboard.nav.education_chat" },
+  ];
+
   DASH.Sidebar = function Sidebar({ screen, onNavigate, onSignOut }) {
+    const isEduScreen = (screen || "").startsWith("education");
+    const [educationExpanded, setEducationExpanded] = useState(isEduScreen);
+
+    useEffect(() => {
+      if (isEduScreen) {
+        setEducationExpanded(true);
+      }
+    }, [isEduScreen]);
+
     return (
       <nav className="dash-sidebar" aria-label={t("dashboard.navLabel")}>
         <div className="dash-sidebar-brand"><UI.Logo size={22} /></div>
 
         {DATA.navItems.map((item) => {
+          if (item.key === "education") {
+            return (
+              <div
+                key="education"
+                className={UI.classNames("dash-nav-dropdown-group", isEduScreen && "has-active-child")}
+              >
+                <button
+                  type="button"
+                  className={UI.classNames(
+                    "dash-nav-item",
+                    "dash-nav-dropdown-trigger",
+                    isEduScreen && "is-active",
+                    educationExpanded && "is-expanded"
+                  )}
+                  aria-expanded={educationExpanded}
+                  aria-controls="dash-education-subnav"
+                  onClick={() => {
+                    setEducationExpanded((prev) => !prev);
+                    if (!isEduScreen) {
+                      onNavigate("education_health");
+                    }
+                  }}
+                >
+                  <UI.Icon name={NAV_ICONS.education} size={17} />
+                  <span className="dash-nav-item-label">{t("dashboard.nav.education")}</span>
+                  <UI.Icon
+                    name={educationExpanded ? "ChevronDown" : "ChevronRight"}
+                    size={14}
+                    className="dash-nav-chevron"
+                  />
+                </button>
+
+                {educationExpanded ? (
+                  <div id="dash-education-subnav" className="dash-nav-sublist" role="region">
+                    {EDUCATION_SUBITEMS.map((sub) => {
+                      const isSubActive =
+                        screen === sub.key || (screen === "education" && sub.key === "education_health");
+                      return (
+                        <button
+                          key={sub.key}
+                          type="button"
+                          className={UI.classNames("dash-nav-subitem", isSubActive && "is-active")}
+                          aria-current={isSubActive ? "page" : undefined}
+                          onClick={() => onNavigate(sub.key)}
+                        >
+                          <UI.Icon name={sub.icon} size={13} className="dash-nav-subicon" />
+                          <span>{t(sub.labelKey)}</span>
+                          {isSubActive ? <span className="dash-nav-dot" aria-hidden="true" /> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            );
+          }
+
           const active = item.key === screen;
           return (
             <button
@@ -287,13 +363,18 @@
           <div className="dash-topbar-tag">{t("dashboard.tag." + screen)}</div>
         </div>
 
-        <DASH.NotificationBell
-          notifications={notifications}
-          unreadCount={unreadNotifications}
-          onOpen={onOpenNotifications}
-        />
+<div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <DASH.NotificationBell
+            notifications={notifications}
+            unreadCount={unreadNotifications}
+            onOpen={onOpenNotifications}
+          />
 
-        <div className="dash-profile" ref={containerRef}>
+          <UI.Button type="button" variant="ghost" onClick={() => onTheme(theme === "dark" ? "light" : "dark")}>
+            <UI.Icon name={theme === "dark" ? "Sun" : "Moon"} size={16} />
+          </UI.Button>
+
+          <div className="dash-profile" ref={containerRef}>
           <button
             type="button"
             className="dash-avatar"
@@ -332,6 +413,7 @@
               </UI.Button>
             </div>
           ) : null}
+          </div>
         </div>
       </header>
     );

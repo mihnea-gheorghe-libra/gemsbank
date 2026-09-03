@@ -893,6 +893,26 @@ class MongoStandingOrderRepository:
         )
         return _standing_order_from_bson(raw) if raw else None
 
+    async def get_open_for_goal_and_source(
+        self, goal_id: str, source_account_id: str
+    ) -> StandingOrder | None:
+        raw = await standing_orders_collection().find_one(
+            {
+                "goalId": goal_id,
+                "sourceAccountId": source_account_id,
+                "status": {"$in": ["active", "paused"]},
+            }
+        )
+        return _standing_order_from_bson(raw) if raw else None
+
+    async def list_open_for_goal(self, goal_id: str) -> list[StandingOrder]:
+        found = (
+            standing_orders_collection()
+            .find({"goalId": goal_id, "status": {"$in": ["active", "paused"]}})
+            .sort("createdAt", 1)
+        )
+        return [_standing_order_from_bson(raw) async for raw in found]
+
     async def list_due(self, now: datetime, limit: int = 200) -> list[StandingOrder]:
         found = (
             standing_orders_collection()
@@ -925,6 +945,30 @@ class MongoStandingOrderRepository:
         result = await standing_orders_collection().update_one(
             {"_id": order_id, "userId": user_id, "status": {"$ne": "cancelled"}},
             {"$set": {"amountMinorUnits": amount_minor, "updatedAt": datetime.now(timezone.utc)}},
+            session=session,
+        )
+        return result.modified_count == 1
+
+    async def update_details(
+        self,
+        order_id: str,
+        user_id: str,
+        *,
+        source_account_id: str | None = None,
+        amount_minor: int | None = None,
+        frequency: str | None = None,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool:
+        set_fields: dict[str, Any] = {"updatedAt": datetime.now(timezone.utc)}
+        if source_account_id is not None:
+            set_fields["sourceAccountId"] = source_account_id
+        if amount_minor is not None:
+            set_fields["amountMinorUnits"] = amount_minor
+        if frequency is not None:
+            set_fields["frequency"] = frequency
+        result = await standing_orders_collection().update_one(
+            {"_id": order_id, "userId": user_id, "status": {"$ne": "cancelled"}},
+            {"$set": set_fields},
             session=session,
         )
         return result.modified_count == 1

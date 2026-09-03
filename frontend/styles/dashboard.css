@@ -929,3 +929,437 @@
   display: list-item !important;
 }
 
+/* ==========================================================================
+   Financial Health Score & Diagnostic Card
+   ========================================================================== */
+.dash-health-plate {
+  padding: 24px;
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.dash-health-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dash-health-score-container {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+}
+.dash-health-score-circle {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 3px solid var(--accent-emerald, #10b981);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.2);
+}
+.dash-health-score-number {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-text);
+}
+.dash-health-score-max {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  line-height: 1;
+  margin-top: 2px;
+}
+.dash-health-score-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dash-health-score-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dash-health-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.dash-tier-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.dash-tier-badge-green {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.dash-tier-badge-blue {
+  background: rgba(6, 182, 212, 0.15);
+  color: #06b6d4;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+.dash-tier-badge-amber {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.dash-tier-badge-red {
+  background: rgba(244, 63, 94, 0.15);
+  color: #f43f5e;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+.dash-health-progress-outer {
+  width: 100%;
+  height: 8px;
+  background: var(--color-surface);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.dash-health-progress-inner {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.dash-health-pillars-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.dash-health-pillar-card {
+  background: var(--color-surface);
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+}
+.dash-pillar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.dash-pillar-name {
+  font-weight: 600;
+  color: var(--color-text);
+}
+.dash-pillar-metric {
+  font-weight: 500;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+.dash-pillar-bar-outer {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.dash-pillar-bar-inner {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.dash-pillar-hint {
+  font-size: 11px;
+  line-height: 1.3;
+}
+.dash-health-top-action {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 3px solid #f59e0b;
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.dash-health-action-text {
+  flex: 1;
+}
+
+/* ==========================================================================
+   50/30/20 Budget Breakdown Card
+   ========================================================================== */
+.dash-budget-plate {
+  padding: 24px;
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.dash-budget-multi-bar {
+  display: flex;
+  width: 100%;
+  height: 14px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--color-surface);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.dash-budget-segment {
+  height: 100%;
+  transition: width 0.4s ease;
+}
+.dash-seg-needs {
+  background: #0ea5e9;
+}
+.dash-seg-wants {
+  background: #a855f7;
+}
+.dash-seg-savings {
+  background: #10b981;
+}
+.dash-budget-splits-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.dash-budget-split-col {
+  background: var(--color-surface);
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dash-budget-dot-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dash-seg-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dash-budget-cat-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.dash-budget-amt {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.dash-budget-actual-pct {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dash-budget-target-chip {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.dash-budget-eval-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(14, 165, 233, 0.08);
+  border-left: 3px solid #0ea5e9;
+  font-size: 13px;
+  color: var(--color-text);
+}
+.dash-budget-eval-text {
+  flex: 1;
+  line-height: 1.4;
+}
+
+/* ==========================================================================
+   Idle Cash & Yield Optimizer Card
+   ========================================================================== */
+.dash-idle-plate {
+  padding: 24px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.03) 0%, rgba(6, 182, 212, 0.03) 100%);
+}
+.dash-idle-main-row {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.dash-idle-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.dash-idle-highlight {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dash-idle-badge {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.dash-idle-gain-text {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  color: #10b981;
+  letter-spacing: -0.5px;
+}
+.dash-idle-prompt {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.dash-idle-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.dash-idle-detail-chip {
+  background: var(--color-surface);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dash-idle-chip-lbl {
+  font-size: 11px;
+}
+.dash-idle-chip-val {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.dash-idle-val-accent {
+  color: #06b6d4;
+}
+
+@media (max-width: 700px) {
+  .dash-budget-splits-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   Sidebar Dropdown Menu & Navigation
+   ========================================================================== */
+.dash-nav-dropdown-group {
+  display: flex;
+  flex-direction: column;
+}
+.dash-nav-dropdown-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.dash-nav-item-label {
+  flex: 1;
+}
+.dash-nav-chevron {
+  flex: none;
+  opacity: 0.7;
+  margin-left: auto;
+  transition: transform 0.2s ease, opacity 0.15s ease;
+}
+.dash-nav-dropdown-trigger:hover .dash-nav-chevron {
+  opacity: 1;
+}
+.dash-nav-sublist {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 4px 14px 8px 24px;
+  padding-left: 12px;
+  border-left: 2px solid rgba(255, 255, 255, 0.1);
+  animation: dashFadeSlideDown 0.2s ease-out;
+}
+@keyframes dashFadeSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.dash-nav-subitem {
+  appearance: none;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 13px;
+  background: transparent;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.7));
+  transition: all 0.15s ease;
+  line-height: 1.3;
+}
+.dash-nav-subitem:hover {
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateX(2px);
+}
+.dash-nav-subitem.is-active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+.dash-nav-subicon {
+  flex: none;
+  opacity: 0.65;
+}
+.dash-nav-subitem.is-active .dash-nav-subicon {
+  opacity: 1;
+  color: var(--color-lime-500, #a3e635);
+}
+.dash-nav-subitem .dash-nav-dot {
+  margin-left: auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-lime-500, #a3e635);
+}
+
+/* ==========================================================================
+   Education Screen Layout
+   ========================================================================== */
+.dash-edu-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+

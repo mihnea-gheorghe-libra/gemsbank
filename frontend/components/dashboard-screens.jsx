@@ -17,6 +17,66 @@
 
   const formatMinor = DASH.formatMinor;
 
+  function RollingAmount({ value, amountMinor, suffix }) {
+    const visible = amountMinor != null;
+    const [shownMinor, setShownMinor] = useState(amountMinor);
+    const [digitCycle, setDigitCycle] = useState(0);
+    const previousAmount = useRef(amountMinor);
+
+    useEffect(() => {
+      if (amountMinor != null && previousAmount.current != null && previousAmount.current !== amountMinor) {
+        setDigitCycle((cycle) => cycle + 1);
+      }
+      previousAmount.current = amountMinor;
+    }, [amountMinor]);
+
+    useEffect(() => {
+      if (!visible || amountMinor == null) {
+        setShownMinor(amountMinor);
+        return undefined;
+      }
+      if (shownMinor == null || shownMinor === amountMinor) {
+        setShownMinor(amountMinor);
+        return undefined;
+      }
+
+      const start = shownMinor;
+      const difference = amountMinor - start;
+      const startedAt = performance.now();
+      const duration = 1100;
+      let frameId;
+      const animate = (now) => {
+        const progress = Math.min((now - startedAt) / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        setShownMinor(Math.round(start + difference * eased));
+        if (progress < 1) frameId = window.requestAnimationFrame(animate);
+      };
+      frameId = window.requestAnimationFrame(animate);
+      return () => window.cancelAnimationFrame(frameId);
+    }, [amountMinor, visible]);
+
+    const displayValue = visible && shownMinor != null
+      ? formatMinor(shownMinor) + (suffix || "")
+      : value;
+    return (
+      <span className="dash-money-digits" aria-label={displayValue}>
+        {String(displayValue).split("").map((character, index) => (
+          /\d/.test(character) ? (
+            <span
+              className="dash-money-digit"
+              key={index + ":" + digitCycle}
+              style={{ "--digit-index": index }}
+            >
+              {character}
+            </span>
+          ) : (
+            <span key={index}>{character}</span>
+          )
+        ))}
+      </span>
+    );
+  }
+
   const TX_FILTERS = {
     all: () => true,
     income: (row) => row.direction === "in",
@@ -85,7 +145,7 @@
     return iban || "—";
   }
 
-  function TxTable({ rows, compact }) {
+  function TxTable({ rows, compact, onRepeat }) {
     return (
       <div style={{ overflowX: "auto" }}>
         <table className="dash-table">
@@ -98,6 +158,7 @@
               <th>{t("dashboard.table.category")}</th>
               <th>{t("dashboard.table.status")}</th>
               <th className="amount-col">{t("dashboard.table.amount")}</th>
+              {compact ? null : <th aria-label={t("dashboard.table.actions")}></th>}
             </tr>
           </thead>
           <tbody>
@@ -116,6 +177,19 @@
                 <td className="amount-col">
                   <DASH.Amount minor={row.minor} direction={row.direction} currency={row.currency || "RON"} />
                 </td>
+                {compact ? null : (
+                  <td>
+                    <UI.Button
+                      type="button"
+                      variant="ghost"
+                      aria-label={t("dashboard.payments.repeat", { name: row.who })}
+                      disabled={!row.repeatable}
+                      onClick={() => onRepeat(row)}
+                    >
+                      <UI.Icon name="ArrowLeftRight" size={15} />
+                    </UI.Button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -340,7 +414,13 @@
             </UI.Button>
           </div>
           <div className="dash-balance-figure">
-            {balanceHidden ? "•••••••• RON" : formatMinor(totalBalanceMinor) + " RON"}
+            <span className="dash-money-change" key={String(balanceHidden)}>
+              <RollingAmount
+                value="•••••••• RON"
+                amountMinor={balanceHidden ? null : totalBalanceMinor}
+                suffix=" RON"
+              />
+            </span>
           </div>
 
 
@@ -377,7 +457,14 @@
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", opacity: 0.55 }}>
                   {account.cur} · {account.label || t("dashboard.accountType." + account.typeKey)}
                 </div>
-                <div className="dash-account-amount">{balanceHidden ? "••••••" : formatMinor(account.minor)}</div>
+                <div className="dash-account-amount">
+                  <span className="dash-money-change" key={String(balanceHidden)}>
+                    <RollingAmount
+                      value="••••••"
+                      amountMinor={balanceHidden ? null : account.minor}
+                    />
+                  </span>
+                </div>
                 <div className="text-muted" style={{ fontSize: 11 }}>{account.ibanShort}</div>
               </UI.Plate>
             ))}
@@ -478,6 +565,7 @@
     onSettleShare,
     onDeleteSplit,
     onSign,
+    onRepeat,
   }) {
     const filters = Object.keys(TX_FILTERS);
     const visible = transactions.filter((row) => TX_FILTERS[filter](row) && matchesQuery(row, query));
@@ -682,7 +770,7 @@
                   </UI.Button>
                 </div>
               </div>
-              <TxTable rows={pageRows} />
+              <TxTable rows={pageRows} onRepeat={onRepeat} />
             </React.Fragment>
           ) : (
             <div className="text-muted" style={{ fontSize: 13, padding: "18px 8px" }}>
@@ -1159,8 +1247,8 @@
     const windowChangeBps = DASH.seriesChangeBps(totalSeries);
     const chartChangeBps = DASH.seriesChangeBps(series);
     const currentPoint = rawSeries.length ? rawSeries[rawSeries.length - 1] : null;
-    const currentDelta = rawSeries.length > 1
-      ? currentPoint.valueMinor - rawSeries[rawSeries.length - 2].valueMinor
+    const currentDelta = series.length > 1
+      ? series[series.length - 1].valueMinor - series[0].valueMinor
       : null;
 
     const rangeOptions = [
@@ -1487,7 +1575,7 @@
       .filter((row) => {
         if (row.channel !== "card" || row.direction !== "out" || row.statusKey !== "booked") return false;
         if (row.accountId !== accountId) return false;
-        const [day, month, year] = row.date.split(".").map(Number);
+        const [day, month, year] = row.date.split(" ")[0].split(".").map(Number);
         return month === now.getMonth() + 1 && year === now.getFullYear();
       })
       .reduce((sum, row) => sum + row.minor, 0);
@@ -1964,7 +2052,7 @@
 
   let _globalGoalVersion = 0;
 
-  SCR.EducationScreen = function EducationScreen({ accounts }) {
+  SCR.EducationScreen = function EducationScreen({ accounts, activeTab = "health" }) {
     const [goalVersion, setGoalVersion] = useState(_globalGoalVersion);
 
     function bumpGoalVersion() {
@@ -1972,19 +2060,31 @@
       setGoalVersion(_globalGoalVersion);
     }
 
+    const currentTab = activeTab || "health";
+
     return (
       <div className="dash-edu-page">
-        <div className="dash-screen-head">
-          <h3 style={{ margin: 0 }}>{t("dashboard.education.title")}</h3>
-        </div>
+        {currentTab === "health" ? (
+          <div className="dash-edu-tab-content">
+            <FinancialHealthCard goalVersion={goalVersion} />
+            <Budget503020Card goalVersion={goalVersion} />
+            <IdleCashOptimizerCard accounts={accounts} />
+          </div>
+        ) : null}
 
-        <EducationChatPanel onGoalCreated={bumpGoalVersion} />
+        {currentTab === "goals" ? (
+          <div className="dash-edu-tab-content">
+            <GoalsPanel accounts={accounts} goalVersion={goalVersion} onGoalChange={bumpGoalVersion} />
+            <RecommendationsCard goalVersion={goalVersion} />
+          </div>
+        ) : null}
 
-        <GoalsPanel accounts={accounts} goalVersion={goalVersion} onGoalChange={bumpGoalVersion} />
-
-        <RecommendationsCard goalVersion={goalVersion} />
-
-        <LessonsPanel />
+        {currentTab === "chat" || currentTab === "lessons" ? (
+          <div className="dash-edu-tab-content">
+            <EducationChatPanel onGoalCreated={bumpGoalVersion} />
+            <LessonsPanel />
+          </div>
+        ) : null}
       </div>
     );
   };
@@ -2031,6 +2131,30 @@
         </p>
       );
     });
+  }
+
+  const THINKING_KEYS = [
+    "thinkingAnalyze",
+    "thinkingCreate",
+    "thinkingReason",
+    "thinkingCheck",
+    "thinkingSearch",
+    "thinkingPrepare",
+    "thinkingCompare",
+    "thinkingCalculate",
+  ];
+
+  function ThinkingStatus() {
+    const [step, setStep] = useState(0);
+
+    useEffect(() => {
+      const timer = window.setInterval(() => {
+        setStep((current) => (current + 1) % THINKING_KEYS.length);
+      }, 1200);
+      return () => window.clearInterval(timer);
+    }, []);
+
+    return <span>{t("dashboard.chat." + THINKING_KEYS[step])}</span>;
   }
 
   function EducationChatPanel({ onGoalCreated }) {
@@ -2145,7 +2269,7 @@
             <div className="dash-msg">
               <div className="dash-msg-ai">
                 <span className="dash-msg-ai-dot" aria-hidden="true" />
-                <div className="dash-msg-ai-body text-muted">{t("dashboard.chat.thinking")}</div>
+                <div className="dash-msg-ai-body text-muted"><ThinkingStatus /></div>
               </div>
             </div>
           ) : null}
@@ -2348,6 +2472,318 @@
       .filter((line) => /^[-*•]\s+/.test(line))
       .map((line) => line.replace(/^[-*•]\s+/, ""))
       .filter(Boolean);
+  }
+
+  function FinancialHealthCard({ goalVersion }) {
+    const [state, setState] = useState({ loading: true, data: null, error: null });
+
+    useEffect(() => {
+      let cancelled = false;
+      api
+        .getFinancialHealth()
+        .then((res) => {
+          if (!cancelled) setState({ loading: false, data: res, error: null });
+        })
+        .catch((err) => {
+          if (!cancelled) setState({ loading: false, data: null, error: err });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [goalVersion]);
+
+    if (state.loading) {
+      return (
+        <EduSection
+          title={t("dashboard.education.healthScore.title")}
+          hint={t("dashboard.education.healthScore.subtitle")}
+        >
+          <UI.Plate className="elev-sm dash-health-plate dash-loading-state">
+            <span className="text-muted">{t("dashboard.analytics.recommendations.loading")}</span>
+          </UI.Plate>
+        </EduSection>
+      );
+    }
+
+    if (state.error || !state.data) return null;
+    const {
+      overallScore,
+      tierLabel,
+      tier,
+      emergencyBuffer,
+      savingsRate,
+      expenseControl,
+      idleCashEfficiency,
+      topAction,
+    } = state.data;
+
+    const tierBadgeClass =
+      tier === "excellent"
+        ? "dash-tier-badge-green"
+        : tier === "good"
+        ? "dash-tier-badge-blue"
+        : tier === "fair"
+        ? "dash-tier-badge-amber"
+        : "dash-tier-badge-red";
+
+    const pillars = [
+      { id: "buffer", ...emergencyBuffer },
+      { id: "savings", ...savingsRate },
+      { id: "expense", ...expenseControl },
+      { id: "yield", ...idleCashEfficiency },
+    ];
+
+    return (
+      <EduSection
+        title={t("dashboard.education.healthScore.title")}
+        hint={t("dashboard.education.healthScore.subtitle")}
+      >
+        <UI.Plate className="elev-sm dash-health-plate">
+          <div className="dash-health-header">
+            <div className="dash-health-score-container">
+              <div className="dash-health-score-circle">
+                <span className="dash-health-score-number">{overallScore}</span>
+                <span className="dash-health-score-max">/100</span>
+              </div>
+              <div className="dash-health-score-meta">
+                <div className="dash-health-score-title-row">
+                  <span className="dash-health-label">{t("dashboard.education.healthScore.title")}</span>
+                  <span className={`dash-tier-badge ${tierBadgeClass}`}>{tierLabel}</span>
+                </div>
+                <div className="dash-health-progress-outer">
+                  <div
+                    className="dash-health-progress-inner"
+                    style={{
+                      width: `${Math.min(100, Math.max(5, overallScore))}%`,
+                      backgroundColor:
+                        overallScore >= 80
+                          ? "var(--accent-emerald)"
+                          : overallScore >= 60
+                          ? "var(--accent-cyan)"
+                          : overallScore >= 40
+                          ? "var(--accent-amber)"
+                          : "var(--accent-rose)",
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="dash-health-pillars-grid">
+            {pillars.map((pillar) => {
+              const pct = Math.round((pillar.score / pillar.maxScore) * 100);
+              const barColor =
+                pillar.score >= 20
+                  ? "var(--accent-emerald)"
+                  : pillar.score >= 15
+                  ? "var(--accent-cyan)"
+                  : pillar.score >= 10
+                  ? "var(--accent-amber)"
+                  : "var(--accent-rose)";
+              return (
+                <div className="dash-health-pillar-card" key={pillar.id}>
+                  <div className="dash-pillar-head">
+                    <span className="dash-pillar-name">{pillar.label}</span>
+                    <span className="dash-pillar-metric">{pillar.metricFormatted}</span>
+                  </div>
+                  <div className="dash-pillar-bar-outer">
+                    <div
+                      className="dash-pillar-bar-inner"
+                      style={{ width: `${pct}%`, backgroundColor: barColor }}
+                    />
+                  </div>
+                  <div className="dash-pillar-hint text-muted">{pillar.hint}</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {topAction ? (
+            <div className="dash-health-top-action">
+              <UI.Icon name="Lightbulb" size={16} />
+              <div className="dash-health-action-text">
+                <strong>{t("dashboard.education.healthScore.topAction")}:</strong> {topAction}
+              </div>
+            </div>
+          ) : null}
+        </UI.Plate>
+      </EduSection>
+    );
+  }
+
+  function Budget503020Card({ goalVersion }) {
+    const [state, setState] = useState({ loading: true, data: null, error: null });
+
+    useEffect(() => {
+      let cancelled = false;
+      api
+        .getBudget503020()
+        .then((res) => {
+          if (!cancelled) setState({ loading: false, data: res, error: null });
+        })
+        .catch((err) => {
+          if (!cancelled) setState({ loading: false, data: null, error: err });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [goalVersion]);
+
+    if (state.loading || state.error || !state.data) return null;
+    const { needs, wants, savings, evaluation } = state.data;
+
+    const totalPct = Math.max(
+      1,
+      (needs.actualPct || 0) + (wants.actualPct || 0) + (savings.actualPct || 0)
+    );
+    const needsWidth = ((needs.actualPct || 0) / totalPct) * 100;
+    const wantsWidth = ((wants.actualPct || 0) / totalPct) * 100;
+    const savingsWidth = ((savings.actualPct || 0) / totalPct) * 100;
+
+    return (
+      <EduSection
+        title={t("dashboard.education.budget503020.title")}
+        hint={t("dashboard.education.budget503020.subtitle")}
+      >
+        <UI.Plate className="elev-sm dash-budget-plate">
+          <div className="dash-budget-multi-bar">
+            <div
+              className="dash-budget-segment dash-seg-needs"
+              style={{ width: `${needsWidth}%` }}
+              title={`Nevoi: ${needs.actualPct}%`}
+            />
+            <div
+              className="dash-budget-segment dash-seg-wants"
+              style={{ width: `${wantsWidth}%` }}
+              title={`Dorințe: ${wants.actualPct}%`}
+            />
+            <div
+              className="dash-budget-segment dash-seg-savings"
+              style={{ width: `${savingsWidth}%` }}
+              title={`Economii: ${savings.actualPct}%`}
+            />
+          </div>
+
+          <div className="dash-budget-splits-row">
+            <div className="dash-budget-split-col">
+              <div className="dash-budget-dot-label">
+                <span className="dash-seg-dot dash-seg-needs" />
+                <span className="dash-budget-cat-name">
+                  {t("dashboard.education.budget503020.needs")}
+                </span>
+              </div>
+              <div className="dash-budget-amt">{needs.amountFormatted}</div>
+              <div className="dash-budget-actual-pct text-muted">
+                {needs.actualPct}% <span className="dash-budget-target-chip">țintă 50%</span>
+              </div>
+            </div>
+
+            <div className="dash-budget-split-col">
+              <div className="dash-budget-dot-label">
+                <span className="dash-seg-dot dash-seg-wants" />
+                <span className="dash-budget-cat-name">
+                  {t("dashboard.education.budget503020.wants")}
+                </span>
+              </div>
+              <div className="dash-budget-amt">{wants.amountFormatted}</div>
+              <div className="dash-budget-actual-pct text-muted">
+                {wants.actualPct}% <span className="dash-budget-target-chip">țintă 30%</span>
+              </div>
+            </div>
+
+            <div className="dash-budget-split-col">
+              <div className="dash-budget-dot-label">
+                <span className="dash-seg-dot dash-seg-savings" />
+                <span className="dash-budget-cat-name">
+                  {t("dashboard.education.budget503020.savings")}
+                </span>
+              </div>
+              <div className="dash-budget-amt">{savings.amountFormatted}</div>
+              <div className="dash-budget-actual-pct text-muted">
+                {savings.actualPct}% <span className="dash-budget-target-chip">țintă 20%</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="dash-budget-eval-box">
+            <UI.Icon name="Sparkles" size={15} />
+            <div className="dash-budget-eval-text">{evaluation}</div>
+          </div>
+        </UI.Plate>
+      </EduSection>
+    );
+  }
+
+  function IdleCashOptimizerCard() {
+    const [state, setState] = useState({ loading: true, data: null, error: null });
+
+    useEffect(() => {
+      let cancelled = false;
+      api
+        .getIdleCashOptimization()
+        .then((res) => {
+          if (!cancelled) setState({ loading: false, data: res, error: null });
+        })
+        .catch((err) => {
+          if (!cancelled) setState({ loading: false, data: null, error: err });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []);
+
+    if (state.loading || state.error || !state.data) return null;
+    const {
+      idleFormatted,
+      checkingBalanceFormatted,
+      operationalBufferFormatted,
+      suggestedTermMonths,
+      suggestedRateFormatted,
+      estimatedAnnualInterestFormatted,
+      actionPrompt,
+    } = state.data;
+
+    return (
+      <EduSection
+        title={t("dashboard.education.idleCash.title")}
+        hint={t("dashboard.education.idleCash.subtitle")}
+      >
+        <UI.Plate className="elev-sm dash-idle-plate">
+          <div className="dash-idle-main-row">
+            <div className="dash-idle-stats">
+              <div className="dash-idle-highlight">
+                <span className="dash-idle-badge">
+                  {suggestedTermMonths} {suggestedTermMonths === 1 ? "lună" : "luni"} · {suggestedRateFormatted} p.a.
+                </span>
+                <h4 className="dash-idle-gain-text">+{estimatedAnnualInterestFormatted} / an</h4>
+                <p className="dash-idle-prompt text-muted">{actionPrompt}</p>
+              </div>
+              <div className="dash-idle-details-grid">
+                <div className="dash-idle-detail-chip">
+                  <span className="dash-idle-chip-lbl text-muted">
+                    {t("dashboard.education.idleCash.checkingBalance")}
+                  </span>
+                  <span className="dash-idle-chip-val">{checkingBalanceFormatted}</span>
+                </div>
+                <div className="dash-idle-detail-chip">
+                  <span className="dash-idle-chip-lbl text-muted">
+                    {t("dashboard.education.idleCash.buffer")}
+                  </span>
+                  <span className="dash-idle-chip-val">{operationalBufferFormatted}</span>
+                </div>
+                <div className="dash-idle-detail-chip">
+                  <span className="dash-idle-chip-lbl text-muted">
+                    {t("dashboard.education.idleCash.idleAmount")}
+                  </span>
+                  <span className="dash-idle-chip-val dash-idle-val-accent">{idleFormatted}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </UI.Plate>
+      </EduSection>
+    );
   }
 
   function accountPickerLabel(account) {
@@ -2666,15 +3102,34 @@
     );
   }
 
-  function EditStandingOrderAmountDialog({ currentAmountMinor, busy, error, onSubmit, onDismiss }) {
-    const [amount, setAmount] = useState(formatMinor(currentAmountMinor));
+  function EditStandingOrderDialog({
+    standingOrder,
+    accounts,
+    goalCurrency,
+    busy,
+    error,
+    onSubmit,
+    onDismiss,
+  }) {
+    const eligibleAccounts = (accounts || []).filter(
+      (account) => (account.typeKey === "current" || account.typeKey === "invest") && account.cur === goalCurrency
+    );
+    const [accountId, setAccountId] = useState(
+      standingOrder ? standingOrder.sourceAccountId : ((eligibleAccounts[0] && eligibleAccounts[0].id) || "")
+    );
+    const [amount, setAmount] = useState(
+      standingOrder ? formatMinor(standingOrder.amount.minorUnits) : ""
+    );
+    const [frequency, setFrequency] = useState(
+      (standingOrder && standingOrder.frequency) || "weekly"
+    );
     const amountMinor = DASH.parseMinor(amount);
-    const ready = amountMinor > 0;
+    const ready = Boolean(accountId) && amountMinor > 0;
 
     function submit(event) {
       event.preventDefault();
       if (!ready) return;
-      onSubmit(amountMinor);
+      onSubmit({ sourceAccountId: accountId, amountMinor, frequency });
     }
 
     return (
@@ -2683,8 +3138,23 @@
           {t("dashboard.analytics.goal.standingOrder.editTitle")}
         </h2>
         <form noValidate onSubmit={submit}>
+          {eligibleAccounts.length ? (
+            <UI.Field id="standing-order-edit-account" label={t("dashboard.analytics.goal.standingOrder.account")}>
+              <UI.Select id="standing-order-edit-account" value={accountId} onChange={(event) => setAccountId(event.target.value)}>
+                {eligibleAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>{accountPickerLabel(account)}</option>
+                ))}
+              </UI.Select>
+            </UI.Field>
+          ) : null}
           <UI.Field id="standing-order-edit-amount" label={t("dashboard.analytics.goal.standingOrder.amount")} error={error ? error.message : null}>
             <UI.TextInput id="standing-order-edit-amount" autoFocus inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} />
+          </UI.Field>
+          <UI.Field id="standing-order-edit-frequency" label={t("dashboard.analytics.goal.standingOrder.frequency")}>
+            <UI.Select id="standing-order-edit-frequency" value={frequency} onChange={(event) => setFrequency(event.target.value)}>
+              <option value="weekly">{t("dashboard.analytics.goal.standingOrder.weekly")}</option>
+              <option value="monthly">{t("dashboard.analytics.goal.standingOrder.monthly")}</option>
+            </UI.Select>
           </UI.Field>
           <div className="dialog-actions">
             <UI.Button type="button" variant="secondary" onClick={onDismiss}>
@@ -2987,7 +3457,7 @@
   }
 
   function GoalCard({ goal, accounts, onChanged }) {
-    const [standingOrder, setStandingOrder] = useState(null);
+    const [standingOrders, setStandingOrders] = useState([]);
     const [closeDialogOpen, setCloseDialogOpen] = useState(false);
     const [closing, setClosing] = useState(false);
     const [closeError, setCloseError] = useState(null);
@@ -2997,9 +3467,9 @@
     const [standingOrderDialogOpen, setStandingOrderDialogOpen] = useState(false);
     const [standingOrderBusy, setStandingOrderBusy] = useState(false);
     const [standingOrderError, setStandingOrderError] = useState(null);
-    const [editAmountOpen, setEditAmountOpen] = useState(false);
-    const [editAmountBusy, setEditAmountBusy] = useState(false);
-    const [editAmountError, setEditAmountError] = useState(null);
+    const [editingOrder, setEditingOrder] = useState(null);
+    const [editOrderBusy, setEditOrderBusy] = useState(false);
+    const [editOrderError, setEditOrderError] = useState(null);
 
     const goalId = goal.goalId;
     const isCreator = goal.isCreator !== false;
@@ -3010,10 +3480,13 @@
       api
         .getStandingOrder(goalId)
         .then((result) => {
-          if (!cancelled) setStandingOrder(result.standingOrder);
+          if (!cancelled) {
+            const orders = result.standingOrders || (result.standingOrder ? [result.standingOrder] : []);
+            setStandingOrders(orders);
+          }
         })
         .catch(() => {
-          if (!cancelled) setStandingOrder(null);
+          if (!cancelled) setStandingOrders([]);
         });
       return () => {
         cancelled = true;
@@ -3055,29 +3528,31 @@
         });
     }
 
-    function submitEditAmount(amountMinor) {
-      if (!standingOrder) return;
-      setEditAmountBusy(true);
-      setEditAmountError(null);
+    function submitEditOrder(payload) {
+      if (!editingOrder) return;
+      setEditOrderBusy(true);
+      setEditOrderError(null);
       api
-        .updateStandingOrderAmount(standingOrder.standingOrderId, amountMinor)
+        .updateStandingOrder(editingOrder.standingOrderId, {
+          sourceAccountId: payload.sourceAccountId,
+          amountMinorUnits: payload.amountMinor,
+          frequency: payload.frequency,
+        })
         .then(() => {
-          setEditAmountBusy(false);
-          setEditAmountOpen(false);
-          setStandingOrder((prev) => prev && { ...prev, amount: { ...prev.amount, minorUnits: amountMinor } });
+          setEditOrderBusy(false);
+          setEditingOrder(null);
           onChanged();
         })
         .catch((err) => {
-          setEditAmountBusy(false);
-          setEditAmountError(err);
+          setEditOrderBusy(false);
+          setEditOrderError(err);
         });
     }
 
-    function transitionStandingOrder(action) {
-      if (!standingOrder) return;
+    function transitionStandingOrder(action, orderId) {
       setStandingOrderBusy(true);
       setStandingOrderError(null);
-      action(standingOrder.standingOrderId)
+      action(orderId)
         .then(() => {
           setStandingOrderBusy(false);
           onChanged();
@@ -3180,81 +3655,105 @@
           <div className="dash-goal-pane dash-goal-so">
             {isCreator ? (
             <>
-            <div className="text-muted" style={{ fontSize: 12, marginBottom: 6 }}>
-              {t("dashboard.analytics.goal.standingOrder.title")}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span className="text-muted" style={{ fontSize: 12 }}>
+                {t("dashboard.analytics.goal.standingOrder.title")}
+              </span>
+              {standingOrders.length > 0 ? (
+                <button
+                  type="button"
+                  className="dash-handoff-link"
+                  style={{ fontSize: 12, padding: 0 }}
+                  onClick={() => setStandingOrderDialogOpen(true)}
+                >
+                  + {t("dashboard.analytics.goal.standingOrder.addAnother")}
+                </button>
+              ) : null}
             </div>
-            {standingOrder ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
-                  <span style={{ fontSize: 13 }}>
-                    {t(
-                      standingOrder.status === "paused"
-                        ? "dashboard.analytics.goal.standingOrder.paused"
-                        : "dashboard.analytics.goal.standingOrder.active",
-                      {
-                        amount: UI.formatMoney(
-                          standingOrder.amount.minorUnits,
-                          standingOrder.amount.currency
-                        ),
-                        frequency: t(
-                          standingOrder.frequency === "weekly"
-                            ? "dashboard.analytics.goal.standingOrder.frequencyWeekly"
-                            : "dashboard.analytics.goal.standingOrder.frequencyMonthly"
-                        ),
-                        account: (() => {
-                          const source = (accounts || []).find(
-                            (account) => account.id === standingOrder.sourceAccountId
-                          );
-                          return source ? DASH.accountLabel(source) : t("dashboard.cards.accountUnknown");
-                        })(),
-                        date: GEMS.i18n.isoToDisplayDate((standingOrder.nextRunAt || "").slice(0, 10)),
-                      }
-                    )}
-                  </span>
-                  <button
-                    type="button"
-                    className="dash-copy-btn"
-                    aria-label={t("dashboard.analytics.goal.standingOrder.edit")}
-                    onClick={() => setEditAmountOpen(true)}
-                    style={{ flex: "none" }}
-                  >
-                    <UI.Icon name="Pencil" size={14} />
-                  </button>
-                </div>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  {standingOrder.status === "active" ? (
-                    <UI.Button
-                      type="button"
-                      variant="secondary"
-                      disabled={standingOrderBusy}
-                      onClick={() => transitionStandingOrder(api.pauseStandingOrder)}
+            {standingOrders.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {standingOrders.map((so) => {
+                  const source = (accounts || []).find(
+                    (account) => account.id === so.sourceAccountId
+                  );
+                  const accountLabel = source ? DASH.accountLabel(source) : t("dashboard.cards.accountUnknown");
+                  return (
+                    <div
+                      key={so.standingOrderId}
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        background: "rgba(255, 255, 255, 0.04)",
+                        border: "1px solid var(--color-border)",
+                      }}
                     >
-                      {standingOrderBusy
-                        ? t("dashboard.analytics.goal.standingOrder.working")
-                        : t("dashboard.analytics.goal.standingOrder.pause")}
-                    </UI.Button>
-                  ) : (
-                    <UI.Button
-                      type="button"
-                      variant="secondary"
-                      disabled={standingOrderBusy}
-                      onClick={() => transitionStandingOrder(api.resumeStandingOrder)}
-                    >
-                      {standingOrderBusy
-                        ? t("dashboard.analytics.goal.standingOrder.working")
-                        : t("dashboard.analytics.goal.standingOrder.resume")}
-                    </UI.Button>
-                  )}
-                  <button
-                    type="button"
-                    className="dash-handoff-link"
-                    style={{ padding: 0 }}
-                    disabled={standingOrderBusy}
-                    onClick={() => transitionStandingOrder(api.cancelStandingOrder)}
-                  >
-                    {t("dashboard.analytics.goal.standingOrder.cancel")}
-                  </button>
-                </div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "flex-start", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 13, flex: 1 }}>
+                          {t(
+                            so.status === "paused"
+                              ? "dashboard.analytics.goal.standingOrder.paused"
+                              : "dashboard.analytics.goal.standingOrder.active",
+                            {
+                              amount: UI.formatMoney(so.amount.minorUnits, so.amount.currency),
+                              frequency: t(
+                                so.frequency === "weekly"
+                                  ? "dashboard.analytics.goal.standingOrder.frequencyWeekly"
+                                  : "dashboard.analytics.goal.standingOrder.frequencyMonthly"
+                              ),
+                              account: accountLabel,
+                              date: GEMS.i18n.isoToDisplayDate((so.nextRunAt || "").slice(0, 10)),
+                            }
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          className="dash-copy-btn"
+                          aria-label={t("dashboard.analytics.goal.standingOrder.edit")}
+                          onClick={() => setEditingOrder(so)}
+                          style={{ flex: "none", marginLeft: 4 }}
+                        >
+                          <UI.Icon name="Pencil" size={14} />
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 6 }}>
+                        {so.status === "active" ? (
+                          <UI.Button
+                            type="button"
+                            variant="secondary"
+                            disabled={standingOrderBusy}
+                            onClick={() => transitionStandingOrder(api.pauseStandingOrder, so.standingOrderId)}
+                            style={{ padding: "4px 10px", fontSize: 12 }}
+                          >
+                            {standingOrderBusy
+                              ? t("dashboard.analytics.goal.standingOrder.working")
+                              : t("dashboard.analytics.goal.standingOrder.pause")}
+                          </UI.Button>
+                        ) : (
+                          <UI.Button
+                            type="button"
+                            variant="secondary"
+                            disabled={standingOrderBusy}
+                            onClick={() => transitionStandingOrder(api.resumeStandingOrder, so.standingOrderId)}
+                            style={{ padding: "4px 10px", fontSize: 12 }}
+                          >
+                            {standingOrderBusy
+                              ? t("dashboard.analytics.goal.standingOrder.working")
+                              : t("dashboard.analytics.goal.standingOrder.resume")}
+                          </UI.Button>
+                        )}
+                        <button
+                          type="button"
+                          className="dash-handoff-link"
+                          style={{ padding: 0, fontSize: 12 }}
+                          disabled={standingOrderBusy}
+                          onClick={() => transitionStandingOrder(api.cancelStandingOrder, so.standingOrderId)}
+                        >
+                          {t("dashboard.analytics.goal.standingOrder.cancel")}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
@@ -3350,15 +3849,17 @@
             }}
           />
         ) : null}
-        {editAmountOpen && standingOrder ? (
-          <EditStandingOrderAmountDialog
-            currentAmountMinor={standingOrder.amount.minorUnits}
-            busy={editAmountBusy}
-            error={editAmountError}
-            onSubmit={submitEditAmount}
+        {editingOrder ? (
+          <EditStandingOrderDialog
+            standingOrder={editingOrder}
+            accounts={accounts}
+            goalCurrency={goal.currency}
+            busy={editOrderBusy}
+            error={editOrderError}
+            onSubmit={submitEditOrder}
             onDismiss={() => {
-              setEditAmountOpen(false);
-              setEditAmountError(null);
+              setEditingOrder(null);
+              setEditOrderError(null);
             }}
           />
         ) : null}
@@ -4742,7 +5243,7 @@ function OtpDialog({ titleId, delivery, busy, error, onSubmit, onDismiss }) {
               <div className="dash-msg">
                 <div className="dash-msg-ai">
                   <span className="dash-msg-ai-dot" aria-hidden="true" />
-                  <div className="dash-msg-ai-body text-muted">{t("dashboard.chat.thinking")}</div>
+                  <div className="dash-msg-ai-body text-muted"><ThinkingStatus /></div>
                 </div>
               </div>
             ) : null}

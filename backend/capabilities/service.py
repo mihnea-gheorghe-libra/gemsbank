@@ -224,6 +224,36 @@ def get_capabilities_service() -> CapabilityRegistry:
     )
     registry.register(
         Capability(
+            name="analytics.financial_health.get",
+            input_schema=analytics.FinancialHealthInput,
+            output_schema=analytics.FinancialHealthOutput,
+            side_effect=SideEffect.READ,
+            required_scope="analytics:read",
+            resolver=analytics.resolve_financial_health,
+        )
+    )
+    registry.register(
+        Capability(
+            name="analytics.budget_503020.get",
+            input_schema=analytics.Budget503020Input,
+            output_schema=analytics.Budget503020Output,
+            side_effect=SideEffect.READ,
+            required_scope="analytics:read",
+            resolver=analytics.resolve_budget_503020,
+        )
+    )
+    registry.register(
+        Capability(
+            name="analytics.idle_cash.get",
+            input_schema=analytics.IdleCashInput,
+            output_schema=analytics.IdleCashOutput,
+            side_effect=SideEffect.READ,
+            required_scope="analytics:read",
+            resolver=analytics.resolve_idle_cash,
+        )
+    )
+    registry.register(
+        Capability(
             name="payments.balances.get",
             input_schema=payments_capabilities.BalancesInput,
             output_schema=payments_capabilities.BalancesOutput,

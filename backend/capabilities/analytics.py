@@ -10,6 +10,7 @@ from backend.config import settings
 from backend.goals.service import get_goals_service
 from backend.helpers.context import Actor
 from backend.payments.service import PaymentsService, get_payments_service
+from backend.products.catalogue import DEPOSIT_PRODUCTS, format_rate
 from pydantic import BaseModel, Field
 
 _RECURRING_LOOKBACK_DAYS = 182
@@ -31,6 +32,9 @@ _SPENDING_CAP_TRIM_PCT = 15
 _MAX_CATEGORY_ALERTS = 3
 _TARGET_SAVINGS_RATE_PCT = 20
 _NON_SPEND_CATEGORIES = ("transfer", "income")
+
+NEEDS_CATEGORIES = {"groceries", "supermarket", "utilities", "bills", "housing", "health", "pharmacy", "transport"}
+WANTS_CATEGORIES = {"dining", "restaurants", "entertainment", "shopping", "travel", "leisure", "subscriptions", "other"}
 
 _HOME_CURRENCY = "RON"
 
@@ -647,6 +651,9 @@ class Recommendation(BaseModel):
         "category_alert",
         "goal_projection",
         "recurring_spend",
+        "idle_cash",
+        "emergency_fund",
+        "budget_503020",
     ]
     category: str | None = None
     current_value_minor: int | None = Field(default=None, alias="currentValueMinorUnits")
@@ -663,6 +670,20 @@ class RecommendationsOutput(BaseModel):
 async def resolve_recommendations(actor: Actor, payload: BaseModel) -> BaseModel:
     assert isinstance(payload, RecommendationsInput)
     user_id = actor.subject_id()
+    payments = get_payments_service()
+    accounts_service = get_accounts_service()
+
+    try:
+        user_accounts = await accounts_service.list_for_user(user_id)
+    except Exception:
+        user_accounts = []
+
+    checking_balance = sum(
+        acc["balance"]["minorUnits"]
+        for acc in user_accounts
+        if acc.get("kind") == "current" and acc.get("currency") == _HOME_CURRENCY
+    )
+
     recommendations: list[Recommendation] = []
 
     goal_gap = await resolve_goal_gap(actor, GoalGapInput())
@@ -702,7 +723,6 @@ async def resolve_recommendations(actor: Actor, payload: BaseModel) -> BaseModel
             )
         )
 
-    payments = get_payments_service()
     now = datetime.now(timezone.utc)
     last_year, last_month = (now.year - 1, 12) if now.month == 1 else (now.year, now.month - 1)
     prior_year, prior_month = (
@@ -848,5 +868,424 @@ async def resolve_recommendations(actor: Actor, payload: BaseModel) -> BaseModel
             )
         )
 
+    monthly_spend = max(spend_last, 150_000)
+    operational_buffer = int(1.5 * monthly_spend)
+    idle_amount = max(0, checking_balance - operational_buffer)
+    if idle_amount >= 50_000:
+        term_product = DEPOSIT_PRODUCTS[0]
+        best_term = next((t for t in term_product.terms if t.months == 12), term_product.terms[-1])
+        est_interest = int(idle_amount * best_term.rate_bps / 10_000)
+        recommendations.append(
+            Recommendation(
+                kind="idle_cash",
+                currentValueMinorUnits=checking_balance,
+                suggestedValueMinorUnits=idle_amount,
+                messageData={
+                    "currency": _HOME_CURRENCY,
+                    "checkingBalanceFormatted": format_minor(checking_balance, _HOME_CURRENCY),
+                    "idleFormatted": format_minor(idle_amount, _HOME_CURRENCY),
+                    "suggestedMonths": best_term.months,
+                    "rateFormatted": format_rate(best_term.rate_bps),
+                    "potentialInterestFormatted": format_minor(est_interest, _HOME_CURRENCY),
+                },
+            )
+        )
+
     status: Literal["ok", "insufficient_data"] = "ok" if recommendations else "insufficient_data"
     return RecommendationsOutput(status=status, recommendations=recommendations)
+
+
+class FinancialHealthInput(BaseModel):
+    pass
+
+
+class PillarScore(BaseModel):
+    score: int = Field(ge=0, le=25)
+    max_score: int = Field(default=25, alias="maxScore")
+    status: Literal["excellent", "good", "fair", "needs_attention"]
+    metric_formatted: str = Field(alias="metricFormatted")
+    label: str
+    hint: str
+    model_config = {"populate_by_name": True}
+
+
+class FinancialHealthOutput(BaseModel):
+    status: Literal["ok", "insufficient_data"]
+    overall_score: int = Field(default=0, alias="overallScore", ge=0, le=100)
+    tier: Literal["excellent", "good", "fair", "needs_attention"]
+    tier_label: str = Field(alias="tierLabel")
+    emergency_buffer: PillarScore = Field(alias="emergencyBuffer")
+    savings_rate: PillarScore = Field(alias="savingsRate")
+    expense_control: PillarScore = Field(alias="expenseControl")
+    idle_cash_efficiency: PillarScore = Field(alias="idleCashEfficiency")
+    top_action: str = Field(alias="topAction")
+    model_config = {"populate_by_name": True}
+
+
+async def resolve_financial_health(actor: Actor, payload: BaseModel) -> BaseModel:
+    assert isinstance(payload, FinancialHealthInput)
+    user_id = actor.subject_id()
+    payments = get_payments_service()
+    accounts_service = get_accounts_service()
+
+    try:
+        user_accounts = await accounts_service.list_for_user(user_id)
+    except Exception:
+        user_accounts = []
+
+    checking_balance = sum(
+        acc["balance"]["minorUnits"]
+        for acc in user_accounts
+        if acc.get("kind") == "current" and acc.get("currency") == _HOME_CURRENCY
+    )
+    savings_balance = sum(
+        acc["balance"]["minorUnits"]
+        for acc in user_accounts
+        if acc.get("kind") in ("savings", "deposit", "goal") and acc.get("currency") == _HOME_CURRENCY
+    )
+    total_liquid = checking_balance + savings_balance
+
+    now = datetime.now(timezone.utc)
+    last_year, last_month = (now.year - 1, 12) if now.month == 1 else (now.year, now.month - 1)
+    start_last, end_last = _month_bounds(last_year, last_month)
+    rows_last = [
+        row
+        for row in await _transactions_in_range(payments, user_id, start_last, end_last)
+        if row["amount"]["currency"] == _HOME_CURRENCY
+    ]
+
+    income_last = sum(
+        row["amount"]["minorUnits"] for row in rows_last if row["amount"]["minorUnits"] > 0
+    )
+    totals_last = _spend_by_category(rows_last)
+    spend_last = sum(
+        amount for cat, amount in totals_last.items() if cat not in _NON_SPEND_CATEGORIES
+    )
+
+    needs_spent = sum(
+        amount for cat, amount in totals_last.items() if cat in NEEDS_CATEGORIES
+    )
+    wants_spent = sum(
+        amount
+        for cat, amount in totals_last.items()
+        if cat not in NEEDS_CATEGORIES and cat not in _NON_SPEND_CATEGORIES
+    )
+    monthly_essential = max(needs_spent, 100_000)
+
+    # 1. Emergency Buffer
+    months_covered = (total_liquid / monthly_essential) if monthly_essential > 0 else 0.0
+    if months_covered >= 3.0:
+        buf_score = 25
+        buf_status = "excellent"
+    elif months_covered >= 2.0:
+        buf_score = 19
+        buf_status = "good"
+    elif months_covered >= 1.0:
+        buf_score = 12
+        buf_status = "fair"
+    else:
+        buf_score = max(3, int(months_covered * 12))
+        buf_status = "needs_attention"
+
+    # 2. Savings Rate
+    kept = max(0, income_last - spend_last) if income_last > 0 else 0
+    savings_pct = (kept / income_last * 100) if income_last > 0 else 0.0
+    if savings_pct >= 20.0:
+        sav_score = 25
+        sav_status = "excellent"
+    elif savings_pct >= 10.0:
+        sav_score = 18
+        sav_status = "good"
+    elif savings_pct >= 5.0:
+        sav_score = 10
+        sav_status = "fair"
+    else:
+        sav_score = 4
+        sav_status = "needs_attention"
+
+    # 3. Expense Control
+    wants_pct = (wants_spent / income_last * 100) if income_last > 0 else 40.0
+    if wants_pct <= 30.0:
+        exp_score = 25
+        exp_status = "excellent"
+    elif wants_pct <= 45.0:
+        exp_score = 18
+        exp_status = "good"
+    elif wants_pct <= 60.0:
+        exp_score = 12
+        exp_status = "fair"
+    else:
+        exp_score = 5
+        exp_status = "needs_attention"
+
+    # 4. Idle Cash Efficiency
+    operational_buffer = int(1.5 * monthly_essential)
+    excess_checking = max(0, checking_balance - operational_buffer)
+    if total_liquid <= 0 or excess_checking <= 50_000:
+        idle_score = 25
+        idle_status = "excellent"
+    else:
+        idle_ratio = excess_checking / total_liquid
+        if idle_ratio < 0.25:
+            idle_score = 20
+            idle_status = "good"
+        elif idle_ratio < 0.5:
+            idle_score = 14
+            idle_status = "fair"
+        else:
+            idle_score = 7
+            idle_status = "needs_attention"
+
+    overall = buf_score + sav_score + exp_score + idle_score
+    if overall >= 85:
+        tier = "excellent"
+        tier_label = "Excelent"
+    elif overall >= 70:
+        tier = "good"
+        tier_label = "Bun"
+    elif overall >= 50:
+        tier = "fair"
+        tier_label = "Moderat"
+    else:
+        tier = "needs_attention"
+        tier_label = "De Îmbunătățit"
+
+    scores = [
+        (buf_score, "buffer", "Crește fondul de rezervă pentru a acoperi minimum 3 luni de cheltuieli esențiale."),
+        (idle_score, "idle", "Plasează banii inactivi din contul curent într-un depozit la termen pentru randament garantat."),
+        (sav_score, "savings", "Economisește automat cel puțin 15–20% din venit în ziua de salariu."),
+        (exp_score, "expenses", "Redu cheltuielile pe dorințe și cumpărături pentru a rămâne sub pragul de 30% din venit."),
+    ]
+    scores.sort(key=lambda x: x[0])
+    top_action = scores[0][2] if overall < 90 else "Felicitări! Sănătatea ta financiară este stabilă și optimizată."
+
+    return FinancialHealthOutput(
+        status="ok",
+        overallScore=overall,
+        tier=tier,
+        tierLabel=tier_label,
+        emergencyBuffer=PillarScore(
+            score=buf_score,
+            maxScore=25,
+            status=buf_status,
+            metricFormatted=f"{round(months_covered, 1)} luni acoperite",
+            label="Fond de Urgență",
+            hint="Țintă recomandată: 3–6 luni de cheltuieli de bază.",
+        ),
+        savingsRate=PillarScore(
+            score=sav_score,
+            maxScore=25,
+            status=sav_status,
+            metricFormatted=f"{round(savings_pct, 1)}% din venit",
+            label="Rată de Economisire",
+            hint="Țintă recomandată: minimum 20% din venituri.",
+        ),
+        expenseControl=PillarScore(
+            score=exp_score,
+            maxScore=25,
+            status=exp_status,
+            metricFormatted=f"{round(wants_pct, 1)}% pe dorințe",
+            label="Control Cheltuieli",
+            hint="Țintă recomandată: maximum 30% pe stil de viață.",
+        ),
+        idleCashEfficiency=PillarScore(
+            score=idle_score,
+            maxScore=25,
+            status=idle_status,
+            metricFormatted=f"{format_minor(excess_checking, _HOME_CURRENCY)} nealocați" if excess_checking > 50_000 else "Echilibrat",
+            label="Randament Disponibilități",
+            hint="Păstrează 1.5x cheltuieli în cont curent și plasează restul în depozite.",
+        ),
+        topAction=top_action,
+    )
+
+
+class Budget503020Input(BaseModel):
+    pass
+
+
+class BudgetCategorySplit(BaseModel):
+    amount_minor: int = Field(alias="amountMinorUnits")
+    amount_formatted: str = Field(alias="amountFormatted")
+    actual_pct: float = Field(alias="actualPct")
+    target_pct: float = Field(alias="targetPct")
+    status: Literal["on_track", "exceeded", "under"]
+    model_config = {"populate_by_name": True}
+
+
+class Budget503020Output(BaseModel):
+    status: Literal["ok", "insufficient_data"]
+    needs: BudgetCategorySplit
+    wants: BudgetCategorySplit
+    savings: BudgetCategorySplit
+    total_income_formatted: str = Field(alias="totalIncomeFormatted")
+    total_spend_formatted: str = Field(alias="totalSpendFormatted")
+    evaluation: str
+    model_config = {"populate_by_name": True}
+
+
+async def resolve_budget_503020(actor: Actor, payload: BaseModel) -> BaseModel:
+    assert isinstance(payload, Budget503020Input)
+    user_id = actor.subject_id()
+    payments = get_payments_service()
+
+    now = datetime.now(timezone.utc)
+    last_year, last_month = (now.year - 1, 12) if now.month == 1 else (now.year, now.month - 1)
+    start_last, end_last = _month_bounds(last_year, last_month)
+    rows_last = [
+        row
+        for row in await _transactions_in_range(payments, user_id, start_last, end_last)
+        if row["amount"]["currency"] == _HOME_CURRENCY
+    ]
+
+    income = sum(row["amount"]["minorUnits"] for row in rows_last if row["amount"]["minorUnits"] > 0)
+    totals_last = _spend_by_category(rows_last)
+    total_spend = sum(amt for cat, amt in totals_last.items() if cat not in _NON_SPEND_CATEGORIES)
+
+    if income <= 0:
+        income = max(total_spend, 100_000)
+
+    needs_spent = sum(amt for cat, amt in totals_last.items() if cat in NEEDS_CATEGORIES)
+    wants_spent = sum(amt for cat, amt in totals_last.items() if cat not in NEEDS_CATEGORIES and cat not in _NON_SPEND_CATEGORIES)
+    savings_amount = max(0, income - total_spend)
+
+    base = max(income, needs_spent + wants_spent + savings_amount)
+    needs_pct = round(needs_spent / base * 100, 1) if base > 0 else 50.0
+    wants_pct = round(wants_spent / base * 100, 1) if base > 0 else 30.0
+    savings_pct = round(savings_amount / base * 100, 1) if base > 0 else 20.0
+
+    needs_status = "on_track" if needs_pct <= 50.0 else "exceeded"
+    wants_status = "on_track" if wants_pct <= 30.0 else "exceeded"
+    savings_status = "on_track" if savings_pct >= 20.0 else "under"
+
+    if needs_status == "on_track" and wants_status == "on_track" and savings_status == "on_track":
+        evaluation = "Bugetul tău respectă perfect regula 50/30/20. Continui să economisești eficient!"
+    elif needs_pct > 55.0:
+        evaluation = f"Nevoile de bază reprezintă {needs_pct}% din buget. Caută oportunități de a reduce cheltuielile fixe."
+    elif wants_pct > 35.0:
+        evaluation = f"Cheltuielile pe dorințe sunt la {wants_pct}%. Limitează cumpărăturile impulsive pentru a spori economiile."
+    else:
+        evaluation = f"Rata actuală de economisire este de {savings_pct}%. Țintește către pragul de 20% prin automatizarea transferurilor."
+
+    return Budget503020Output(
+        status="ok",
+        needs=BudgetCategorySplit(
+            amountMinorUnits=needs_spent,
+            amountFormatted=format_minor(needs_spent, _HOME_CURRENCY),
+            actualPct=needs_pct,
+            targetPct=50.0,
+            status=needs_status,
+        ),
+        wants=BudgetCategorySplit(
+            amountMinorUnits=wants_spent,
+            amountFormatted=format_minor(wants_spent, _HOME_CURRENCY),
+            actualPct=wants_pct,
+            targetPct=30.0,
+            status=wants_status,
+        ),
+        savings=BudgetCategorySplit(
+            amountMinorUnits=savings_amount,
+            amountFormatted=format_minor(savings_amount, _HOME_CURRENCY),
+            actualPct=savings_pct,
+            targetPct=20.0,
+            status=savings_status,
+        ),
+        totalIncomeFormatted=format_minor(income, _HOME_CURRENCY),
+        totalSpendFormatted=format_minor(total_spend, _HOME_CURRENCY),
+        evaluation=evaluation,
+    )
+
+
+class IdleCashInput(BaseModel):
+    pass
+
+
+class IdleCashOutput(BaseModel):
+    status: Literal["ok", "no_idle_cash"]
+    checking_balance_minor: int = Field(alias="checkingBalanceMinorUnits")
+    checking_balance_formatted: str = Field(alias="checkingBalanceFormatted")
+    operational_buffer_minor: int = Field(alias="operationalBufferMinorUnits")
+    operational_buffer_formatted: str = Field(alias="operationalBufferFormatted")
+    idle_minor: int = Field(alias="idleMinorUnits")
+    idle_formatted: str = Field(alias="idleFormatted")
+    suggested_term_months: int = Field(alias="suggestedTermMonths")
+    suggested_rate_bps: int = Field(alias="suggestedRateBps")
+    suggested_rate_formatted: str = Field(alias="suggestedRateFormatted")
+    estimated_annual_interest_minor: int = Field(alias="estimatedAnnualInterestMinorUnits")
+    estimated_annual_interest_formatted: str = Field(alias="estimatedAnnualInterestFormatted")
+    action_prompt: str = Field(alias="actionPrompt")
+    model_config = {"populate_by_name": True}
+
+
+async def resolve_idle_cash(actor: Actor, payload: BaseModel) -> BaseModel:
+    assert isinstance(payload, IdleCashInput)
+    user_id = actor.subject_id()
+    payments = get_payments_service()
+    accounts_service = get_accounts_service()
+
+    try:
+        user_accounts = await accounts_service.list_for_user(user_id)
+    except Exception:
+        user_accounts = []
+
+    checking_balance = sum(
+        acc["balance"]["minorUnits"]
+        for acc in user_accounts
+        if acc.get("kind") == "current" and acc.get("currency") == _HOME_CURRENCY
+    )
+
+    now = datetime.now(timezone.utc)
+    last_year, last_month = (now.year - 1, 12) if now.month == 1 else (now.year, now.month - 1)
+    start_last, end_last = _month_bounds(last_year, last_month)
+    rows_last = [
+        row
+        for row in await _transactions_in_range(payments, user_id, start_last, end_last)
+        if row["amount"]["currency"] == _HOME_CURRENCY
+    ]
+    totals_last = _spend_by_category(rows_last)
+    spend_last = sum(amt for cat, amt in totals_last.items() if cat not in _NON_SPEND_CATEGORIES)
+    monthly_spend = max(spend_last, 150_000)
+
+    operational_buffer = int(1.5 * monthly_spend)
+    idle_amount = max(0, checking_balance - operational_buffer)
+
+    term_product = DEPOSIT_PRODUCTS[0]
+    best_term = next((t for t in term_product.terms if t.months == 12), term_product.terms[-1])
+    term_months = best_term.months
+    rate_bps = best_term.rate_bps
+    rate_formatted = format_rate(rate_bps)
+
+    estimated_interest_minor = int(idle_amount * rate_bps / 10_000)
+
+    if idle_amount < 50_000:
+        return IdleCashOutput(
+            status="no_idle_cash",
+            checkingBalanceMinorUnits=checking_balance,
+            checkingBalanceFormatted=format_minor(checking_balance, _HOME_CURRENCY),
+            operationalBufferMinorUnits=operational_buffer,
+            operationalBufferFormatted=format_minor(operational_buffer, _HOME_CURRENCY),
+            idleMinorUnits=0,
+            idleFormatted=format_minor(0, _HOME_CURRENCY),
+            suggestedTermMonths=term_months,
+            suggestedRateBps=rate_bps,
+            suggestedRateFormatted=rate_formatted,
+            estimatedAnnualInterestMinorUnits=0,
+            estimatedAnnualInterestFormatted=format_minor(0, _HOME_CURRENCY),
+            actionPrompt="Soldul contului curent este echilibrat pentru cheltuielile tale obișnuite.",
+        )
+
+    return IdleCashOutput(
+        status="ok",
+        checkingBalanceMinorUnits=checking_balance,
+        checkingBalanceFormatted=format_minor(checking_balance, _HOME_CURRENCY),
+        operationalBufferMinorUnits=operational_buffer,
+        operationalBufferFormatted=format_minor(operational_buffer, _HOME_CURRENCY),
+        idleMinorUnits=idle_amount,
+        idleFormatted=format_minor(idle_amount, _HOME_CURRENCY),
+        suggestedTermMonths=term_months,
+        suggestedRateBps=rate_bps,
+        suggestedRateFormatted=rate_formatted,
+        estimatedAnnualInterestMinorUnits=estimated_interest_minor,
+        estimatedAnnualInterestFormatted=format_minor(estimated_interest_minor, _HOME_CURRENCY),
+        actionPrompt=f"Ai {format_minor(idle_amount, _HOME_CURRENCY)} disponibili. Deschide un depozit pe {term_months} luni la {rate_formatted} p.a. pentru a câștiga {format_minor(estimated_interest_minor, _HOME_CURRENCY)} garantat.",
+    )

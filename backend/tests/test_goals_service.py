@@ -15,6 +15,7 @@ from backend.goals.service import (
     GoalsService,
     RespondToGoalInvite,
     RunStandingOrder,
+    UpdateStandingOrder,
     UpdateStandingOrderAmount,
     WithdrawFromGoal,
 )
@@ -207,6 +208,25 @@ class _FakeStandingOrderRepository:
             None,
         )
 
+    async def get_open_for_goal_and_source(self, goal_id: str, source_account_id: str):
+        return next(
+            (
+                o
+                for o in self._orders.values()
+                if o.goal_id == goal_id
+                and o.source_account_id == source_account_id
+                and o.status in ("active", "paused")
+            ),
+            None,
+        )
+
+    async def list_open_for_goal(self, goal_id: str):
+        return [
+            o
+            for o in self._orders.values()
+            if o.goal_id == goal_id and o.status in ("active", "paused")
+        ]
+
     async def list_due(self, now, limit: int = 200):
         return [
             o
@@ -226,6 +246,29 @@ class _FakeStandingOrderRepository:
         if order is None or order.user_id != user_id or order.status == "cancelled":
             return False
         self._orders[order_id] = order.model_copy(update={"amount_minor": amount_minor})
+        return True
+
+    async def update_details(
+        self,
+        order_id: str,
+        user_id: str,
+        *,
+        source_account_id: str | None = None,
+        amount_minor: int | None = None,
+        frequency: str | None = None,
+        session=None,
+    ) -> bool:
+        order = self._orders.get(order_id)
+        if order is None or order.user_id != user_id or order.status == "cancelled":
+            return False
+        updates = {}
+        if source_account_id is not None:
+            updates["source_account_id"] = source_account_id
+        if amount_minor is not None:
+            updates["amount_minor"] = amount_minor
+        if frequency is not None:
+            updates["frequency"] = frequency
+        self._orders[order_id] = order.model_copy(update=updates)
         return True
 
     async def record_run(self, order_id: str, next_run_at, ran_at, session=None) -> None:
@@ -1019,6 +1062,30 @@ async def test_accepting_an_invite_adds_the_member_to_the_goal_and_the_joint_acc
         session=None,
     )
     goal_id = created.data["goalId"]
+
+
+async def test_multiple_standing_orders_from_different_accounts_allowed() -> None:
+    account1 = _account()
+    service, _, account_repo = _build_service(account1, balance_minor=1_000_000)
+    context = _context()
+    account2 = Account(
+        user_id="user-1",
+        iban="RO00TESTBANK0000000088",
+        holder_name="Test User",
+        currency="RON",
+        kind=AccountKind.CURRENT,
+        label="Secondary RON account",
+    )
+    await account_repo.add(account2)
+
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account1.id, name="Vacation", target_minor=5_000_000, target_date=date(2028, 1, 1)
+        ),
+        context,
+        session=None,
+    )
+    goal_id = created.data["goalId"]
     invite = (await invites.list_for_goal(goal_id))[0]
     bob_context = _context(user_id="user-2", correlation_id="corr-2")
 
@@ -1060,6 +1127,16 @@ async def test_declining_an_invite_leaves_the_goal_and_account_untouched() -> No
         context,
         session=None,
     )
+
+    
+    order1 = await service._handle_create_standing_order(
+        CreateStandingOrder(
+            goal_id=goal_id, source_account_id=account1.id, amount_minor=20_000, frequency="weekly"
+        ),
+        context,
+        session=None,
+    )
+
     goal_id = created.data["goalId"]
     invite = (await invites.list_for_goal(goal_id))[0]
     bob_context = _context(user_id="user-2", correlation_id="corr-2")
@@ -1096,6 +1173,18 @@ async def test_an_invitee_cannot_respond_to_someone_elses_invite() -> None:
         context,
         session=None,
     )
+
+
+    assert order1.data["sourceAccountId"] == account1.id
+
+    order2 = await service._handle_create_standing_order(
+        CreateStandingOrder(
+            goal_id=goal_id, source_account_id=account2.id, amount_minor=30_000, frequency="monthly"
+        ),
+        context,
+        session=None,
+    )
+
     invite = (await invites.list_for_goal(created.data["goalId"]))[0]
 
     with pytest.raises(NotFoundError):
@@ -1119,6 +1208,36 @@ async def test_a_collaborator_can_deposit_from_their_own_account_but_not_withdra
             target_minor=1_000_000,
             target_date=date(2028, 1, 1),
             collaborators=[CollaboratorInput(username="bob", share_kind="fixed", amount_minor=200_000)],
+        ),
+        context,
+        session=None,
+    )
+    goal_id = created.data["goalId"]
+
+
+    assert order2.data["sourceAccountId"] == account2.id
+
+    all_orders = await service.get_standing_orders_for_goal(goal_id, "user-1")
+    assert len(all_orders) == 2
+
+
+async def test_standing_order_account_and_frequency_can_be_updated() -> None:
+    account1 = _account()
+    service, _, account_repo = _build_service(account1, balance_minor=1_000_000)
+    context = _context()
+    account2 = Account(
+        user_id="user-1",
+        iban="RO00TESTBANK0000000077",
+        holder_name="Test User",
+        currency="RON",
+        kind=AccountKind.CURRENT,
+        label="Secondary RON account",
+    )
+    await account_repo.add(account2)
+
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account1.id, name="House", target_minor=10_000_000, target_date=date(2028, 1, 1)
         ),
         context,
         session=None,
@@ -1173,6 +1292,27 @@ async def test_achieving_a_shared_goal_notifies_every_member() -> None:
         context,
         session=None,
     )
+
+
+    order = await service._handle_create_standing_order(
+        CreateStandingOrder(
+            goal_id=goal_id, source_account_id=account1.id, amount_minor=50_000, frequency="weekly"
+        ),
+        context,
+        session=None,
+    )
+    so_id = order.data["standingOrderId"]
+
+    updated = await service._handle_update_standing_order(
+        UpdateStandingOrder(
+            standing_order_id=so_id,
+            source_account_id=account2.id,
+            amount_minor=60_000,
+            frequency="monthly",
+        ),
+        context,
+        session=None,
+    )
     goal_id = created.data["goalId"]
     invite = (await invites.list_for_goal(goal_id))[0]
     bob_context = _context(user_id="user-2", correlation_id="corr-2")
@@ -1186,3 +1326,7 @@ async def test_achieving_a_shared_goal_notifies_every_member() -> None:
 
     achieved_events = [event for event in result.events if event.name == "goals.achieved"]
     assert {event.payload["userId"] for event in achieved_events} == {"user-1", "user-2"}
+
+    assert updated.data["sourceAccountId"] == account2.id
+    assert updated.data["amount"]["minorUnits"] == 60_000
+    assert updated.data["frequency"] == "monthly"

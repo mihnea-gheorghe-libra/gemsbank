@@ -422,6 +422,15 @@ class StandingOrderAmountRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class StandingOrderUpdateRequest(BaseModel):
+    source_account_id: str | None = Field(
+        default=None, alias="sourceAccountId", max_length=64
+    )
+    amount_minor: int | None = Field(default=None, alias="amountMinorUnits", gt=0)
+    frequency: str | None = None
+    model_config = {"populate_by_name": True}
+
+
 class SynthesizeRequest(BaseModel):
     text: str = Field(min_length=1, max_length=5000)
     language: str | None = None
@@ -468,6 +477,7 @@ exchange_router = APIRouter(prefix="/exchange", tags=["exchange"])
 investments_router = APIRouter(prefix="/investments", tags=["investments"])
 insights_router = APIRouter(prefix="/insights", tags=["insights"])
 notifications_router = APIRouter(prefix="/notifications", tags=["notifications"])
+analytics_router = APIRouter(prefix="/analytics", tags=["analytics"])
 goals_router = APIRouter(prefix="/goals", tags=["goals"])
 deposits_router = APIRouter(prefix="/deposits", tags=["deposits"])
 credits_router = APIRouter(prefix="/credits", tags=["credits"])
@@ -1165,6 +1175,28 @@ async def mark_notifications_seen(
         prefs={"notificationsSeenAt": datetime.now(timezone.utc).isoformat()},
     )
     return await bus.execute(command, actor, idempotency_key)
+@analytics_router.get("/health-score")
+async def get_financial_health_score(actor: CurrentActor) -> dict[str, Any]:
+    from backend.capabilities.analytics import FinancialHealthInput, resolve_financial_health
+
+    out = await resolve_financial_health(actor, FinancialHealthInput())
+    return out.model_dump(by_alias=True)
+
+
+@analytics_router.get("/budget-50-30-20")
+async def get_budget_503020(actor: CurrentActor) -> dict[str, Any]:
+    from backend.capabilities.analytics import Budget503020Input, resolve_budget_503020
+
+    out = await resolve_budget_503020(actor, Budget503020Input())
+    return out.model_dump(by_alias=True)
+
+
+@analytics_router.get("/idle-cash")
+async def get_idle_cash_optimization(actor: CurrentActor) -> dict[str, Any]:
+    from backend.capabilities.analytics import IdleCashInput, resolve_idle_cash
+
+    out = await resolve_idle_cash(actor, IdleCashInput())
+    return out.model_dump(by_alias=True)
 
 
 @agents_router.post("/support/ask")
@@ -1390,10 +1422,13 @@ async def withdraw_from_goal(
 
 @goals_router.get("/{goal_id}/standing-order")
 async def get_standing_order(actor: CurrentActor, goal_id: str) -> dict[str, Any]:
-    order = await get_goals_service().get_standing_order_for_goal(
+    orders = await get_goals_service().get_standing_orders_for_goal(
         goal_id, actor.subject_id()
     )
-    return {"standingOrder": order.public_view() if order else None}
+    return {
+        "standingOrder": orders[0].public_view() if orders else None,
+        "standingOrders": [o.public_view() for o in orders],
+    }
 
 
 @goals_router.post("/{goal_id}/standing-order")
@@ -1413,6 +1448,22 @@ async def create_standing_order(
     return await bus.execute(command, actor, idempotency_key)
 
 
+@goals_router.post("/standing-order/{standing_order_id}/update")
+async def update_standing_order(
+    actor: CurrentActor,
+    standing_order_id: str,
+    payload: StandingOrderUpdateRequest,
+    idempotency_key: IdempotencyKey = None,
+) -> dict[str, Any]:
+    command = UpdateStandingOrder(
+        standing_order_id=standing_order_id,
+        source_account_id=payload.source_account_id,
+        amount_minor=payload.amount_minor,
+        frequency=payload.frequency,
+    )
+    return await bus.execute(command, actor, idempotency_key)
+
+
 @goals_router.post("/standing-order/{standing_order_id}/amount")
 async def update_standing_order_amount(
     actor: CurrentActor,
@@ -1420,7 +1471,7 @@ async def update_standing_order_amount(
     payload: StandingOrderAmountRequest,
     idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
-    command = UpdateStandingOrderAmount(
+    command = UpdateStandingOrder(
         standing_order_id=standing_order_id,
         amount_minor=payload.amount_minor,
     )
@@ -1756,6 +1807,7 @@ api_router.include_router(cards_router)
 api_router.include_router(investments_router)
 api_router.include_router(insights_router)
 api_router.include_router(notifications_router)
+api_router.include_router(analytics_router)
 api_router.include_router(goals_router)
 api_router.include_router(deposits_router)
 api_router.include_router(credits_router)
