@@ -44,6 +44,10 @@ class AccountRepository(Protocol):
 
     async def list_for_user(self, user_id: str) -> list[Account]: ...
 
+    async def add_owner(
+        self, account_id: str, user_id: str, session: AsyncIOMotorClientSession | None = None
+    ) -> None: ...
+
     async def set_status(
         self,
         account_id: str,
@@ -87,6 +91,8 @@ def _label_for(kind: AccountKind, currency: str) -> str:
         return "Cont curent" if currency == "RON" else f"Cont curent {currency}"
     if kind is AccountKind.INVEST:
         return "Cont investiții" if currency == "RON" else f"Cont investiții {currency}"
+    if kind is AccountKind.JOINT:
+        return "Cont comun" if currency == "RON" else f"Cont comun {currency}"
     return "Economii" if currency == "RON" else f"Economii {currency}"
 
 
@@ -114,6 +120,7 @@ class AccountsService:
         currency: str,
         kind: AccountKind,
         label: str,
+        owner_ids: list[str] | None = None,
         session: AsyncIOMotorClientSession | None = None,
     ) -> Account:
         account = Account(
@@ -124,9 +131,18 @@ class AccountsService:
             kind=kind,
             label=label,
             opened_at=self._clock.now(),
+            owner_ids=owner_ids or [],
         )
         await self._accounts.add(account, session=session)
         return account
+
+    async def add_owner(
+        self,
+        account_id: str,
+        user_id: str,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> None:
+        await self._accounts.add_owner(account_id, user_id, session=session)
 
     async def open_starter_accounts(
         self,
@@ -145,7 +161,7 @@ class AccountsService:
 
     async def get_owned(self, account_id: str, user_id: str) -> Account:
         account = await self._accounts.get(account_id)
-        if account is None or account.user_id != user_id:
+        if account is None or not account.is_owned_by(user_id):
             raise NotFoundError(
                 "That account does not belong to you.", details={"field": "sourceAccountId"}
             )
@@ -220,6 +236,11 @@ class AccountsService:
         self, command: Command, context: ActorContext, session: AsyncIOMotorClientSession
     ) -> CommandResult:
         assert isinstance(command, OpenAccount)
+        if command.kind is AccountKind.JOINT:
+            raise ValidationError(
+                "A joint account is opened from a shared savings goal, not directly.",
+                details={"field": "kind"},
+            )
         user = await self._users.get(context.actor.id)
         holder_name = user.display_name if user is not None else context.actor.id
         currency = command.currency.strip().upper()

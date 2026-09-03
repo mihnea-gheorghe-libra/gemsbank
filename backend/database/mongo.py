@@ -93,6 +93,10 @@ def standing_orders_collection() -> AsyncIOMotorCollection:
     return get_db()["standingOrders"]
 
 
+def goal_invites_collection() -> AsyncIOMotorCollection:
+    return get_db()["goalInvites"]
+
+
 def investment_orders_collection() -> AsyncIOMotorCollection:
     return get_db()["investmentOrders"]
 
@@ -140,6 +144,9 @@ async def ensure_indexes() -> None:
 
     await outbox_collection().create_index(
         [("dispatchedAt", ASCENDING), ("occurredAt", ASCENDING)], name="ix_undispatched"
+    )
+    await outbox_collection().create_index(
+        [("name", ASCENDING), ("occurredAt", DESCENDING)], name="ix_name_occurred"
     )
 
     await sessions_collection().create_index(
@@ -214,6 +221,11 @@ async def ensure_indexes() -> None:
     )
     await standing_orders_collection().create_index(
         [("status", ASCENDING), ("nextRunAt", ASCENDING)], name="ix_due"
+    )
+
+    await goal_invites_collection().create_index([("goalId", ASCENDING)], name="ix_goal")
+    await goal_invites_collection().create_index(
+        [("inviteeId", ASCENDING), ("status", ASCENDING)], name="ix_invitee_status"
     )
 
     await investment_orders_collection().create_index(

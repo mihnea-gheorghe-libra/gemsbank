@@ -135,7 +135,206 @@
     );
   };
 
-  DASH.Topbar = function Topbar({ screen, username, me, theme, onTheme, onOpenSettings, onSignOut }) {
+  function formatNotificationWhen(iso) {
+    const moment = new Date(iso);
+    if (Number.isNaN(moment.getTime())) return "";
+    return moment.toLocaleString(GEMS.i18n.locale === "ro" ? "ro-RO" : "en-GB", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  function notificationText(item) {
+    const payload = item.payload || {};
+    switch (item.type) {
+      case "credit_approved":
+      case "credit_rejected":
+        return t("dashboard.notifications.types." + item.type, { reason: payload.reason || "" });
+      case "transaction_accepted":
+        return t("dashboard.notifications.types.transaction_accepted", {
+          amount: DASH.formatMinor(payload.amountMinorUnits || 0) + " " + (payload.currency || ""),
+        });
+      case "account_frozen":
+        return t("dashboard.notifications.types.account_frozen", { reason: payload.reason || "" });
+      case "card_frozen":
+        return t("dashboard.notifications.types.card_frozen");
+      case "goal_achieved":
+        return t("dashboard.notifications.types.goal_achieved", {
+          name: payload.name || "",
+          target: DASH.formatMinor(payload.targetMinorUnits || 0) + " " + (payload.currency || ""),
+        });
+      case "goal_invite_sent":
+        return t("dashboard.notifications.types.goal_invite_sent", {
+          inviter: payload.inviterName || "",
+          goal: payload.goalName || "",
+        });
+      case "goal_invite_accepted":
+        return t("dashboard.notifications.types.goal_invite_accepted", {
+          invitee: payload.inviteeUsername || "",
+          goal: payload.goalName || "",
+        });
+      case "goal_invite_declined":
+        return t("dashboard.notifications.types.goal_invite_declined", {
+          invitee: payload.inviteeUsername || "",
+          goal: payload.goalName || "",
+        });
+      default:
+        return "";
+    }
+  }
+
+  function inviteShareText(payload) {
+    if (!payload) return "";
+    if (payload.shareKind === "fixed" && payload.shareAmountMinorUnits) {
+      return DASH.formatMinor(payload.shareAmountMinorUnits) + " " + (payload.currency || "");
+    }
+    if (payload.shareKind === "percent" && payload.sharePercentBp) {
+      return Math.round(payload.sharePercentBp / 100) + "%";
+    }
+    return "";
+  }
+
+  DASH.NotificationBell = function NotificationBell({ notifications, unreadCount, onOpen }) {
+    const [open, setOpen] = useState(false);
+    const containerRef = useRef(null);
+    const [respondedIds, setRespondedIds] = useState({});
+    const [busyInviteId, setBusyInviteId] = useState(null);
+    const items = notifications || [];
+
+    const respondedFromFeed = useMemo(() => {
+      const set = {};
+      items.forEach((item) => {
+        if (item.type === "goal_invite_responded" && item.payload && item.payload.inviteId) {
+          set[item.payload.inviteId] = true;
+        }
+      });
+      return set;
+    }, [items]);
+
+    const visibleItems = items.filter((item) => item.type !== "goal_invite_responded");
+
+    function respondToInvite(inviteId, accept) {
+      setBusyInviteId(inviteId);
+      api
+        .respondToGoalInvite(inviteId, accept)
+        .then(() => {
+          setBusyInviteId(null);
+          setRespondedIds((previous) => ({ ...previous, [inviteId]: true }));
+        })
+        .catch(() => {
+          setBusyInviteId(null);
+        });
+    }
+
+    useEffect(() => {
+      if (!open) return undefined;
+      function onPointerDown(event) {
+        if (containerRef.current && !containerRef.current.contains(event.target)) {
+          setOpen(false);
+        }
+      }
+      function onKeyDown(event) {
+        if (event.key === "Escape") setOpen(false);
+      }
+      document.addEventListener("mousedown", onPointerDown);
+      document.addEventListener("keydown", onKeyDown);
+      return () => {
+        document.removeEventListener("mousedown", onPointerDown);
+        document.removeEventListener("keydown", onKeyDown);
+      };
+    }, [open]);
+
+    return (
+      <div className="dash-notif" ref={containerRef}>
+        <button
+          type="button"
+          className="dash-notif-btn"
+          aria-haspopup="true"
+          aria-expanded={open}
+          aria-label={t("dashboard.notifications.trigger")}
+          onClick={() => {
+            setOpen((value) => {
+              const next = !value;
+              if (next) onOpen();
+              return next;
+            });
+          }}
+        >
+          <UI.Icon name="Bell" size={17} />
+          {unreadCount > 0 ? (
+            <span className="dash-notif-badge" aria-hidden="true">{unreadCount > 9 ? "9+" : unreadCount}</span>
+          ) : null}
+        </button>
+
+        {open ? (
+          <div className="dash-notif-panel elev-md plate" role="menu">
+            <div className="dash-notif-panel-title">{t("dashboard.notifications.title")}</div>
+            {visibleItems.length === 0 ? (
+              <div className="dash-notif-empty">{t("dashboard.notifications.empty")}</div>
+            ) : (
+              <ul className="dash-notif-list">
+                {visibleItems.map((item) => {
+                  const inviteId = item.payload && item.payload.inviteId;
+                  const isPendingInvite =
+                    item.type === "goal_invite_sent" &&
+                    inviteId &&
+                    !respondedFromFeed[inviteId] &&
+                    !respondedIds[inviteId];
+                  const share = inviteShareText(item.payload);
+                  return (
+                    <li
+                      key={item.id}
+                      className={UI.classNames("dash-notif-item", !item.read && "is-unread")}
+                      role="menuitem"
+                    >
+                      <span className="dash-notif-item-text">{notificationText(item)}</span>
+                      {item.type === "goal_invite_sent" && share ? (
+                        <span className="dash-notif-item-share">{share}</span>
+                      ) : null}
+                      <span className="dash-notif-item-time">{formatNotificationWhen(item.occurredAt)}</span>
+                      {isPendingInvite ? (
+                        <div className="dash-notif-item-actions">
+                          <UI.Button
+                            type="button"
+                            variant="primary"
+                            disabled={busyInviteId === inviteId}
+                            onClick={() => respondToInvite(inviteId, true)}
+                          >
+                            {t("dashboard.notifications.acceptInvite")}
+                          </UI.Button>
+                          <UI.Button
+                            type="button"
+                            variant="secondary"
+                            disabled={busyInviteId === inviteId}
+                            onClick={() => respondToInvite(inviteId, false)}
+                          >
+                            {t("dashboard.notifications.declineInvite")}
+                          </UI.Button>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  DASH.Topbar = function Topbar({
+    screen,
+    username,
+    me,
+    onOpenSettings,
+    onSignOut,
+    notifications,
+    unreadNotifications,
+    onOpenNotifications,
+  }) {
     const [menuOpen, setMenuOpen] = useState(false);
     const containerRef = useRef(null);
 
@@ -164,7 +363,13 @@
           <div className="dash-topbar-tag">{t("dashboard.tag." + screen)}</div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+<div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <DASH.NotificationBell
+            notifications={notifications}
+            unreadCount={unreadNotifications}
+            onOpen={onOpenNotifications}
+          />
+
           <UI.Button type="button" variant="ghost" onClick={() => onTheme(theme === "dark" ? "light" : "dark")}>
             <UI.Icon name={theme === "dark" ? "Sun" : "Moon"} size={16} />
           </UI.Button>

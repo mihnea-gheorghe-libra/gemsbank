@@ -74,7 +74,7 @@ class CommandBus:
         ):
             result = await handler(command, context, session)
             await write_audit(result.audit, actor, context.correlation_id, session=session)
-            await write_events(result.events, context.correlation_id, session=session)
+            await write_events(result.events, actor, context.correlation_id, session=session)
             if idempotency_key:
                 await store_response(name, idempotency_key, result.data, session=session)
 

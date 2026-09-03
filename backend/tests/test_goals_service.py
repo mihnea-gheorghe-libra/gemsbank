@@ -5,12 +5,15 @@ import pytest
 
 from backend.accounts.account import Account, AccountKind
 from backend.accounts.service import AccountsService
+from backend.goals.invite import GoalInviteStatus
 from backend.goals.service import (
     CloseGoal,
+    CollaboratorInput,
     CreateGoal,
     CreateStandingOrder,
     DepositToGoal,
     GoalsService,
+    RespondToGoalInvite,
     RunStandingOrder,
     UpdateStandingOrder,
     UpdateStandingOrderAmount,
@@ -35,7 +38,17 @@ class _FakeAccountRepository:
         return next((a for a in self._accounts.values() if a.iban == iban), None)
 
     async def list_for_user(self, user_id: str) -> list[Account]:
-        return [a for a in self._accounts.values() if a.user_id == user_id]
+        return [
+            a for a in self._accounts.values()
+            if a.user_id == user_id or user_id in a.owner_ids
+        ]
+
+    async def add_owner(self, account_id: str, user_id: str, session=None) -> None:
+        account = self._accounts.get(account_id)
+        if account is not None and user_id not in account.owner_ids:
+            self._accounts[account_id] = account.model_copy(
+                update={"owner_ids": [*account.owner_ids, user_id]}
+            )
 
     async def set_status(self, account_id: str, status, session=None) -> bool:
         account = self._accounts.get(account_id)
@@ -92,11 +105,21 @@ class _FixedClock:
 
 
 class _FakeUserDirectory:
-    def __init__(self, display_name: str = "Test User") -> None:
+    def __init__(self, usernames: dict[str, str] | None = None, display_name: str = "Test User") -> None:
         self._display_name = display_name
+        self._by_username = usernames or {}
+        self._by_id = {user_id: username for username, user_id in self._by_username.items()}
 
     async def get(self, user_id: str):
-        return SimpleNamespace(display_name=self._display_name)
+        username = self._by_id.get(user_id)
+        display_name = username.title() if username else self._display_name
+        return SimpleNamespace(id=user_id, username=username or user_id, display_name=display_name)
+
+    async def get_by_username(self, username: str):
+        user_id = self._by_username.get(username)
+        if user_id is None:
+            return None
+        return SimpleNamespace(id=user_id, username=username, display_name=username.title())
 
 
 class _FakeGoalRepository:
@@ -115,8 +138,28 @@ class _FakeGoalRepository:
 
     async def list_active_for_user(self, user_id: str):
         return [
-            g for g in self._goals.values() if g.user_id == user_id and g.status == "active"
+            g
+            for g in self._goals.values()
+            if (g.user_id == user_id or user_id in g.member_ids) and g.status == "active"
         ]
+
+    async def add_member(self, goal_id: str, user_id: str, share, session=None) -> bool:
+        goal = self._goals.get(goal_id)
+        if goal is None or user_id in goal.member_ids:
+            return False
+        plan = list(goal.contribution_plan)
+        if share is not None:
+            plan.append(share)
+        self._goals[goal_id] = goal.model_copy(
+            update={"member_ids": [*goal.member_ids, user_id], "contribution_plan": plan}
+        )
+        return True
+
+    async def add_contribution(self, goal_id: str, user_id: str, amount_minor: int, session=None) -> None:
+        goal = self._goals[goal_id]
+        contributions = dict(goal.contributions_minor)
+        contributions[user_id] = contributions.get(user_id, 0) + amount_minor
+        self._goals[goal_id] = goal.model_copy(update={"contributions_minor": contributions})
 
     async def set_streak(
         self, goal_id: str, streak_weeks, streak_last_week, computed_at, session=None
@@ -135,6 +178,13 @@ class _FakeGoalRepository:
         if goal is None or goal.user_id != user_id or goal.status != "active":
             return False
         self._goals[goal_id] = goal.model_copy(update={"status": "closed", "closed_at": closed_at})
+        return True
+
+    async def mark_achieved(self, goal_id: str, achieved_at, session=None) -> bool:
+        goal = self._goals.get(goal_id)
+        if goal is None or goal.achieved_at is not None:
+            return False
+        self._goals[goal_id] = goal.model_copy(update={"achieved_at": achieved_at})
         return True
 
 
@@ -232,28 +282,65 @@ class _FakeStandingOrderRepository:
         self._orders[order_id] = order.model_copy(update={"last_failure_reason": reason})
 
 
+class _FakeGoalInviteRepository:
+    def __init__(self) -> None:
+        self._invites: dict[str, object] = {}
+
+    async def add(self, invite, session=None) -> None:
+        self._invites[invite.id] = invite
+
+    async def get(self, invite_id: str):
+        return self._invites.get(invite_id)
+
+    async def list_for_goal(self, goal_id: str):
+        return [invite for invite in self._invites.values() if invite.goal_id == goal_id]
+
+    async def set_status(self, invite_id: str, status, responded_at, session=None) -> bool:
+        invite = self._invites.get(invite_id)
+        if invite is None or invite.status is not GoalInviteStatus.PENDING:
+            return False
+        self._invites[invite_id] = invite.model_copy(
+            update={"status": status, "responded_at": responded_at}
+        )
+        return True
+
+
 def _build_service(
     account: Account, balance_minor: int, today: date = date(2026, 1, 1)
 ) -> tuple[GoalsService, _FakeGoalRepository, _FakeAccountRepository]:
+    service, goal_repo, account_repo, _invites = _build_full_service(account, balance_minor, today)
+    return service, goal_repo, account_repo
+
+
+def _build_full_service(
+    account: Account,
+    balance_minor: int,
+    today: date = date(2026, 1, 1),
+    usernames: dict[str, str] | None = None,
+) -> tuple[GoalsService, _FakeGoalRepository, _FakeAccountRepository, _FakeGoalInviteRepository]:
     account_repo = _FakeAccountRepository([account])
     ledger = LedgerService(
         journal=_FakeJournalRepository({account.id: balance_minor}), clock=_FixedClock(today)
     )
+    users = _FakeUserDirectory(usernames)
     accounts_service = AccountsService(
         accounts=account_repo,
         ledger=ledger,
-        users=_FakeUserDirectory(),
+        users=users,
         clock=_FixedClock(today),
     )
     goal_repo = _FakeGoalRepository()
+    invite_repo = _FakeGoalInviteRepository()
     service = GoalsService(
         goals=goal_repo,
         standing_orders=_FakeStandingOrderRepository(),
+        invites=invite_repo,
         accounts=accounts_service,
         ledger=ledger,
+        users=users,
         clock=_FixedClock(today),
     )
-    return service, goal_repo, account_repo
+    return service, goal_repo, account_repo, invite_repo
 
 
 def _account(user_id: str = "user-1") -> Account:
@@ -408,6 +495,57 @@ async def test_deposit_moves_real_money_into_the_pot() -> None:
     progress = await service.get_progress_for_user("user-1")
     assert progress.progress_minor == 250_000
     assert await service._ledger.balance_of(account.id) == 750_000
+
+
+async def test_deposit_crossing_the_target_emits_goals_achieved_once() -> None:
+    account = _account()
+    service, repo, _ = _build_service(account, balance_minor=1_000_000)
+    context = _context()
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id, name="Apartment", target_minor=500_000, target_date=date(2028, 1, 1)
+        ),
+        context,
+        session=None,
+    )
+    goal_id = created.data["goalId"]
+
+    result = await service._handle_deposit(
+        DepositToGoal(goal_id=goal_id, amount_minor=500_000), context, session=None
+    )
+
+    assert result.data["achieved"] is True
+    assert [event.name for event in result.events] == ["goals.deposited", "goals.achieved"]
+    achieved_event = result.events[1]
+    assert achieved_event.payload["userId"] == "user-1"
+    assert achieved_event.payload["targetMinorUnits"] == 500_000
+    stored = await repo.get(goal_id)
+    assert stored.achieved_at is not None
+
+    again = await service._handle_deposit(
+        DepositToGoal(goal_id=goal_id, amount_minor=10_000), context, session=None
+    )
+    assert [event.name for event in again.events] == ["goals.deposited"]
+    assert "achieved" not in again.data
+
+
+async def test_deposit_below_the_target_does_not_emit_goals_achieved() -> None:
+    account = _account()
+    service, _, _ = _build_service(account, balance_minor=1_000_000)
+    context = _context()
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id, name="Apartment", target_minor=500_000, target_date=date(2028, 1, 1)
+        ),
+        context,
+        session=None,
+    )
+
+    result = await service._handle_deposit(
+        DepositToGoal(goal_id=created.data["goalId"], amount_minor=100_000), context, session=None
+    )
+
+    assert [event.name for event in result.events] == ["goals.deposited"]
 
 
 async def test_deposit_rejects_more_than_the_parent_holds() -> None:
@@ -719,6 +857,40 @@ async def test_run_due_standing_orders_skips_insufficient_funds_without_raising(
     assert progress.progress_minor == 0
 
 
+async def test_standing_order_run_crossing_the_target_emits_goals_achieved() -> None:
+    account = _account()
+    service, repo, _ = _build_service(account, balance_minor=1_000_000)
+    context = _context()
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id, name="Apartment", target_minor=50_000, target_date=date(2028, 1, 1)
+        ),
+        context,
+        session=None,
+    )
+    goal_id = created.data["goalId"]
+    order_result = await service._handle_create_standing_order(
+        CreateStandingOrder(
+            goal_id=goal_id, source_account_id=account.id, amount_minor=50_000, frequency="weekly"
+        ),
+        context,
+        session=None,
+    )
+
+    run_result = await service._handle_run_standing_order(
+        RunStandingOrder(standing_order_id=order_result.data["standingOrderId"]),
+        context,
+        session=None,
+    )
+
+    assert [event.name for event in run_result.events] == [
+        "goals.standing_order.executed",
+        "goals.achieved",
+    ]
+    stored = await repo.get(goal_id)
+    assert stored.achieved_at is not None
+
+
 async def test_streak_counts_consecutive_weeks_with_a_contribution() -> None:
     account = _account()
     service, repo, _ = _build_service(account, balance_minor=1_000_000, today=date(2026, 1, 22))
@@ -798,6 +970,100 @@ async def test_closing_a_legacy_goal_never_closes_the_account_that_funds_it() ->
     assert (await repo.get(goal_id)).status == "closed"
 
 
+async def test_create_goal_with_collaborator_opens_a_joint_account_and_a_pending_invite() -> None:
+    account = _account()
+    service, repo, accounts, invites = _build_full_service(
+        account, balance_minor=1_000_000, usernames={"bob": "user-2"}
+    )
+    context = _context()
+    command = CreateGoal(
+        parent_account_id=account.id,
+        name="Trip",
+        target_minor=1_000_000,
+        target_date=date(2028, 1, 1),
+        collaborators=[CollaboratorInput(username="bob", share_kind="fixed", amount_minor=300_000)],
+    )
+
+    result = await service._handle_create(command, context, session=None)
+
+    assert result.data["isShared"] is True
+    assert result.data["invitesSent"] == 1
+    assert [event.name for event in result.events] == ["goals.created", "goals.invite_sent"]
+    pot = await accounts.get(result.data["accountId"])
+    assert pot.kind is AccountKind.JOINT
+    assert pot.owner_ids == ["user-1"]
+    stored = await repo.get(result.data["goalId"])
+    pending = await invites.list_for_goal(stored.id)
+    assert len(pending) == 1
+    assert pending[0].status is GoalInviteStatus.PENDING
+    assert pending[0].invitee_id == "user-2"
+    assert pending[0].share_amount_minor == 300_000
+
+
+async def test_create_goal_rejects_inviting_an_unknown_username() -> None:
+    account = _account()
+    service, _, _, _ = _build_full_service(account, balance_minor=0, usernames={})
+    context = _context()
+
+    with pytest.raises(ValidationError):
+        await service._handle_create(
+            CreateGoal(
+                parent_account_id=account.id,
+                name="Trip",
+                target_minor=1_000_000,
+                target_date=date(2028, 1, 1),
+                collaborators=[
+                    CollaboratorInput(username="ghost", share_kind="fixed", amount_minor=1_000)
+                ],
+            ),
+            context,
+            session=None,
+        )
+
+
+async def test_create_goal_rejects_inviting_yourself() -> None:
+    account = _account()
+    service, _, _, _ = _build_full_service(
+        account, balance_minor=0, usernames={"me": "user-1"}
+    )
+    context = _context()
+
+    with pytest.raises(ValidationError):
+        await service._handle_create(
+            CreateGoal(
+                parent_account_id=account.id,
+                name="Trip",
+                target_minor=1_000_000,
+                target_date=date(2028, 1, 1),
+                collaborators=[
+                    CollaboratorInput(username="me", share_kind="fixed", amount_minor=1_000)
+                ],
+            ),
+            context,
+            session=None,
+        )
+
+
+async def test_accepting_an_invite_adds_the_member_to_the_goal_and_the_joint_account() -> None:
+    account = _account()
+    service, repo, accounts, invites = _build_full_service(
+        account, balance_minor=1_000_000, usernames={"bob": "user-2"}
+    )
+    context = _context()
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id,
+            name="Trip",
+            target_minor=1_000_000,
+            target_date=date(2028, 1, 1),
+            collaborators=[CollaboratorInput(username="bob", share_kind="percent", percent_bp=2500)],
+        ),
+        context,
+        session=None,
+    )
+    goal_id = created.data["goalId"]
+
+
 async def test_multiple_standing_orders_from_different_accounts_allowed() -> None:
     account1 = _account()
     service, _, account_repo = _build_service(account1, balance_minor=1_000_000)
@@ -820,8 +1086,49 @@ async def test_multiple_standing_orders_from_different_accounts_allowed() -> Non
         session=None,
     )
     goal_id = created.data["goalId"]
+    invite = (await invites.list_for_goal(goal_id))[0]
+    bob_context = _context(user_id="user-2", correlation_id="corr-2")
 
-    # First standing order from account 1
+    result = await service._handle_respond_to_invite(
+        RespondToGoalInvite(invite_id=invite.id, accept=True), bob_context, session=None
+    )
+
+    assert result.data["status"] == "accepted"
+    assert [event.name for event in result.events] == [
+        "goals.invite_responded",
+        "goals.invite_accepted",
+    ]
+    stored = await repo.get(goal_id)
+    assert stored.member_ids == ["user-2"]
+    assert stored.contribution_plan[0].percent_bp == 2500
+    pot = await accounts.get(stored.account_id)
+    assert "user-2" in pot.owner_ids
+
+    with pytest.raises(IllegalTransitionError):
+        await service._handle_respond_to_invite(
+            RespondToGoalInvite(invite_id=invite.id, accept=True), bob_context, session=None
+        )
+
+
+async def test_declining_an_invite_leaves_the_goal_and_account_untouched() -> None:
+    account = _account()
+    service, repo, accounts, invites = _build_full_service(
+        account, balance_minor=1_000_000, usernames={"bob": "user-2"}
+    )
+    context = _context()
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id,
+            name="Trip",
+            target_minor=1_000_000,
+            target_date=date(2028, 1, 1),
+            collaborators=[CollaboratorInput(username="bob", share_kind="fixed", amount_minor=100_000)],
+        ),
+        context,
+        session=None,
+    )
+
+    
     order1 = await service._handle_create_standing_order(
         CreateStandingOrder(
             goal_id=goal_id, source_account_id=account1.id, amount_minor=20_000, frequency="weekly"
@@ -829,9 +1136,47 @@ async def test_multiple_standing_orders_from_different_accounts_allowed() -> Non
         context,
         session=None,
     )
+
+    goal_id = created.data["goalId"]
+    invite = (await invites.list_for_goal(goal_id))[0]
+    bob_context = _context(user_id="user-2", correlation_id="corr-2")
+
+    result = await service._handle_respond_to_invite(
+        RespondToGoalInvite(invite_id=invite.id, accept=False), bob_context, session=None
+    )
+
+    assert result.data["status"] == "declined"
+    assert [event.name for event in result.events] == [
+        "goals.invite_responded",
+        "goals.invite_declined",
+    ]
+    stored = await repo.get(goal_id)
+    assert stored.member_ids == []
+    pot = await accounts.get(stored.account_id)
+    assert pot.owner_ids == ["user-1"]
+
+
+async def test_an_invitee_cannot_respond_to_someone_elses_invite() -> None:
+    account = _account()
+    service, _, _, invites = _build_full_service(
+        account, balance_minor=0, usernames={"bob": "user-2"}
+    )
+    context = _context()
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id,
+            name="Trip",
+            target_minor=1_000_000,
+            target_date=date(2028, 1, 1),
+            collaborators=[CollaboratorInput(username="bob", share_kind="fixed", amount_minor=100_000)],
+        ),
+        context,
+        session=None,
+    )
+
+
     assert order1.data["sourceAccountId"] == account1.id
 
-    # Second standing order from account 2 (allowed!)
     order2 = await service._handle_create_standing_order(
         CreateStandingOrder(
             goal_id=goal_id, source_account_id=account2.id, amount_minor=30_000, frequency="monthly"
@@ -839,6 +1184,37 @@ async def test_multiple_standing_orders_from_different_accounts_allowed() -> Non
         context,
         session=None,
     )
+
+    invite = (await invites.list_for_goal(created.data["goalId"]))[0]
+
+    with pytest.raises(NotFoundError):
+        await service._handle_respond_to_invite(
+            RespondToGoalInvite(invite_id=invite.id, accept=True),
+            _context(user_id="user-3", correlation_id="corr-3"),
+            session=None,
+        )
+
+
+async def test_a_collaborator_can_deposit_from_their_own_account_but_not_withdraw_or_close() -> None:
+    account = _account()
+    service, repo, accounts, invites = _build_full_service(
+        account, balance_minor=1_000_000, usernames={"bob": "user-2"}
+    )
+    context = _context()
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id,
+            name="Trip",
+            target_minor=1_000_000,
+            target_date=date(2028, 1, 1),
+            collaborators=[CollaboratorInput(username="bob", share_kind="fixed", amount_minor=200_000)],
+        ),
+        context,
+        session=None,
+    )
+    goal_id = created.data["goalId"]
+
+
     assert order2.data["sourceAccountId"] == account2.id
 
     all_orders = await service.get_standing_orders_for_goal(goal_id, "user-1")
@@ -867,6 +1243,56 @@ async def test_standing_order_account_and_frequency_can_be_updated() -> None:
         session=None,
     )
     goal_id = created.data["goalId"]
+    invite = (await invites.list_for_goal(goal_id))[0]
+    bob_context = _context(user_id="user-2", correlation_id="corr-2")
+    await service._handle_respond_to_invite(
+        RespondToGoalInvite(invite_id=invite.id, accept=True), bob_context, session=None
+    )
+    bob_account = _account(user_id="user-2")
+    bob_account = bob_account.model_copy(update={"iban": "RO00TESTBANK0000000077"})
+    await accounts.add(bob_account)
+    service._ledger._journal._balances[bob_account.id] = 500_000
+
+    with pytest.raises(ValidationError):
+        await service._handle_deposit(
+            DepositToGoal(goal_id=goal_id, amount_minor=50_000), bob_context, session=None
+        )
+
+    deposit_result = await service._handle_deposit(
+        DepositToGoal(goal_id=goal_id, amount_minor=50_000, source_account_id=bob_account.id),
+        bob_context,
+        session=None,
+    )
+    assert deposit_result.data["progressMinorUnits"] == 50_000
+    stored = await repo.get(goal_id)
+    assert stored.contributions_minor["user-2"] == 50_000
+
+    with pytest.raises(NotFoundError):
+        await service._handle_withdraw(
+            WithdrawFromGoal(goal_id=goal_id, amount_minor=10_000), bob_context, session=None
+        )
+    with pytest.raises(NotFoundError):
+        await service._handle_close(CloseGoal(goal_id=goal_id), bob_context, session=None)
+
+
+async def test_achieving_a_shared_goal_notifies_every_member() -> None:
+    account = _account()
+    service, _repo, _accounts, invites = _build_full_service(
+        account, balance_minor=1_000_000, usernames={"bob": "user-2"}
+    )
+    context = _context()
+    created = await service._handle_create(
+        CreateGoal(
+            parent_account_id=account.id,
+            name="Trip",
+            target_minor=100_000,
+            target_date=date(2028, 1, 1),
+            collaborators=[CollaboratorInput(username="bob", share_kind="fixed", amount_minor=50_000)],
+        ),
+        context,
+        session=None,
+    )
+
 
     order = await service._handle_create_standing_order(
         CreateStandingOrder(
@@ -887,6 +1313,19 @@ async def test_standing_order_account_and_frequency_can_be_updated() -> None:
         context,
         session=None,
     )
+    goal_id = created.data["goalId"]
+    invite = (await invites.list_for_goal(goal_id))[0]
+    bob_context = _context(user_id="user-2", correlation_id="corr-2")
+    await service._handle_respond_to_invite(
+        RespondToGoalInvite(invite_id=invite.id, accept=True), bob_context, session=None
+    )
+
+    result = await service._handle_deposit(
+        DepositToGoal(goal_id=goal_id, amount_minor=100_000), context, session=None
+    )
+
+    achieved_events = [event for event in result.events if event.name == "goals.achieved"]
+    assert {event.payload["userId"] for event in achieved_events} == {"user-1", "user-2"}
 
     assert updated.data["sourceAccountId"] == account2.id
     assert updated.data["amount"]["minorUnits"] == 60_000

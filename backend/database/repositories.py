@@ -25,6 +25,7 @@ from backend.database.mongo import (
     beneficiaries_collection,
     cards_collection,
     credit_applications_collection,
+    goal_invites_collection,
     goals_collection,
     handoffs_collection,
     investment_orders_collection,
@@ -40,7 +41,8 @@ from backend.database.mongo import (
 )
 from backend.deposits.deposit import TermDeposit
 from backend.escalations.handoff import Handoff, HandoffStatus
-from backend.goals.goal import Goal
+from backend.goals.goal import ContributionShare, Goal
+from backend.goals.invite import GoalInvite, GoalInviteStatus
 from backend.goals.standing_order import StandingOrder
 from backend.helpers.errors import ConflictError
 from backend.investments.order import InvestmentOrder, OrderSide
@@ -507,6 +509,7 @@ def _account_to_bson(account: Account) -> dict[str, Any]:
         "statusReason": account.status_reason,
         "statusChangedAt": account.status_changed_at,
         "statusChangedBy": account.status_changed_by,
+        "ownerIds": account.owner_ids,
     }
 
 
@@ -524,6 +527,7 @@ def _account_from_bson(raw: dict[str, Any]) -> Account:
         status_reason=raw.get("statusReason"),
         status_changed_at=raw.get("statusChangedAt"),
         status_changed_by=raw.get("statusChangedBy"),
+        owner_ids=raw.get("ownerIds") or [],
     )
 
 
@@ -547,8 +551,19 @@ class MongoAccountRepository:
         return _account_from_bson(raw) if raw else None
 
     async def list_for_user(self, user_id: str) -> list[Account]:
-        found = accounts_collection().find({"userId": user_id}).sort("openedAt", ASCENDING)
+        found = (
+            accounts_collection()
+            .find({"$or": [{"userId": user_id}, {"ownerIds": user_id}]})
+            .sort("openedAt", ASCENDING)
+        )
         return [_account_from_bson(raw) async for raw in found]
+
+    async def add_owner(
+        self, account_id: str, user_id: str, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await accounts_collection().update_one(
+            {"_id": account_id}, {"$addToSet": {"ownerIds": user_id}}, session=session
+        )
 
     async def set_status(
         self,
@@ -572,6 +587,24 @@ class MongoAccountRepository:
         return result.modified_count == 1
 
 
+def _contribution_share_to_bson(share: ContributionShare) -> dict[str, Any]:
+    return {
+        "userId": share.user_id,
+        "kind": share.kind,
+        "amountMinorUnits": share.amount_minor,
+        "percentBp": share.percent_bp,
+    }
+
+
+def _contribution_share_from_bson(raw: dict[str, Any]) -> ContributionShare:
+    return ContributionShare(
+        user_id=raw["userId"],
+        kind=raw["kind"],
+        amount_minor=raw.get("amountMinorUnits"),
+        percent_bp=raw.get("percentBp"),
+    )
+
+
 def _goal_to_bson(goal: Goal) -> dict[str, Any]:
     return {
         "_id": goal.id,
@@ -585,9 +618,13 @@ def _goal_to_bson(goal: Goal) -> dict[str, Any]:
         "status": goal.status,
         "createdAt": goal.created_at,
         "closedAt": goal.closed_at,
+        "achievedAt": goal.achieved_at,
         "streakWeeks": goal.streak_weeks,
         "streakLastWeek": goal.streak_last_week,
         "streakComputedAt": goal.streak_computed_at,
+        "memberIds": goal.member_ids,
+        "contributionPlan": [_contribution_share_to_bson(share) for share in goal.contribution_plan],
+        "contributionsMinor": goal.contributions_minor,
     }
 
 
@@ -604,9 +641,15 @@ def _goal_from_bson(raw: dict[str, Any]) -> Goal:
         status=raw.get("status", "active"),
         created_at=raw["createdAt"],
         closed_at=raw.get("closedAt"),
+        achieved_at=raw.get("achievedAt"),
         streak_weeks=raw.get("streakWeeks", 0),
         streak_last_week=raw.get("streakLastWeek"),
         streak_computed_at=raw.get("streakComputedAt"),
+        member_ids=raw.get("memberIds") or [],
+        contribution_plan=[
+            _contribution_share_from_bson(share) for share in raw.get("contributionPlan") or []
+        ],
+        contributions_minor=raw.get("contributionsMinor") or {},
     )
 
 
@@ -625,9 +668,12 @@ class MongoGoalRepository:
         return _goal_from_bson(raw) if raw else None
 
     async def list_active_for_user(self, user_id: str) -> list[Goal]:
-        found = goals_collection().find({"userId": user_id, "status": "active"}).sort(
-            "createdAt", ASCENDING
-        )
+        found = goals_collection().find(
+            {
+                "$or": [{"userId": user_id}, {"memberIds": user_id}],
+                "status": "active",
+            }
+        ).sort("createdAt", ASCENDING)
         return [_goal_from_bson(raw) async for raw in found]
 
     async def get_for_user(self, user_id: str) -> Goal | None:
@@ -664,6 +710,120 @@ class MongoGoalRepository:
         result = await goals_collection().update_one(
             {"_id": goal_id, "userId": user_id, "status": {"$ne": "closed"}},
             {"$set": {"status": "closed", "closedAt": closed_at}},
+            session=session,
+        )
+        return result.modified_count == 1
+
+    async def mark_achieved(
+        self,
+        goal_id: str,
+        achieved_at: datetime,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool:
+        result = await goals_collection().update_one(
+            {"_id": goal_id, "achievedAt": None},
+            {"$set": {"achievedAt": achieved_at}},
+            session=session,
+        )
+        return result.modified_count == 1
+
+    async def add_member(
+        self,
+        goal_id: str,
+        user_id: str,
+        share: ContributionShare | None,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool:
+        update: dict[str, Any] = {"$addToSet": {"memberIds": user_id}}
+        if share is not None:
+            update["$push"] = {"contributionPlan": _contribution_share_to_bson(share)}
+        result = await goals_collection().update_one(
+            {"_id": goal_id, "memberIds": {"$ne": user_id}}, update, session=session
+        )
+        return result.modified_count == 1
+
+    async def add_contribution(
+        self,
+        goal_id: str,
+        user_id: str,
+        amount_minor: int,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> None:
+        await goals_collection().update_one(
+            {"_id": goal_id},
+            {"$inc": {f"contributionsMinor.{user_id}": amount_minor}},
+            session=session,
+        )
+
+
+def _goal_invite_to_bson(invite: GoalInvite) -> dict[str, Any]:
+    return {
+        "_id": invite.id,
+        "goalId": invite.goal_id,
+        "goalName": invite.goal_name,
+        "currency": invite.currency,
+        "inviterId": invite.inviter_id,
+        "inviterName": invite.inviter_name,
+        "inviteeId": invite.invitee_id,
+        "inviteeUsername": invite.invitee_username,
+        "shareKind": invite.share_kind,
+        "shareAmountMinorUnits": invite.share_amount_minor,
+        "sharePercentBp": invite.share_percent_bp,
+        "status": invite.status.value,
+        "createdAt": invite.created_at,
+        "respondedAt": invite.responded_at,
+    }
+
+
+def _goal_invite_from_bson(raw: dict[str, Any]) -> GoalInvite:
+    return GoalInvite(
+        id=raw["_id"],
+        goal_id=raw["goalId"],
+        goal_name=raw["goalName"],
+        currency=raw["currency"],
+        inviter_id=raw["inviterId"],
+        inviter_name=raw["inviterName"],
+        invitee_id=raw["inviteeId"],
+        invitee_username=raw["inviteeUsername"],
+        share_kind=raw["shareKind"],
+        share_amount_minor=raw.get("shareAmountMinorUnits"),
+        share_percent_bp=raw.get("sharePercentBp"),
+        status=GoalInviteStatus(raw["status"]),
+        created_at=raw["createdAt"],
+        responded_at=raw.get("respondedAt"),
+    )
+
+
+class MongoGoalInviteRepository:
+    async def add(
+        self, invite: GoalInvite, session: AsyncIOMotorClientSession | None = None
+    ) -> None:
+        await goal_invites_collection().insert_one(_goal_invite_to_bson(invite), session=session)
+
+    async def get(self, invite_id: str) -> GoalInvite | None:
+        raw = await goal_invites_collection().find_one({"_id": invite_id})
+        return _goal_invite_from_bson(raw) if raw else None
+
+    async def list_for_goal(self, goal_id: str) -> list[GoalInvite]:
+        found = goal_invites_collection().find({"goalId": goal_id}).sort("createdAt", ASCENDING)
+        return [_goal_invite_from_bson(raw) async for raw in found]
+
+    async def list_pending_for_invitee(self, user_id: str) -> list[GoalInvite]:
+        found = goal_invites_collection().find(
+            {"inviteeId": user_id, "status": GoalInviteStatus.PENDING.value}
+        ).sort("createdAt", ASCENDING)
+        return [_goal_invite_from_bson(raw) async for raw in found]
+
+    async def set_status(
+        self,
+        invite_id: str,
+        status: GoalInviteStatus,
+        responded_at: datetime,
+        session: AsyncIOMotorClientSession | None = None,
+    ) -> bool:
+        result = await goal_invites_collection().update_one(
+            {"_id": invite_id, "status": GoalInviteStatus.PENDING.value},
+            {"$set": {"status": status.value, "respondedAt": responded_at}},
             session=session,
         )
         return result.modified_count == 1

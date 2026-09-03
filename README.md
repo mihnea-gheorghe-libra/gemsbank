@@ -87,7 +87,9 @@ mocks; that mock data is gone, replaced by two small new feature folders (`backe
 - **Savings goal** is unchanged and was already real (see "Agents" below for `backend/goals/`) —
   the Portfolio screen now simply surfaces the same `GoalProgressCard` component the Analytics and
   Education screens already used, instead of duplicating goal creation in the Open Account dialog.
-  GEMS still supports one *active* goal per customer at a time.
+  GEMS supports any number of active goals per customer in parallel (see "Savings goals: many at
+  once, with a real streak" below), optionally shared with invited collaborators through a joint
+  pot account (see "Obiectiv comun" below).
 - **Investments** buy and sell holdings for real, at the live unit price. Every trade runs
   `BuyInstrument` / `SellInstrument` through `bus.execute` — idempotent, audited, one outbox event
   — exactly like every other write in this system. A customer with no `invest`-kind account cannot
@@ -213,8 +215,11 @@ backend/
     validation.py    IBAN mod-97 check and generation
     adapters.py      clock, the starter-account list
   goals/             savings goals — a real pot account plus a target, funded/topped up/withdrawn
-                     via LedgerService.transfer; one active goal per user; standing orders
+                     via LedgerService.transfer; many active goals per user; standing orders;
+                     optional collaborators on a joint pot account, invited and accepted/declined
+                     through the topbar notification bell
     goal.py          the Goal aggregate
+    invite.py        the GoalInvite aggregate — pending/accepted/declined, one per collaborator
     standing_order.py the StandingOrder aggregate
     service.py       create/close/deposit/withdraw, standing-order create/pause/resume/cancel/run
     validation.py    name, target amount/date, movement amount, frequency
@@ -330,6 +335,10 @@ backend/
     handoff.py       the Handoff aggregate
     service.py       RequestHandoff — a normal command through bus.execute
     validation.py    question and reason bounds
+  notifications/     the topbar bell — a read model over the outbox, no new writes
+    service.py       board_for_user reads a whitelisted slice of `outbox`, scoped to the
+                     caller; "seen" is a timestamp in the user's existing prefs
+    validation.py    the page-size bound on GET /notifications
   helpers/
     context.py       ids, Actor (user | system | agent | admin), correlation id, JSON logging
     crypto.py        Argon2id hasher, AES-GCM PIN cipher
@@ -847,6 +856,56 @@ detail** (read-only profile, account cards with freeze/unfreeze, the journal wit
 "refuse and reverse", their credit applications) and **Credit applications** (the queue, filtered
 by status). Every action that changes anything opens the same dialog first: it states what will
 happen, requires the reason, and will not submit without it.
+
+## Notifications — a bell over the outbox, not a new pathway
+
+`backend/notifications/` and a bell icon in the dashboard topbar. `PROMPT.md` §4 lists
+"notifications and push" as explicitly not in v0; this is a deliberate, explicitly requested and
+approved deviation from it, scoped to **in-app** notifications only — no push, no email, no new
+write path.
+
+The seam this leans on was already there and unused: `outbox` (SEAM 5) has carried every domain
+event since v0, and `PROMPT.md` §7.5 always said it would "later ... fan out to agents and
+notifications." Nothing needed to change in `credits`, `payments`, `admin`, `cards` or `goals` to
+make their events notifiable — `write_events` (`backend/database/records.py`) now stamps
+`actorKind` / `actorId` / `onBehalfOf` from the acting `Actor` onto every outbox row it already
+writes, in the same transaction as before. `NotificationsService.board_for_user` reads a
+whitelisted subset of event *names* from `outbox` — `admin.credit_approved`,
+`admin.credit_rejected`, `payments.transfer_posted`, `admin.account_frozen`, `cards.frozen`,
+`goals.achieved` — and resolves "whose notification is this" generically, with no per-event
+special-casing:
+
+```
+on_behalf_of set?         → that user   (an agent, or the standing-orders job, acting for them)
+actorKind == "user"?      → the actor themselves (self-service: payments, cards, goals)
+otherwise                 → payload.userId          (admin acting on a customer's behalf)
+```
+
+"Seen" is one more field on the customer's own `prefs` (`auth.update_preferences`, the same
+command `/settings` already uses to persist "hide balances") — `notificationsSeenAt`, a plain
+timestamp. No new collection, no per-notification read/unread row: a notification is read once its
+`occurredAt` is at or before that cursor. The bell's badge is `unreadCount`; opening the panel
+calls `POST /notifications/seen` and refetches.
+
+**"A card was frozen by admin" maps to `admin.account_frozen`, not a per-card freeze** — the back
+office (see above) can only freeze an *account*, never one card in isolation; freezing the account
+already blocks every card drawing on it. A true admin-initiated single-card freeze does not exist
+in this codebase today (`cards.frozen` is customer self-service only); building one was out of
+scope here.
+
+**Goal achievement is new**, not reused: `Goal` gained an `achieved_at` field and
+`GoalsService._maybe_achieve` compares the pre-deposit balance against `target_minor` on both a
+manual deposit and a standing-order run, firing `goals.achieved` exactly once (guarded by an
+atomic `mark_achieved` update, `achievedAt: None → <timestamp>`, so a race can't double-fire it).
+Depositing further after the goal is already met does not re-notify.
+
+**What this deliberately does not do**: no push notifications, no email, no per-notification
+read/unread document, no polling from the outbox by a background worker (the read happens at
+request time, scoped to the caller, exactly like `vendors`/`fx` already do for their own alerts —
+see `backend/vendors/service.py` / `backend/fx/service.py` for the precedent this follows).
+`payments.transfer_rejected` does not exist because nothing in this codebase currently rejects a
+posted transfer (`Payment.reject()` is defined but unreachable) — "transaction rejected" is not in
+the notification whitelist for that reason, not by oversight.
 
 ## Personal details come from the ID document
 
@@ -1606,6 +1665,80 @@ left exactly as it is** — the closed account and the self-transfer are the goa
 on, and the journal is append-only in any case. Affected rows are visible with
 `db.goals.find({$expr: {$eq: ["$accountId", "$parentAccountId"]}})`.
 
+## Obiectiv comun — a joint pot account, explicitly approved
+
+`PROMPT.md` §4 lists "joint accounts" explicitly under **not in v0**. This is a deliberate,
+explicitly requested and approved deviation from it, scoped to one thing: a savings goal that
+several people fund from a shared pot, each per their own stated preference. It is a new *caller*
+of the same seven seams, not a new pathway — the pot is a real `Account`, funded the same way any
+goal pot is (`LedgerService.transfer`, the same door `payments`/`exchange`/`goals` already use),
+and every write still goes through `bus.execute`.
+
+**A new account kind, not a generic multi-owner account.** `AccountKind` gained `joint`, and
+`Account` gained `owner_ids: list[str]`. `userId` stays the creator, exactly as every other
+account already assumes; `ownerIds` holds the accepted collaborators, checked by one new method,
+`Account.is_owned_by(user_id)`, called from the one place account ownership was already
+centralised — `AccountsService.get_owned`. Nothing else in the app (payments, cards, investments,
+admin, deposits) needed to change: they already reach an account only through that function, and a
+joint account passes its ownership check for any of its owners automatically. `POST /accounts`
+(`OpenAccount`, the "Open new account" dialog) explicitly refuses `kind=joint` — a joint account is
+only ever opened from a shared goal, never directly.
+
+**Inviting collaborators.** `CreateGoal` takes an optional `collaborators` list, each a username
+and a contribution preference — a fixed amount or a percentage of the target
+(`ContributionShare` on `Goal`). When present, the goal's pot opens as `kind=joint` (owned only by
+the creator at first) and one `GoalInvite` (`backend/goals/invite.py`, collection `goalInvites`) is
+written per collaborator, `pending`. Nothing about an invite reaches another account or moves
+money — it is a plain record with its own append-only history (a response only ever sets `status`
+and `respondedAt`, never rewrites the row).
+
+**Accepting or declining is a normal `goals` command**, not a new notifications write path:
+`POST /goals/invites/{id}/respond` runs `RespondToGoalInvite` through the same `bus.execute` as
+everything else. Accepting adds the invitee to `Goal.memberIds` and to the pot's `ownerIds`
+(`AccountsService.add_owner`) in the same transaction; declining changes only the invite's status.
+`backend/notifications/service.py`'s read-only invariant ("a bell over the outbox, not a new
+pathway" — see below) is untouched: it only gained four more whitelisted outbox event names
+(`goals.invite_sent`, `goals.invite_responded`, `goals.invite_accepted`, `goals.invite_declined`).
+The topbar bell renders an Accept/Decline card for `goal_invite_sent`; `goal_invite_responded`
+carries no visible text and exists only so the invitee's own feed can grey out a card it has
+already answered, on any device, without a second endpoint.
+
+**Once accepted, the goal is a normal goal for that collaborator** — `GET /goals` matches on
+`{$or: [{userId}, {memberIds}]}`, so it appears in their own Financial education screen exactly
+like a goal they created themselves, no separate "shared goals" list. There is no "one active goal"
+limit to interact with either way — see "Savings goals: many at once" above; a shared goal simply
+joins that same list.
+
+**Contribution is tracked, not enforced.** The stated share (fixed amount or percent of target) is
+shown next to each collaborator's actual running contribution (`Goal.contributionsMinor`, a
+per-user counter updated in the same transaction as each deposit — the same "maintained by the
+handler that can change it" pattern the goal's streak already uses, not a ledger scan). Nobody is
+blocked from contributing more or less than their stated share; it is a preference the UI surfaces,
+not a budget the system enforces.
+
+**Explicit scope cuts, decided and documented, not oversights:**
+
+- **Only the creator can withdraw from or close a shared goal.** A withdrawal or a close sweeps
+  the pot's balance back to the *creator's* parent account — there is no per-member payout target,
+  and building one was not asked for. A collaborator can only deposit, each from one of *their own*
+  accounts (`DepositToGoal` gained an optional `sourceAccountId` for exactly this; the creator's own
+  deposit keeps defaulting to the goal's `parentAccountId`, unchanged).
+- **Standing orders stay creator-only.** A collaborator contributes with manual deposits, not a
+  recurring order of their own, for this pass — extendable later without a redesign, since an order
+  already carries its own `sourceAccountId`.
+- **A percentage share is not validated against 100%.** Several collaborators can each state
+  "25%" with nothing enforcing the shares sum to the target; it is a stated preference, not a
+  reconciled split.
+
+`ops/018_joint_accounts_and_goal_invites.js` widens the `accounts` validator's `kind` enum to add
+`joint` and adds the optional `ownerIds` array, and creates the validated `goalInvites` collection.
+`goals`' own validator needed no change — it does not restrict extra properties, so `memberIds`,
+`contributionPlan` and `contributionsMinor` round-trip the same way `achievedAt` always has.
+
+Also corrected in the same pass: the note elsewhere that "GEMS supports one active goal per
+customer at a time" describes the pre-`013_goals_multi_and_streak.js` model. See "Savings goals:
+many at once, with a real streak" above for what actually shipped — a shared goal builds on that,
+it does not reintroduce a limit.
 
 ## What the payments screen does not do yet
 

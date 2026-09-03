@@ -1,8 +1,12 @@
 from datetime import date
+from typing import Literal
 
 from backend.helpers.errors import ValidationError
 
 FREQUENCIES = frozenset({"weekly", "monthly"})
+MAX_COLLABORATORS = 10
+MIN_PERCENT_BP = 100
+MAX_PERCENT_BP = 10000
 
 
 def normalise_name(raw: str) -> str:
@@ -45,3 +49,41 @@ def normalise_frequency(raw: str) -> str:
             "Frequency must be 'weekly' or 'monthly'.", details={"field": "frequency"}
         )
     return candidate
+
+
+def normalise_username_for_invite(raw: str) -> str:
+    candidate = raw.strip().lower()
+    if not candidate:
+        raise ValidationError(
+            "Enter the username of the person to invite.",
+            details={"field": "username"},
+        )
+    return candidate
+
+
+def normalise_share(
+    kind: Literal["fixed", "percent"],
+    amount_minor: int | None,
+    percent_bp: int | None,
+) -> tuple[int | None, int | None]:
+    if kind == "fixed":
+        if amount_minor is None or amount_minor <= 0:
+            raise ValidationError(
+                "Give a fixed contribution amount greater than zero.",
+                details={"field": "amountMinorUnits"},
+            )
+        return amount_minor, None
+    if percent_bp is None or not (MIN_PERCENT_BP <= percent_bp <= MAX_PERCENT_BP):
+        raise ValidationError(
+            "A percentage share must be between 1% and 100% of the target.",
+            details={"field": "percentBp"},
+        )
+    return None, percent_bp
+
+
+def normalise_collaborator_count(count: int) -> None:
+    if count > MAX_COLLABORATORS:
+        raise ValidationError(
+            f"A shared goal can have at most {MAX_COLLABORATORS} collaborators.",
+            details={"field": "collaborators"},
+        )

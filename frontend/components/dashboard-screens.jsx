@@ -2790,17 +2790,40 @@
     return DASH.accountLabel(account);
   }
 
+  let _collaboratorRowSeq = 0;
+
   function SetGoalDialog({ accounts, busy, error, onSubmit, onDismiss }) {
     const [accountId, setAccountId] = useState((accounts[0] && accounts[0].id) || "");
     const [name, setName] = useState("");
     const [amount, setAmount] = useState("");
     const [targetDate, setTargetDate] = useState("");
     const [initialDeposit, setInitialDeposit] = useState("");
+    const [collaborators, setCollaborators] = useState([]);
 
     const amountMinor = DASH.parseMinor(amount);
     const initialDepositMinor = DASH.parseMinor(initialDeposit);
     const minDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const ready = Boolean(accountId) && name.trim() !== "" && amountMinor > 0 && Boolean(targetDate);
+    const collaboratorsValid = collaborators.every(
+      (row) => row.username.trim() !== "" && Number(row.value) > 0
+    );
+    const ready =
+      Boolean(accountId) && name.trim() !== "" && amountMinor > 0 && Boolean(targetDate) && collaboratorsValid;
+
+    function addCollaboratorRow() {
+      _collaboratorRowSeq += 1;
+      setCollaborators((rows) => [
+        ...rows,
+        { rowId: _collaboratorRowSeq, username: "", shareKind: "fixed", value: "" },
+      ]);
+    }
+
+    function updateCollaboratorRow(rowId, patch) {
+      setCollaborators((rows) => rows.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row)));
+    }
+
+    function removeCollaboratorRow(rowId) {
+      setCollaborators((rows) => rows.filter((row) => row.rowId !== rowId));
+    }
 
     function submit(event) {
       event.preventDefault();
@@ -2811,6 +2834,12 @@
         targetMinorUnits: amountMinor,
         targetDate,
         initialDepositMinorUnits: initialDepositMinor > 0 ? initialDepositMinor : 0,
+        collaborators: collaborators.map((row) => ({
+          username: row.username.trim(),
+          shareKind: row.shareKind,
+          amountMinorUnits: row.shareKind === "fixed" ? DASH.parseMinor(row.value) : undefined,
+          percentBp: row.shareKind === "percent" ? Math.round(Number(row.value) * 100) : undefined,
+        })),
       });
     }
 
@@ -2851,6 +2880,49 @@
               onChange={(event) => setInitialDeposit(event.target.value)}
             />
           </UI.Field>
+
+          <div className="dash-collab-editor">
+            <div className="text-muted" style={{ fontSize: 12 }}>
+              {t("dashboard.analytics.goal.dialog.collaboratorsTitle")}
+            </div>
+            {collaborators.map((row) => (
+              <div className="dash-collab-row" key={row.rowId}>
+                <UI.TextInput
+                  aria-label={t("dashboard.analytics.goal.dialog.collaboratorUsername")}
+                  placeholder={t("dashboard.analytics.goal.dialog.collaboratorUsername")}
+                  value={row.username}
+                  onChange={(event) => updateCollaboratorRow(row.rowId, { username: event.target.value })}
+                />
+                <UI.Select
+                  aria-label={t("dashboard.analytics.goal.dialog.shareKind")}
+                  value={row.shareKind}
+                  onChange={(event) => updateCollaboratorRow(row.rowId, { shareKind: event.target.value })}
+                >
+                  <option value="fixed">{t("dashboard.analytics.goal.dialog.shareFixed")}</option>
+                  <option value="percent">{t("dashboard.analytics.goal.dialog.sharePercent")}</option>
+                </UI.Select>
+                <UI.TextInput
+                  aria-label={t("dashboard.analytics.goal.dialog.shareValue")}
+                  inputMode="decimal"
+                  placeholder={row.shareKind === "percent" ? "%" : ""}
+                  value={row.value}
+                  onChange={(event) => updateCollaboratorRow(row.rowId, { value: event.target.value })}
+                />
+                <button
+                  type="button"
+                  className="dash-copy-btn"
+                  aria-label={t("dashboard.analytics.goal.dialog.removeCollaborator")}
+                  onClick={() => removeCollaboratorRow(row.rowId)}
+                >
+                  <UI.Icon name="X" size={14} />
+                </button>
+              </div>
+            ))}
+            <UI.Button type="button" variant="secondary" onClick={addCollaboratorRow}>
+              {t("dashboard.analytics.goal.dialog.addCollaborator")}
+            </UI.Button>
+          </div>
+
           <div className="dialog-actions">
             <UI.Button type="button" variant="secondary" onClick={onDismiss}>{t("dashboard.analytics.goal.dialog.cancel")}</UI.Button>
             <UI.Button type="submit" variant="primary" disabled={!ready || busy}>
@@ -2884,19 +2956,35 @@
     );
   }
 
-  function GoalMovementDialog({ mode, goalName, progressPct, busy, error, onSubmit, onDismiss }) {
+  function GoalMovementDialog({
+    mode,
+    goalName,
+    progressPct,
+    busy,
+    error,
+    onSubmit,
+    onDismiss,
+    sourceAccounts,
+  }) {
     const [amount, setAmount] = useState("");
     const [confirmedBelowThreshold, setConfirmedBelowThreshold] = useState(false);
+    const needsSourceAccount = Boolean(sourceAccounts);
+    const [sourceAccountId, setSourceAccountId] = useState(
+      (needsSourceAccount && sourceAccounts[0] && sourceAccounts[0].id) || ""
+    );
     const amountMinor = DASH.parseMinor(amount);
     const needsWarning = mode === "withdraw" && progressPct < 50 && amountMinor > 0;
-    const ready = amountMinor > 0 && (!needsWarning || confirmedBelowThreshold);
+    const ready =
+      amountMinor > 0 &&
+      (!needsWarning || confirmedBelowThreshold) &&
+      (!needsSourceAccount || Boolean(sourceAccountId));
     const isWithdraw = mode === "withdraw";
     const copy = isWithdraw ? "withdrawDialog" : "depositDialog";
 
     function submit(event) {
       event.preventDefault();
       if (!ready) return;
-      onSubmit(amountMinor);
+      onSubmit(amountMinor, needsSourceAccount ? sourceAccountId : undefined);
     }
 
     return (
@@ -2905,6 +2993,21 @@
           {t(`dashboard.analytics.goal.${copy}.title`, { name: goalName })}
         </h2>
         <form noValidate onSubmit={submit}>
+          {needsSourceAccount ? (
+            <UI.Field id="goal-movement-source" label={t("dashboard.analytics.goal.depositDialog.sourceAccount")}>
+              <UI.Select
+                id="goal-movement-source"
+                value={sourceAccountId}
+                onChange={(event) => setSourceAccountId(event.target.value)}
+              >
+                {sourceAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {accountPickerLabel(account)}
+                  </option>
+                ))}
+              </UI.Select>
+            </UI.Field>
+          ) : null}
           <UI.Field id="goal-movement-amount" label={t(`dashboard.analytics.goal.${copy}.amount`)} error={error ? error.message : null}>
             <UI.TextInput
               id="goal-movement-amount"
@@ -3163,7 +3266,8 @@
           payload.name,
           payload.targetMinorUnits,
           payload.targetDate,
-          payload.initialDepositMinorUnits
+          payload.initialDepositMinorUnits,
+          payload.collaborators
         )
         .then(() => {
           setCreating(false);
@@ -3368,8 +3472,10 @@
     const [editOrderError, setEditOrderError] = useState(null);
 
     const goalId = goal.goalId;
+    const isCreator = goal.isCreator !== false;
 
     useEffect(() => {
+      if (!isCreator) return undefined;
       let cancelled = false;
       api
         .getStandingOrder(goalId)
@@ -3385,13 +3491,16 @@
       return () => {
         cancelled = true;
       };
-    }, [goalId, goal.progressMinorUnits]);
+    }, [goalId, goal.progressMinorUnits, isCreator]);
 
-    function submitMovement(amountMinor) {
+    function submitMovement(amountMinor, sourceAccountId) {
       setMovementBusy(true);
       setMovementError(null);
-      const call = movementDialog === "withdraw" ? api.withdrawFromGoal : api.depositToGoal;
-      call(goalId, amountMinor)
+      const call =
+        movementDialog === "withdraw"
+          ? () => api.withdrawFromGoal(goalId, amountMinor)
+          : () => api.depositToGoal(goalId, amountMinor, sourceAccountId);
+      call()
         .then(() => {
           setMovementBusy(false);
           setMovementDialog(null);
@@ -3488,12 +3597,20 @@
               })}
             </div>
           </div>
-          {streakWeeks > 0 ? (
-            <span className="dash-streak-badge" title={t("dashboard.analytics.goal.streakHint")}>
-              <UI.Icon name="Flame" size={14} />
-              {t("dashboard.analytics.goal.streak", { count: streakWeeks })}
-            </span>
-          ) : null}
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {goal.isShared ? (
+              <span className="dash-shared-badge" title={t("dashboard.analytics.goal.sharedHint")}>
+                <UI.Icon name="Users" size={14} />
+                {t("dashboard.analytics.goal.sharedBadge")}
+              </span>
+            ) : null}
+            {streakWeeks > 0 ? (
+              <span className="dash-streak-badge" title={t("dashboard.analytics.goal.streakHint")}>
+                <UI.Icon name="Flame" size={14} />
+                {t("dashboard.analytics.goal.streak", { count: streakWeeks })}
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <div className="dash-goal-body">
@@ -3520,9 +3637,11 @@
                 <UI.Button type="button" variant="primary" onClick={() => setMovementDialog("deposit")}>
                   {t("dashboard.analytics.goal.addMoney")}
                 </UI.Button>
-                <UI.Button type="button" variant="secondary" onClick={() => setMovementDialog("withdraw")}>
-                  {t("dashboard.analytics.goal.withdraw")}
-                </UI.Button>
+                {isCreator ? (
+                  <UI.Button type="button" variant="secondary" onClick={() => setMovementDialog("withdraw")}>
+                    {t("dashboard.analytics.goal.withdraw")}
+                  </UI.Button>
+                ) : null}
               </div>
             )}
           </div>
@@ -3534,6 +3653,8 @@
           )}
 
           <div className="dash-goal-pane dash-goal-so">
+            {isCreator ? (
+            <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <span className="text-muted" style={{ fontSize: 12 }}>
                 {t("dashboard.analytics.goal.standingOrder.title")}
@@ -3651,8 +3772,14 @@
             {standingOrderError ? (
               <p className="dash-proposal-note">{t("dashboard.analytics.goal.standingOrder.error")}</p>
             ) : null}
+            </>
+            ) : (
+              <GoalCollaborators goal={goal} />
+            )}
           </div>
         </div>
+
+        {isCreator && goal.isShared ? <GoalCollaborators goal={goal} /> : null}
 
         <div className="dash-goal-foot">
           {streakWeeks === 0 && !reached ? (
@@ -3665,13 +3792,15 @@
             <p className="dash-proposal-note">{t("dashboard.analytics.goal.legacyAccountNote")}</p>
           ) : null}
 
-          <button
-            type="button"
-            className="dash-handoff-link dash-goal-close"
-            onClick={() => setCloseDialogOpen(true)}
-          >
-            {t("dashboard.analytics.goal.closeGoal")}
-          </button>
+          {isCreator ? (
+            <button
+              type="button"
+              className="dash-handoff-link dash-goal-close"
+              onClick={() => setCloseDialogOpen(true)}
+            >
+              {t("dashboard.analytics.goal.closeGoal")}
+            </button>
+          ) : null}
         </div>
 
         {closeDialogOpen ? (
@@ -3698,6 +3827,13 @@
               setMovementDialog(null);
               setMovementError(null);
             }}
+            sourceAccounts={
+              movementDialog === "deposit" && !isCreator
+                ? (accounts || []).filter(
+                    (account) => account.typeKey !== "invest" && account.cur === goal.currency && account.id !== goal.accountId
+                  )
+                : null
+            }
           />
         ) : null}
         {standingOrderDialogOpen ? (
@@ -3728,6 +3864,54 @@
           />
         ) : null}
       </UI.Plate>
+    );
+  }
+
+  function GoalCollaborators({ goal }) {
+    const collaborators = goal.collaborators || [];
+    const pendingInvites = goal.pendingInvites || [];
+    if (!collaborators.length && !pendingInvites.length) return null;
+    return (
+      <div className="dash-goal-collaborators">
+        <div className="text-muted" style={{ fontSize: 12, marginBottom: 6 }}>
+          {t("dashboard.analytics.goal.collaborators.title")}
+        </div>
+        <ul className="dash-collab-list">
+          {collaborators.map((collaborator) => (
+            <li key={collaborator.userId} className="dash-collab-item">
+              <span className="dash-collab-name">
+                {collaborator.displayName}
+                {collaborator.isCreator ? " · " + t("dashboard.analytics.goal.collaborators.creator") : ""}
+              </span>
+              <span className="dash-collab-meta">
+                {collaborator.share
+                  ? collaborator.share.kind === "fixed"
+                    ? t("dashboard.analytics.goal.collaborators.shareFixed", {
+                        amount: UI.formatMoney(collaborator.share.amountMinorUnits, goal.currency),
+                      })
+                    : t("dashboard.analytics.goal.collaborators.sharePercent", {
+                        pct: Math.round((collaborator.share.percentBp || 0) / 100),
+                      })
+                  : null}
+                {" · "}
+                {t("dashboard.analytics.goal.collaborators.contributed", {
+                  amount: UI.formatMoney(collaborator.contributedMinorUnits || 0, goal.currency),
+                })}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {pendingInvites.length ? (
+          <ul className="dash-collab-list dash-collab-pending">
+            {pendingInvites.map((invite) => (
+              <li key={invite.inviteId} className="dash-collab-item">
+                <span className="dash-collab-name">{invite.inviteeUsername}</span>
+                <span className="dash-collab-meta">{t("dashboard.analytics.goal.collaborators.pending")}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
     );
   }
 

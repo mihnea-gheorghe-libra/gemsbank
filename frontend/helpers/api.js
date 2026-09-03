@@ -311,6 +311,8 @@
       send("/cards/" + cardId + "/limits/online", { method: "POST", json: { limitMinor } }),
 
     listInsights: () => send("/insights"),
+    listNotifications: (params) => send("/notifications" + query(params)),
+    markNotificationsSeen: () => send("/notifications/seen", { method: "POST" }),
     getFinancialHealth: () => send("/analytics/health-score"),
     getBudget503020: () => send("/analytics/budget-50-30-20"),
     getIdleCashOptimization: () => send("/analytics/idle-cash"),
@@ -318,7 +320,14 @@
     getEducationLessons: () => send("/education/lessons"),
     getGoalProgress: () => send("/goals/progress"),
     getGoalPace: () => send("/goals/pace"),
-    createGoal: (parentAccountId, name, targetMinorUnits, targetDate, initialDepositMinorUnits) =>
+    createGoal: (
+      parentAccountId,
+      name,
+      targetMinorUnits,
+      targetDate,
+      initialDepositMinorUnits,
+      collaborators
+    ) =>
       send("/goals", {
         method: "POST",
         json: {
@@ -327,14 +336,20 @@
           targetMinorUnits,
           targetDate,
           initialDepositMinorUnits: initialDepositMinorUnits || 0,
+          collaborators: collaborators || [],
         },
       }),
     closeGoal: (goalId) =>
       send("/goals/" + encodeURIComponent(goalId) + "/close", { method: "POST" }),
-    depositToGoal: (goalId, amountMinorUnits) =>
+    depositToGoal: (goalId, amountMinorUnits, sourceAccountId) =>
       send("/goals/" + encodeURIComponent(goalId) + "/deposit", {
         method: "POST",
-        json: { amountMinorUnits },
+        json: { amountMinorUnits, sourceAccountId: sourceAccountId || undefined },
+      }),
+    respondToGoalInvite: (inviteId, accept) =>
+      send("/goals/invites/" + encodeURIComponent(inviteId) + "/respond", {
+        method: "POST",
+        json: { accept },
       }),
     withdrawFromGoal: (goalId, amountMinorUnits) =>
       send("/goals/" + encodeURIComponent(goalId) + "/withdraw", {

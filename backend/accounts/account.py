@@ -11,6 +11,7 @@ class AccountKind(StrEnum):
     CURRENT = "current"
     SAVINGS = "savings"
     INVEST = "invest"
+    JOINT = "joint"
 
 
 class AccountStatus(StrEnum):
@@ -32,6 +33,10 @@ class Account(BaseModel):
     status_reason: str | None = None
     status_changed_at: datetime | None = None
     status_changed_by: str | None = None
+    owner_ids: list[str] = Field(default_factory=list)
+
+    def is_owned_by(self, user_id: str) -> bool:
+        return user_id == self.user_id or user_id in self.owner_ids
 
     def guard_can_send(self) -> None:
         if self.status is not AccountStatus.ACTIVE:
@@ -108,4 +113,5 @@ class Account(BaseModel):
             if self.status_changed_at
             else None,
             "balance": {"minorUnits": balance_minor, "currency": self.currency},
+            "ownerIds": self.owner_ids,
         }
