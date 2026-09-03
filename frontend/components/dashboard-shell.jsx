@@ -329,6 +329,8 @@
     screen,
     username,
     me,
+    theme,
+    onTheme,
     onOpenSettings,
     onSignOut,
     notifications,
@@ -363,14 +365,14 @@
           <div className="dash-topbar-tag">{t("dashboard.tag." + screen)}</div>
         </div>
 
-<div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+<div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
           <DASH.NotificationBell
             notifications={notifications}
             unreadCount={unreadNotifications}
             onOpen={onOpenNotifications}
           />
 
-          <UI.Button type="button" variant="ghost" onClick={() => onTheme(theme === "dark" ? "light" : "dark")}>
+          <UI.Button type="button" onClick={() => onTheme(theme === "dark" ? "light" : "dark")}>
             <UI.Icon name={theme === "dark" ? "Sun" : "Moon"} size={16} />
           </UI.Button>
 
