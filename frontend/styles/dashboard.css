@@ -65,7 +65,6 @@
   --color-muted: var(--color-on-light-muted);
   --color-border: var(--color-on-light-border);
   --color-negative: var(--color-on-light-negative);
-  background: var(--color-lime-500);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .dash-card-tile,
@@ -76,7 +75,6 @@
     --color-muted: var(--color-on-light-muted);
     --color-border: var(--color-on-light-border);
     --color-negative: var(--color-on-light-negative);
-    background: var(--color-lime-500);
   }
 }
 .dash-nav-item .icon { flex: none; opacity: 0.6; }

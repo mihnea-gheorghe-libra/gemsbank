@@ -1666,13 +1666,6 @@
                       <span className="dash-card-kind">{formatCardKind(t("dashboard.cards.kind." + kindToI18nKey(row.kind)))}</span>
                       <UI.Tag variant="outline">{t("dashboard.cards.state." + row.state)}</UI.Tag>
                     </div>
-                    <div>
-                      <div className="dash-card-num">{row.numberMasked}</div>
-                      <div className="dash-card-meta text-muted">
-                        <span>{row.owner}</span>
-                        <span>{formatExpiry(row.expiresOn)}</span>
-                      </div>
-                    </div>
                     <MastercardMark />
                   </div>
                 );
