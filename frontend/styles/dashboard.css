@@ -522,7 +522,8 @@
   position: absolute; inset: 0;
   backface-visibility: hidden; -webkit-backface-visibility: hidden;
 }
-.dash-card-face-front { margin: 0; }
+.dash-card-face-front { margin: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.dash-card-face-front .dash-card-tile { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 .dash-card-face-back {
   transform: rotateY(180deg);
   box-sizing: border-box; padding: 16px;
